@@ -22,7 +22,8 @@ import {
   LogOut,
   Check,
   UserCheck,
-  Zap
+  Zap,
+  Megaphone
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -58,6 +59,7 @@ export default function MainLayout() {
     { name: isAgent ? 'My Leads' : 'Leads', href: '/leads', icon: Users, showFor: 'all' },
     { name: 'Agents', href: '/agents', icon: UserCheck, showFor: 'admin' },
     { name: 'Properties', href: '/properties', icon: Home, showFor: 'admin' },
+    { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin' },
     { name: 'Activities', href: '/activities', icon: Activity, showFor: 'all' },
     { name: 'Calendar', href: '/calendar', icon: Calendar, showFor: 'all' },
     { name: 'Analytics', href: '/analytics', icon: BarChart3, showFor: 'admin' },

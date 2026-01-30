@@ -6,15 +6,16 @@ const axios = require('axios');
  */
 async function getWhatsappSettings(request, reply) {
   try {
-    const userId = request.user.id;
+    const userId = request.user.id || request.user._id;
     
     let settings = await Settings.findOne({ userId });
     
     if (!settings) {
-      // Create default settings if none exist
-      settings = new Settings({
-        userId,
-        whatsapp: {
+      // Return empty defaults without saving to database
+      // Settings will be created when user actually configures them
+      return reply.send({
+        success: true,
+        data: {
           accessToken: '',
           phoneNumberId: '',
           businessAccountId: '',
@@ -26,7 +27,6 @@ async function getWhatsappSettings(request, reply) {
           testingEnabled: false
         }
       });
-      await settings.save();
     }
 
     // Don't send sensitive data in response

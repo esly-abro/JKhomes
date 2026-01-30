@@ -3,6 +3,7 @@
  * Handles Zoho CRM connection, configuration, and testing
  */
 
+const mongoose = require('mongoose');
 const Organization = require('../models/organization.model');
 const axios = require('axios');
 
@@ -40,12 +41,15 @@ const ZOHO_DATA_CENTERS = {
  */
 async function getZohoConfig(request, reply) {
     try {
-        const userId = request.user.id;
+        const userId = request.user.id || request.user._id;
+        console.log('[getZohoConfig] Looking for org with ownerId:', userId);
         
         let org = await Organization.findByUser(userId);
+        console.log('[getZohoConfig] Found org:', org ? { id: org._id, ownerId: org.ownerId, isConnected: org.zohoCrm?.isConnected } : 'null');
         
         if (!org) {
             // Create default organization for user
+            console.log('[getZohoConfig] Creating new org for user:', userId);
             org = new Organization({
                 name: request.user.name || 'My Organization',
                 ownerId: userId,
@@ -87,7 +91,7 @@ async function getZohoConfig(request, reply) {
  */
 async function saveZohoConfig(request, reply) {
     try {
-        const userId = request.user.id;
+        const userId = request.user.id || request.user._id;
         const { clientId, clientSecret, refreshToken, dataCenter } = request.body;
 
         // Validate required fields
@@ -167,22 +171,33 @@ async function testZohoConnection(request, reply) {
         const dcInfo = ZOHO_DATA_CENTERS[dataCenter] || ZOHO_DATA_CENTERS['in'];
 
         // Test by requesting an access token
-        const tokenResponse = await axios.post(
-            `${dcInfo.accountsUrl}/oauth/v2/token`,
-            null,
-            {
-                params: {
-                    refresh_token: refreshToken,
-                    client_id: clientId,
-                    client_secret: clientSecret,
-                    grant_type: 'refresh_token'
-                },
-                timeout: 15000
-            }
-        );
+        console.log('Testing Zoho connection with data center:', dataCenter, dcInfo.accountsUrl);
+        
+        let tokenResponse;
+        try {
+            tokenResponse = await axios.post(
+                `${dcInfo.accountsUrl}/oauth/v2/token`,
+                null,
+                {
+                    params: {
+                        refresh_token: refreshToken,
+                        client_id: clientId,
+                        client_secret: clientSecret,
+                        grant_type: 'refresh_token'
+                    },
+                    timeout: 15000
+                }
+            );
+            console.log('Zoho token response:', JSON.stringify(tokenResponse.data));
+        } catch (tokenError) {
+            console.error('Zoho token error:', tokenError.response?.data || tokenError.message);
+            const errorMsg = tokenError.response?.data?.error || tokenError.message;
+            throw new Error(`Zoho authentication failed: ${errorMsg}`);
+        }
 
         if (!tokenResponse.data.access_token) {
-            throw new Error('No access token received');
+            console.error('No access token in response:', tokenResponse.data);
+            throw new Error(`No access token received. Zoho response: ${JSON.stringify(tokenResponse.data)}`);
         }
 
         const accessToken = tokenResponse.data.access_token;

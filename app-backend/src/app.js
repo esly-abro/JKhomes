@@ -34,20 +34,6 @@ async function buildApp() {
         } : true
     });
 
-    // Add rawBody support for webhook signature verification
-    // This captures the raw body before JSON parsing for HMAC verification
-    app.addContentTypeParser('application/json', { parseAs: 'string' }, function (req, body, done) {
-        try {
-            // Store raw body on request for webhook signature verification
-            req.rawBody = body;
-            const json = JSON.parse(body);
-            done(null, json);
-        } catch (err) {
-            err.statusCode = 400;
-            done(err, undefined);
-        }
-    });
-
     // CORS - Allow all localhost ports in development
     await app.register(cors, {
         origin: (origin, cb) => {
@@ -152,15 +138,9 @@ async function buildApp() {
     const knowledgeBaseRoutes = require('./routes/knowledgeBase.routes');
     app.register(knowledgeBaseRoutes, { prefix: '/api/knowledge-base' });
 
-    // WhatsApp Webhook routes (PUBLIC - for Meta to call)
-    // These MUST be outside authentication as Meta calls them directly
-    const whatsappWebhookRoutes = require('./routes/whatsapp.webhook.routes');
-    app.register(whatsappWebhookRoutes, { prefix: '/webhook/whatsapp' });
-
-    // ElevenLabs Webhook routes (PUBLIC - for ElevenLabs to call)
-    // These MUST be outside authentication as ElevenLabs calls them directly
-    const elevenLabsWebhookRoutes = require('./routes/elevenlabs.webhook.routes');
-    app.register(elevenLabsWebhookRoutes, { prefix: '/webhook/elevenlabs' });
+    // Zoho OAuth routes (PUBLIC - for OAuth flow)
+    const zohoOAuthRoutes = require('./routes/zohoOAuth.routes');
+    app.register(zohoOAuthRoutes, { prefix: '/auth/zoho' });
 
     // Twilio webhooks (public - no auth required)
     app.post('/api/twilio/voice', async (request, reply) => {
@@ -597,6 +577,20 @@ async function buildApp() {
         zohoProtectedApp.addHook('onRequest', requireAuth);
         const zohoRoutes = require('./routes/zoho.routes');
         await zohoProtectedApp.register(zohoRoutes, { prefix: '/api/integrations/zoho' });
+    });
+
+    // ElevenLabs Integration routes (requires auth)
+    app.register(async function (elevenLabsProtectedApp) {
+        elevenLabsProtectedApp.addHook('onRequest', requireAuth);
+        const elevenLabsRoutes = require('./routes/elevenlabs.routes');
+        await elevenLabsProtectedApp.register(elevenLabsRoutes, { prefix: '/api/integrations/elevenlabs' });
+    });
+
+    // Broadcast routes (requires auth) - WhatsApp campaigns with image + CTA buttons
+    app.register(async function (broadcastProtectedApp) {
+        broadcastProtectedApp.addHook('onRequest', requireAuth);
+        const broadcastRoutes = require('./routes/broadcast.routes');
+        await broadcastProtectedApp.register(broadcastRoutes, { prefix: '/api/broadcasts' });
     });
 
     // Twilio voice webhook (no auth - called by Twilio)

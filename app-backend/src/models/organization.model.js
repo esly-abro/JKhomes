@@ -88,6 +88,32 @@ const zohoCrmSchema = new mongoose.Schema({
     }
 }, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
 
+// ElevenLabs Configuration Schema
+const elevenLabsSchema = new mongoose.Schema({
+    apiKey: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    agentId: {
+        type: String
+    },
+    phoneNumberId: {
+        type: String
+    },
+    // Connection status
+    isConnected: {
+        type: Boolean,
+        default: false
+    },
+    lastTestedAt: {
+        type: Date
+    },
+    lastError: {
+        type: String
+    }
+}, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
+
 // Main Organization Schema
 const organizationSchema = new mongoose.Schema({
     name: {
@@ -101,14 +127,15 @@ const organizationSchema = new mongoose.Schema({
         lowercase: true,
         trim: true
     },
-    // Owner user
+    // Owner user - supports both ObjectId and String for in-memory mode
     ownerId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        type: mongoose.Schema.Types.Mixed,
         required: true
     },
     // CRM Integration
     zohoCrm: zohoCrmSchema,
+    // ElevenLabs AI Calling Integration
+    elevenLabs: elevenLabsSchema,
     // Subscription/billing info (for future)
     plan: {
         type: String,
@@ -141,14 +168,13 @@ const organizationSchema = new mongoose.Schema({
 });
 
 // Generate slug from name before saving
-organizationSchema.pre('save', function(next) {
+organizationSchema.pre('save', async function() {
     if (this.isModified('name') && !this.slug) {
         this.slug = this.name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
             .replace(/(^-|-$)/g, '');
     }
-    next();
 });
 
 // Static method to get organization by user

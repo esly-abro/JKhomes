@@ -18,6 +18,7 @@ import Help from './pages/Help';
 import UserManagement from './pages/UserManagement';
 import Agents from './pages/Agents';
 import Automation from './pages/Automation';
+import Broadcasts from './pages/Broadcasts';
 import MainLayout from './components/MainLayout';
 import { getStoredUser, User } from '../services/auth';
 
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="settings" element={<Settings />} />
               <Route path="settings/users" element={<UserManagement />} />
               <Route path="automation" element={<Automation />} />
+              <Route path="broadcasts" element={<Broadcasts />} />
               <Route path="help" element={<Help />} />
             </Route>
           </Routes>

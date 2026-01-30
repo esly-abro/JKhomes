@@ -4,15 +4,15 @@ const mongoose = require('mongoose');
 const whatsappSettingsSchema = new mongoose.Schema({
   accessToken: {
     type: String,
-    required: true
+    default: ''
   },
   phoneNumberId: {
     type: String,
-    required: true
+    default: ''
   },
   businessAccountId: {
     type: String,
-    required: true
+    default: ''
   },
   webhookUrl: {
     type: String
@@ -41,8 +41,7 @@ const whatsappSettingsSchema = new mongoose.Schema({
 // Main Settings Schema
 const settingsSchema = new mongoose.Schema({
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: mongoose.Schema.Types.Mixed,
     required: true,
     unique: true
   },

@@ -62,8 +62,7 @@ const config = {
     elevenLabs: {
         apiKey: process.env.ELEVENLABS_API_KEY,
         agentId: process.env.ELEVENLABS_AGENT_ID,
-        phoneNumberId: process.env.ELEVENLABS_PHONE_NUMBER_ID,
-        webhookSecret: process.env.ELEVENLABS_WEBHOOK_SECRET // Optional: for webhook verification
+        phoneNumberId: process.env.ELEVENLABS_PHONE_NUMBER_ID
     },
 
     // CORS - allow multiple localhost ports in development
