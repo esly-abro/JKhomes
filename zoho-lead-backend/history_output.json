@@ -1,0 +1,651 @@
+{
+  "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+  "conversation_id": "conv_0701kfjaebd9ey7bhcpn05vk1y6v",
+  "status": "done",
+  "user_id": "+916381143136",
+  "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+  "version_id": "agtvrsn_6901kfj498bcegbaxm1qra4vhtv5",
+  "transcript": [
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "வணக்கம்! I'm Priya from JK Homes. எப்படி இருக்கீங்க? Is this a good time to talk about your property needs?",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": -1,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.12056491400289815
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": null
+    },
+    {
+      "role": "user",
+      "agent_metadata": null,
+      "message": "yeah go ahead",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 6,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_asr_trailing_service_latency": {
+            "elapsed_time": 0.05608388700056821
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": "audio"
+    },
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "சந்தோஷம்! Glad to hear that. So, tell me, are you looking to buy a new home or an investment property in Chennai? And what kind of property are you considering – an apartment, a villa, or...",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 8,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_llm_service_ttf_sentence": {
+            "elapsed_time": 1.0835989470069762
+          },
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 1.082862555005704
+          },
+          "convai_llm_service_tt_last_sentence": {
+            "elapsed_time": 1.1651065450059832
+          },
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.10810662800213322
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": {
+        "model_usage": {
+          "gemini-2.5-flash": {
+            "input": {
+              "tokens": 1190,
+              "price": 0.0001785
+            },
+            "input_cache_read": {
+              "tokens": 0,
+              "price": 0
+            },
+            "input_cache_write": {
+              "tokens": 0,
+              "price": 0
+            },
+            "output_total": {
+              "tokens": 51,
+              "price": 0.0000306
+            }
+          }
+        }
+      },
+      "interrupted": true,
+      "original_message": "சந்தோஷம்! Glad to hear that. So, tell me, are you looking to buy a new home or an investment property in Chennai? And what kind of property are you considering – an apartment, a villa, or perhaps a plot of land?",
+      "source_medium": null
+    },
+    {
+      "role": "user",
+      "agent_metadata": null,
+      "message": "தமிழ்",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 16,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_asr_trailing_service_latency": {
+            "elapsed_time": 0.0654713090043515
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": "audio"
+    },
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "ஓ, மன்னிக்கவும்! சரி, நான் தமிழ்லயே பேசுறேன். சென்னைல ஒரு புது வீடு வாங்கவோ இல்ல முதலீடு செய்யவோ பார்க்குறீங்களா? என்ன மாதிரி சொத்து தேடுறீங்க – ஒரு அபார்ட்மென்ட், ஒரு வில்லா, இல்ல வேற ஏதாவது?",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 19,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_llm_service_ttf_sentence": {
+            "elapsed_time": 1.2206695470013074
+          },
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 1.2202350209990982
+          },
+          "convai_llm_service_tt_last_sentence": {
+            "elapsed_time": 1.3794511649975902
+          },
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.0855769900008454
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": {
+        "model_usage": {
+          "gemini-2.5-flash": {
+            "input": {
+              "tokens": 1237,
+              "price": 0.00018554999999999998
+            },
+            "input_cache_read": {
+              "tokens": 0,
+              "price": 0
+            },
+            "input_cache_write": {
+              "tokens": 0,
+              "price": 0
+            },
+            "output_total": {
+              "tokens": 60,
+              "price": 0.000036
+            }
+          }
+        }
+      },
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": null
+    },
+    {
+      "role": "user",
+      "agent_metadata": null,
+      "message": "புது வீடு, வில்லா மாதிரி பாக்குறேன். எதுன்னு?",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 30,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_asr_trailing_service_latency": {
+            "elapsed_time": 0.2595768440005486
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": "audio"
+    },
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "சரி, ஒரு புது வீடு, அதுவும் வில்லா மாதிரி பார்க்குறீங்க. அருமை! உங்க பட்ஜெட் என்னங்க? அதாவது, எவ்வளவு ரூபாய்க்குள் நீங்க ஒரு வில்லா வாங்க எதிர்பார்க்குறீங்க? அப்புறம், சென்னைல எந்த ஏரியா உங்களுக்கு வசதியா இருக்கும்?...",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 35,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_llm_service_ttf_sentence": {
+            "elapsed_time": 0.9680550089979079
+          },
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 0.9675851389984018
+          },
+          "convai_llm_service_tt_last_sentence": {
+            "elapsed_time": 1.1587184479940333
+          },
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.10795875899930252
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": {
+        "model_usage": {
+          "gemini-2.5-flash": {
+            "input": {
+              "tokens": 1310,
+              "price": 0.0001965
+            },
+            "input_cache_read": {
+              "tokens": 0,
+              "price": 0
+            },
+            "input_cache_write": {
+              "tokens": 0,
+              "price": 0
+            },
+            "output_total": {
+              "tokens": 60,
+              "price": 0.000036
+            }
+          }
+        }
+      },
+      "interrupted": true,
+      "original_message": "சரி, ஒரு புது வீடு, அதுவும் வில்லா மாதிரி பார்க்குறீங்க. அருமை! உங்க பட்ஜெட் என்னங்க? அதாவது, எவ்வளவு ரூபாய்க்குள் நீங்க ஒரு வில்லா வாங்க எதிர்பார்க்குறீங்க? அப்புறம், சென்னைல எந்த ஏரியா உங்களுக்கு வசதியா இருக்கும்?",
+      "source_medium": null
+    },
+    {
+      "role": "user",
+      "agent_metadata": null,
+      "message": "பார்ட்டி லேக்.",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 44,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_asr_trailing_service_latency": {
+            "elapsed_time": 0.1662934400010272
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": "audio"
+    },
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "பல்லாவரம் ஏரியா சொல்றீங்க, சரி. அது ஒரு நல்ல லொகேஷன் தான். அங்க எங்ககிட்ட சில நல்ல ப்ராஜெக்ட்ஸ்...",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 46,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_llm_service_ttf_sentence": {
+            "elapsed_time": 0.9018044830008876
+          },
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 0.9014251740009058
+          },
+          "convai_llm_service_tt_last_sentence": {
+            "elapsed_time": 1.4311118530022213
+          },
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.09563368600356625
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": {
+        "model_usage": {
+          "gemini-2.5-flash": {
+            "input": {
+              "tokens": 1377,
+              "price": 0.00020654999999999998
+            },
+            "input_cache_read": {
+              "tokens": 0,
+              "price": 0
+            },
+            "input_cache_write": {
+              "tokens": 0,
+              "price": 0
+            },
+            "output_total": {
+              "tokens": 92,
+              "price": 0.00005519999999999999
+            }
+          }
+        }
+      },
+      "interrupted": true,
+      "original_message": "பல்லாவரம் ஏரியா சொல்றீங்க, சரி. அது ஒரு நல்ல லொகேஷன் தான். அங்க எங்ககிட்ட சில நல்ல ப்ராஜெக்ட்ஸ் இருக்கு. உங்க பட்ஜெட் எவ்வளவுங்க? அதாவது, எவ்வளவு ரூபாய்க்குள் நீங்க ஒரு வில்லா வாங்க எதிர்பார்க்குறீங்க? அப்புறம், எத்தனை பெட்ரூம்ஸ் வேணும், இல்லாட்டி எவ்வளவு சதுர அடி இடம் தேவைப்படும்னு ஒரு ஐடியா இருக்கா?",
+      "source_medium": null
+    },
+    {
+      "role": "user",
+      "agent_metadata": null,
+      "message": "இப்ப நான் சொல்லவே இல்ல. பல்லாவரம் இல்ல அப்பரேஸ் புரி தான் எனக்கு. எனக்கு லேட்டன்ஸ",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 51,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_asr_trailing_service_latency": {
+            "elapsed_time": 0.5829964389995439
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": null,
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": "audio"
+    },
+    {
+      "role": "agent",
+      "agent_metadata": {
+        "agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+        "branch_id": "agtbrch_3401kfj41pc7ej5rmw4ss3nbq8qn",
+        "workflow_node_id": null
+      },
+      "message": "மன்னிக்கவும், அப்படியா? நான் பல்லாவரம்னு தப்பா புரிஞ்சுகிட்டேன். அம்பத்தூர் தான் உங்களுக்கு விருப்பமான இடமா? நீங்க 'லேட்டன்ஸ'ன்னு சொன்னீங்க, அது என்னன்னு கொஞ்சம் விளக்க முடியுமா?",
+      "multivoice_message": null,
+      "tool_calls": [],
+      "tool_results": [],
+      "feedback": null,
+      "llm_override": null,
+      "time_in_call_secs": 69,
+      "conversation_turn_metrics": {
+        "metrics": {
+          "convai_llm_service_ttf_sentence": {
+            "elapsed_time": 1.9153716979999444
+          },
+          "convai_llm_service_ttfb": {
+            "elapsed_time": 1.9147518839963595
+          },
+          "convai_llm_service_tt_last_sentence": {
+            "elapsed_time": 1.9513547649985412
+          },
+          "convai_tts_service_ttfb": {
+            "elapsed_time": 0.11798196300514974
+          }
+        }
+      },
+      "rag_retrieval_info": null,
+      "llm_usage": {
+        "model_usage": {
+          "gemini-2.5-flash": {
+            "input": {
+              "tokens": 1437,
+              "price": 0.00021554999999999998
+            },
+            "input_cache_read": {
+              "tokens": 0,
+              "price": 0
+            },
+            "input_cache_write": {
+              "tokens": 0,
+              "price": 0
+            },
+            "output_total": {
+              "tokens": 52,
+              "price": 0.0000312
+            }
+          }
+        }
+      },
+      "interrupted": false,
+      "original_message": null,
+      "source_medium": null
+    }
+  ],
+  "metadata": {
+    "start_time_unix_secs": 1769067728,
+    "accepted_time_unix_secs": 1769067728,
+    "call_duration_secs": 85,
+    "cost": 968,
+    "deletion_settings": {
+      "deletion_time_unix_secs": null,
+      "deleted_logs_at_time_unix_secs": null,
+      "deleted_audio_at_time_unix_secs": null,
+      "deleted_transcript_at_time_unix_secs": null,
+      "delete_transcript_and_pii": false,
+      "delete_audio": false
+    },
+    "feedback": {
+      "type": null,
+      "overall_score": null,
+      "likes": 0,
+      "dislikes": 0,
+      "rating": null,
+      "comment": null
+    },
+    "authorization_method": "signed_url",
+    "charging": {
+      "dev_discount": false,
+      "is_burst": false,
+      "tier": "free",
+      "llm_usage": {
+        "irreversible_generation": {
+          "model_usage": {
+            "gemini-2.5-flash": {
+              "input": {
+                "tokens": 6551,
+                "price": 0.0009826499999999998
+              },
+              "input_cache_read": {
+                "tokens": 0,
+                "price": 0
+              },
+              "input_cache_write": {
+                "tokens": 0,
+                "price": 0
+              },
+              "output_total": {
+                "tokens": 315,
+                "price": 0.00018899999999999999
+              }
+            }
+          }
+        },
+        "initiated_generation": {
+          "model_usage": {
+            "gemini-2.5-flash": {
+              "input": {
+                "tokens": 8540,
+                "price": 0.0012809999999999998
+              },
+              "input_cache_read": {
+                "tokens": 0,
+                "price": 0
+              },
+              "input_cache_write": {
+                "tokens": 0,
+                "price": 0
+              },
+              "output_total": {
+                "tokens": 319,
+                "price": 0.0001914
+              }
+            }
+          }
+        }
+      },
+      "llm_price": 0.0014723999999999998,
+      "llm_charge": 15,
+      "call_charge": 953,
+      "free_minutes_consumed": 0,
+      "free_llm_dollars_consumed": 0
+    },
+    "phone_call": {
+      "direction": "outbound",
+      "phone_number_id": "phnum_5101kfj4ng44ec7r42k9atwrxxkg",
+      "agent_number": "+17655076878",
+      "external_number": "+916381143136",
+      "type": "twilio",
+      "stream_sid": "MZa00380337b63fbd5c9b2444b7f52b943",
+      "call_sid": "CA9bf61d687116bcd79ff8f86101634974"
+    },
+    "batch_call": null,
+    "termination_reason": "Call ended by remote party",
+    "error": null,
+    "warnings": [],
+    "main_language": "ta",
+    "rag_usage": null,
+    "text_only": false,
+    "features_usage": {
+      "language_detection": {
+        "enabled": false,
+        "used": false
+      },
+      "transfer_to_agent": {
+        "enabled": false,
+        "used": false
+      },
+      "transfer_to_number": {
+        "enabled": false,
+        "used": false
+      },
+      "multivoice": {
+        "enabled": false,
+        "used": false
+      },
+      "dtmf_tones": {
+        "enabled": false,
+        "used": false
+      },
+      "external_mcp_servers": {
+        "enabled": false,
+        "used": false
+      },
+      "pii_zrm_workspace": false,
+      "pii_zrm_agent": false,
+      "tool_dynamic_variable_updates": {
+        "enabled": false,
+        "used": false
+      },
+      "is_livekit": false,
+      "voicemail_detection": {
+        "enabled": false,
+        "used": false
+      },
+      "workflow": {
+        "enabled": false,
+        "tool_node": {
+          "enabled": false,
+          "used": false
+        },
+        "standalone_agent_node": {
+          "enabled": false,
+          "used": false
+        },
+        "phone_number_node": {
+          "enabled": false,
+          "used": false
+        },
+        "end_node": {
+          "enabled": false,
+          "used": false
+        }
+      },
+      "agent_testing": {
+        "enabled": false,
+        "tests_ran_after_last_modification": false,
+        "tests_ran_in_last_7_days": false
+      },
+      "versioning": {
+        "enabled": true,
+        "used": false
+      }
+    },
+    "eleven_assistant": {
+      "is_eleven_assistant": false
+    },
+    "initiator_id": null,
+    "conversation_initiation_source": "twilio",
+    "conversation_initiation_source_version": null,
+    "timezone": null,
+    "async_metadata": null,
+    "whatsapp": null,
+    "agent_created_from": "ui",
+    "agent_last_updated_from": "ui"
+  },
+  "analysis": {
+    "evaluation_criteria_results": {},
+    "data_collection_results": {},
+    "evaluation_criteria_results_list": [],
+    "data_collection_results_list": [],
+    "call_successful": "success",
+    "transcript_summary": "Priya from JK Homes initiated a conversation with a user about their property needs in Chennai, initially speaking in English before switching to Tamil upon request. The user expressed interest in a new villa-style home. The conversation then focused on preferred locations, with the user clarifying their interest in Ambattur (Apprase Puram) and mentioning \"latency,\" which required further clarification.\n",
+    "call_summary_title": "Chennai property inquiry"
+  },
+  "conversation_initiation_client_data": {
+    "conversation_config_override": {
+      "turn": null,
+      "tts": null,
+      "conversation": null,
+      "agent": null
+    },
+    "custom_llm_extra_body": {},
+    "user_id": null,
+    "source_info": {
+      "source": null,
+      "version": null
+    },
+    "dynamic_variables": {
+      "lead_id": "1145543000000714001",
+      "lead_name": "Esl",
+      "system__agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+      "system__agent_turns": 6,
+      "system__current_agent_turns": 6,
+      "system__current_subagent_turns": 6,
+      "system__current_agent_id": "agent_7001kfj41mkef7qv5grsg74wzysd",
+      "system__conversation_id": "conv_0701kfjaebd9ey7bhcpn05vk1y6v",
+      "system__call_duration_secs": 85,
+      "system__time_utc": "2026-01-22T07:43:33.853847+00:00",
+      "system__time": "Thursday, 07:43 22 January 2026",
+      "system__timezone": null,
+      "system__caller_id": "+17655076878",
+      "system__called_number": "+916381143136",
+      "system__call_sid": "CA9bf61d687116bcd79ff8f86101634974"
+    }
+  },
+  "has_audio": true,
+  "has_user_audio": true,
+  "has_response_audio": true
+}

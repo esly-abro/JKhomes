@@ -1,0 +1,76 @@
+2026-01-12 22:34:19 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Invalid URL"}
+2026-01-12 22:34:19 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Invalid URL"}
+2026-01-12 22:34:32 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Invalid URL"}
+2026-01-12 22:34:32 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Invalid URL"}
+2026-01-12 22:37:36 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Invalid URL"}
+2026-01-12 22:37:36 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Invalid URL"}
+2026-01-12 22:52:28 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Request failed with status code 401","status":401,"data":"unauthorized"}
+2026-01-12 22:52:28 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Request failed with status code 401"}
+2026-01-12 22:56:37 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Request failed with status code 401","status":401,"data":"unauthorized"}
+2026-01-12 22:56:37 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Request failed with status code 401"}
+2026-01-12 23:04:36 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Request failed with status code 401","status":401,"data":"unauthorized"}
+2026-01-12 23:04:36 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Request failed with status code 401"}
+2026-01-12 23:12:27 [ERROR]: VAPI API call failed {"to":"+911***90","error":"Request failed with status code 401","status":401,"data":"unauthorized"}
+2026-01-12 23:12:27 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Request failed with status code 401"}
+2026-01-12 23:13:26 [ERROR]: VAPI API call failed {"to":"+916***36","error":"Request failed with status code 401","status":401,"data":"unauthorized"}
+2026-01-12 23:13:26 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Request failed with status code 401"}
+2026-01-12 23:25:08 [ERROR]: VAPI API call failed {"to":"+916***36","error":"Request failed with status code 400","status":400,"data":{"statusCode":400,"message":"Couldn't start call. Free Vapi numbers do not support international calls.","error":"Bad Request","subscriptionLimits":{"concurrencyBlocked":false,"concurrencyLimit":10,"remainingConcurrentCalls":9}}}
+2026-01-12 23:25:08 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Couldn't start call. Free Vapi numbers do not support international calls."}
+2026-01-13 09:23:38 [ERROR]: VAPI API call failed {"to":"+916***36","error":"Request failed with status code 400","status":400,"data":{"statusCode":400,"message":"Couldn't start call. Free Vapi numbers do not support international calls.","error":"Bad Request","subscriptionLimits":{"concurrencyBlocked":false,"concurrencyLimit":10,"remainingConcurrentCalls":8}}}
+2026-01-13 09:23:38 [ERROR]: Failed to initiate call {"error":"VAPI call failed: Couldn't start call. Free Vapi numbers do not support international calls."}
+2026-01-13 12:48:18 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":{"detail":{"status":"document_not_found","message":"Document with id 1001kev2v4kkefe8rtwgk not found."}}}
+2026-01-13 12:48:18 [ERROR]: Failed to initiate call {"error":"ElevenLabs call failed: [object Object]"}
+2026-01-21 13:31:33 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs configuration missing (API Key, Agent ID, or Phone ID)"}
+2026-01-21 13:31:43 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs configuration missing (API Key, Agent ID, or Phone ID)"}
+2026-01-21 13:31:44 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs configuration missing (API Key, Agent ID, or Phone ID)"}
+2026-01-21 13:31:47 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs configuration missing (API Key, Agent ID, or Phone ID)"}
+2026-01-21 13:38:06 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs configuration missing (API Key, Agent ID, or Phone ID)"}
+2026-01-21 13:38:42 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:38:42 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:38:43 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:38:43 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:40:18 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:40:18 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:40:21 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:40:21 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:44:49 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:44:49 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:45:00 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:45:00 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:45:04 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:45:04 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 13:46:23 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 13:46:23 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 14:23:17 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 14:23:17 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 14:23:22 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 14:23:22 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 14:25:26 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 14:25:26 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-21 14:29:18 [ERROR]: ElevenLabs API call failed {"error":"Request failed with status code 404","response":"{\"detail\":\"Not Found\"}"}
+2026-01-21 14:29:18 [ERROR]: Failed to initiate ElevenLabs call {"error":"ElevenLabs call failed: Not Found"}
+2026-01-22 00:10:54 [ERROR]: Twilio call failed {"error":"The number +917871177795 is unverified. Trial accounts may only make calls to verified numbers.","code":21219,"moreInfo":"https://www.twilio.com/docs/errors/21219"}
+2026-01-22 00:10:54 [ERROR]: Failed to initiate call {"error":"Twilio call failed: The number +917871177795 is unverified. Trial accounts may only make calls to verified numbers."}
+2026-01-22 10:33:50 [ERROR]: Failed to initiate ElevenLabs call {"error":"Request failed with status code 404","response":{"detail":"Not Found"}}
+2026-01-22 10:34:11 [ERROR]: Failed to initiate ElevenLabs call {"error":"Request failed with status code 404","response":{"detail":"Not Found"}}
+2026-01-22 10:43:52 [ERROR]: Failed to initiate ElevenLabs call {"error":"Request failed with status code 404","response":{"detail":{"status":"document_not_found","message":"Document with id phnum_7001kffsx593ea7bbgvpgfmtgd not found."}}}
+2026-01-22 10:43:56 [ERROR]: Failed to initiate ElevenLabs call {"error":"Request failed with status code 404","response":{"detail":{"status":"document_not_found","message":"Document with id phnum_7001kffsx593ea7bbgvpgfmtgd not found."}}}
+2026-01-22 10:46:00 [ERROR]: Failed to initiate ElevenLabs call {"error":"Request failed with status code 404","response":{"detail":{"status":"document_not_found","message":"Document with id phnum_7001kffsx593ea7bbgvpgfmtgd not found."}}}
+2026-01-23 12:19:07 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/test-lead-456","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:19:07 [ERROR]: Failed to update CRM {"leadId":"test-lead-456","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:19:25 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/test-lead-456","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:19:25 [ERROR]: Failed to update CRM {"leadId":"test-lead-456","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:19:39 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/test-lead-456","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:19:39 [ERROR]: Failed to update CRM {"leadId":"test-lead-456","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:19:50 [ERROR]: Failed to send WhatsApp media message {"error":"Twilio could not find a Channel with the specified From address","code":63007}
+2026-01-23 12:19:50 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/scenario-lead-1","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:19:50 [ERROR]: Failed to update CRM {"leadId":"scenario-lead-1","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:19:50 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/scenario-lead-2","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:19:50 [ERROR]: Failed to update CRM {"leadId":"scenario-lead-2","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:19:50 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/scenario-lead-3","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:24:44 [ERROR]: Failed to send WhatsApp media message {"error":"Twilio could not find a Channel with the specified From address","code":63007}
+2026-01-23 12:24:45 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/test-manual-lead","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:24:45 [ERROR]: Failed to update CRM {"leadId":"test-manual-lead","error":"Please check if the URL trying to access is a correct one"}
+2026-01-23 12:24:51 [ERROR]: Failed to send WhatsApp media message {"error":"Twilio could not find a Channel with the specified From address","code":63007}
+2026-01-23 12:24:51 [ERROR]: Zoho API Error: 404 - Please check if the URL trying to access is a correct one {"endpoint":"/Leads/test-lead-999","errorCode":"INVALID_URL_PATTERN","retryCount":0}
+2026-01-23 12:24:51 [ERROR]: Failed to update CRM {"leadId":"test-lead-999","error":"Please check if the URL trying to access is a correct one"}
