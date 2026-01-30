@@ -1,0 +1,644 @@
+import { useState, useEffect } from 'react';
+import { Shield, User, Clock, Phone, Mail, CheckCircle, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, UserPlus, Trash2, Activity } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import AgentActivityDialog from '../components/AgentActivityDialog';
+
+interface Agent {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role: string;
+  isActive: boolean;
+  approvalStatus: string;
+  lastLogin?: string;
+  createdAt: string;
+}
+
+interface Lead {
+  _id: string;
+  id?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  status: string;
+  source?: string;
+  assignedTo?: string;
+  createdAt?: string;
+}
+
+export default function Agents() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [agentLeads, setAgentLeads] = useState<{ [key: string]: Lead[] }>({});
+  const [loadingLeads, setLoadingLeads] = useState<string | null>(null);
+  
+  // Add Agent Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addingAgent, setAddingAgent] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [addSuccess, setAddSuccess] = useState(false);
+  
+  // Delete Agent State
+  const [deletingAgent, setDeletingAgent] = useState<string | null>(null);
+  
+  // Activity Dialog State
+  const [activityDialogOpen, setActivityDialogOpen] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  
+  const [newAgent, setNewAgent] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    password: ''
+  });
+
+  const handleAddAgent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddingAgent(true);
+    setAddError('');
+    setAddSuccess(false);
+
+    try {
+      // Register the agent with createdByOwner flag - auto-approves them
+      const registerResponse = await fetch('http://localhost:4000/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: newAgent.name,
+          email: newAgent.email,
+          phone: newAgent.phone,
+          password: newAgent.password,
+          role: 'agent',
+          createdByOwner: true  // This auto-approves the agent
+        })
+      });
+
+      if (!registerResponse.ok) {
+        const errorData = await registerResponse.json();
+        throw new Error(errorData.message || 'Failed to create agent');
+      }
+
+      setAddSuccess(true);
+      setNewAgent({ name: '', email: '', phone: '', password: '' });
+      
+      // Refresh agents list
+      await fetchAgents();
+      
+      // Close modal after short delay to show success
+      setTimeout(() => {
+        setShowAddModal(false);
+        setAddSuccess(false);
+      }, 1500);
+
+    } catch (err: any) {
+      console.error('Error adding agent:', err);
+      setAddError(err.message || 'Failed to add agent');
+    } finally {
+      setAddingAgent(false);
+    }
+  };
+
+  const resetAddModal = () => {
+    setNewAgent({ name: '', email: '', phone: '', password: '' });
+    setAddError('');
+    setAddSuccess(false);
+  };
+
+  const handleDeleteAgent = async (agentId: string, agentName: string) => {
+    if (!confirm(`Are you sure you want to delete agent "${agentName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setDeletingAgent(agentId);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:4000/api/users/${agentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete agent');
+      }
+
+      // Refresh agents list
+      await fetchAgents();
+    } catch (err: any) {
+      console.error('Error deleting agent:', err);
+      setError(err.message || 'Failed to delete agent');
+    } finally {
+      setDeletingAgent(null);
+    }
+  };
+
+  const fetchAgents = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('http://localhost:4000/api/users', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch agents');
+      }
+
+      const data = await response.json();
+      // Handle different response formats
+      const users = data.data || data.users || data || [];
+      // Filter only agents (not admins/owners)
+      const agentUsers = Array.isArray(users) ? users.filter((user: Agent) => user.role === 'agent') : [];
+      setAgents(agentUsers);
+    } catch (err: any) {
+      console.error('Error fetching agents:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAgents();
+  }, []);
+
+  const fetchAgentLeads = async (agentId: string) => {
+    setLoadingLeads(agentId);
+    try {
+      const token = localStorage.getItem('accessToken');
+      // Fetch all leads and filter by assignedTo on the frontend
+      const response = await fetch(`http://localhost:4000/api/leads?limit=200`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch leads');
+      }
+
+      const data = await response.json();
+      const allLeads = data.data || data.leads || data || [];
+      // Filter leads assigned to this specific agent
+      const agentAssignedLeads = Array.isArray(allLeads) 
+        ? allLeads.filter((lead: Lead) => lead.assignedTo === agentId)
+        : [];
+      setAgentLeads(prev => ({ ...prev, [agentId]: agentAssignedLeads }));
+    } catch (err: any) {
+      console.error('Error fetching agent leads:', err);
+      setAgentLeads(prev => ({ ...prev, [agentId]: [] }));
+    } finally {
+      setLoadingLeads(null);
+    }
+  };
+
+  const toggleAgentExpand = (agentId: string) => {
+    if (expandedAgent === agentId) {
+      setExpandedAgent(null);
+    } else {
+      setExpandedAgent(agentId);
+      if (!agentLeads[agentId]) {
+        fetchAgentLeads(agentId);
+      }
+    }
+  };
+
+  const openAgentActivity = (agent: Agent) => {
+    setSelectedAgent(agent);
+    setActivityDialogOpen(true);
+  };
+
+  const getLeadStatusBadge = (status: string) => {
+    const statusColors: { [key: string]: string } = {
+      'new': 'bg-blue-100 text-blue-800',
+      'contacted': 'bg-purple-100 text-purple-800',
+      'qualified': 'bg-green-100 text-green-800',
+      'negotiation': 'bg-yellow-100 text-yellow-800',
+      'won': 'bg-emerald-100 text-emerald-800',
+      'lost': 'bg-red-100 text-red-800',
+      'follow-up': 'bg-orange-100 text-orange-800',
+    };
+    return statusColors[status?.toLowerCase()] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusBadge = (agent: Agent) => {
+    if (agent.approvalStatus === 'pending') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <Clock className="h-3 w-3" />
+          Pending Approval
+        </span>
+      );
+    }
+    if (agent.approvalStatus === 'rejected') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <XCircle className="h-3 w-3" />
+          Rejected
+        </span>
+      );
+    }
+    if (agent.isActive) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <CheckCircle className="h-3 w-3" />
+          Active
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+        <XCircle className="h-3 w-3" />
+        Inactive
+      </span>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8 max-w-6xl">
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <Shield className="h-8 w-8 text-blue-600" />
+            <h1 className="text-3xl font-bold text-gray-900">Agents</h1>
+          </div>
+          <p className="text-gray-600">Monitor and manage all registered agents</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            onClick={() => { resetAddModal(); setShowAddModal(true); }} 
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <UserPlus className="h-4 w-4" />
+            Add Agent
+          </Button>
+          <Button onClick={fetchAgents} variant="outline" className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Add Agent Modal */}
+      <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-blue-600" />
+              Add New Agent
+            </DialogTitle>
+            <DialogDescription>
+              Create a new agent account. The agent will be automatically approved and can log in immediately.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleAddAgent} className="space-y-4">
+            {addError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 flex items-start gap-2">
+                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">{addError}</p>
+              </div>
+            )}
+            
+            {addSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-md p-3 flex items-start gap-2">
+                <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-800">Agent created successfully!</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="agentName">Full Name *</Label>
+              <Input
+                id="agentName"
+                placeholder="Agent's full name"
+                value={newAgent.name}
+                onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+                required
+                disabled={addingAgent || addSuccess}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="agentEmail">Email *</Label>
+              <Input
+                id="agentEmail"
+                type="email"
+                placeholder="agent@example.com"
+                value={newAgent.email}
+                onChange={(e) => setNewAgent({ ...newAgent, email: e.target.value })}
+                required
+                disabled={addingAgent || addSuccess}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="agentPhone">Phone Number</Label>
+              <Input
+                id="agentPhone"
+                type="tel"
+                placeholder="(555) 123-4567"
+                value={newAgent.phone}
+                onChange={(e) => setNewAgent({ ...newAgent, phone: e.target.value })}
+                disabled={addingAgent || addSuccess}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="agentPassword">Password *</Label>
+              <Input
+                id="agentPassword"
+                type="password"
+                placeholder="Create a password"
+                value={newAgent.password}
+                onChange={(e) => setNewAgent({ ...newAgent, password: e.target.value })}
+                required
+                minLength={6}
+                disabled={addingAgent || addSuccess}
+              />
+              <p className="text-xs text-gray-500">Minimum 6 characters</p>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddModal(false)}
+                disabled={addingAgent}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={addingAgent || addSuccess}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {addingAgent ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Create Agent
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {error && (
+        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-800">
+          <XCircle className="h-5 w-5" />
+          {error}
+        </div>
+      )}
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Total Agents</div>
+          <div className="text-2xl font-bold text-gray-900">{agents.length}</div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Active</div>
+          <div className="text-2xl font-bold text-green-600">
+            {agents.filter(a => a.isActive && a.approvalStatus === 'approved').length}
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Pending Approval</div>
+          <div className="text-2xl font-bold text-yellow-600">
+            {agents.filter(a => a.approvalStatus === 'pending').length}
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="text-sm text-gray-500 mb-1">Inactive</div>
+          <div className="text-2xl font-bold text-gray-600">
+            {agents.filter(a => !a.isActive || a.approvalStatus === 'rejected').length}
+          </div>
+        </div>
+      </div>
+
+      {/* Agents Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">All Agents</h2>
+        </div>
+
+        {agents.length === 0 ? (
+          <div className="p-12 text-center">
+            <User className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No agents yet</h3>
+            <p className="text-gray-500">Agents will appear here once they register</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Agent
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Contact
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Registered
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {agents.map((agent) => (
+                  <>
+                    <tr 
+                      key={agent._id} 
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => toggleAgentExpand(agent._id)}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                            <User className="h-5 w-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{agent.name}</div>
+                            <div className="text-sm text-gray-500 capitalize">{agent.role}</div>
+                          </div>
+                          {expandedAgent === agent._id ? (
+                            <ChevronUp className="h-4 w-4 text-gray-400" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-gray-400" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="h-4 w-4" />
+                            {agent.email}
+                          </div>
+                          {agent.phone && (
+                            <div className="flex items-center gap-2 text-sm text-gray-600">
+                              <Phone className="h-4 w-4" />
+                              {agent.phone}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {getStatusBadge(agent)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(agent.createdAt).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAgentActivity(agent);
+                            }}
+                            title="View Activity"
+                          >
+                            <Activity className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteAgent(agent._id, agent.name);
+                            }}
+                            disabled={deletingAgent === agent._id}
+                            title="Delete Agent"
+                          >
+                            {deletingAgent === agent._id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    {/* Expanded section showing agent's clients/leads */}
+                    {expandedAgent === agent._id && (
+                      <tr key={`${agent._id}-leads`}>
+                        <td colSpan={5} className="px-6 py-4 bg-gray-50">
+                          <div className="ml-8">
+                            <div className="flex items-center gap-2 mb-3">
+                              <Users className="h-5 w-5 text-blue-600" />
+                              <h4 className="font-medium text-gray-900">Assigned Clients/Leads</h4>
+                            </div>
+                            
+                            {loadingLeads === agent._id ? (
+                              <div className="flex items-center gap-2 text-gray-500">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading leads...
+                              </div>
+                            ) : agentLeads[agent._id]?.length === 0 ? (
+                              <p className="text-gray-500 text-sm">No clients assigned to this agent yet.</p>
+                            ) : (
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                <table className="w-full">
+                                  <thead className="bg-gray-100">
+                                    <tr>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Client Name</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Contact</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-200">
+                                    {agentLeads[agent._id]?.map((lead) => (
+                                      <tr key={lead._id || lead.id} className="hover:bg-gray-50">
+                                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                          {lead.name}
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">
+                                          <div>{lead.email || '-'}</div>
+                                          <div>{lead.phone || '-'}</div>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getLeadStatusBadge(lead.status)}`}>
+                                            {lead.status || 'Unknown'}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">
+                                          {lead.source || '-'}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {/* Agent Activity Dialog */}
+      {selectedAgent && (
+        <AgentActivityDialog
+          open={activityDialogOpen}
+          onOpenChange={setActivityDialogOpen}
+          agentId={selectedAgent._id}
+          agentName={selectedAgent.name}
+        />
+      )}    </div>
+  );
+}
