@@ -6,38 +6,12 @@
  */
 
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const { encrypt, decrypt, validateEncryptionConfig } = require('../utils/encryption');
 
-// Encryption key from environment (32 bytes for AES-256)
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'leadflow-default-key-change-me!!'; // 32 chars
-const IV_LENGTH = 16;
-
-/**
- * Encrypt sensitive data
- */
-function encrypt(text) {
-    if (!text) return text;
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
-}
-
-/**
- * Decrypt sensitive data
- */
-function decrypt(text) {
-    if (!text || !text.includes(':')) return text;
-    const parts = text.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const encryptedText = parts[1];
-    const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+// Validate encryption on startup
+const encryptionStatus = validateEncryptionConfig();
+if (!encryptionStatus.isValid) {
+    console.warn(`⚠️  Encryption Warning: ${encryptionStatus.message}`);
 }
 
 // Zoho CRM Configuration Schema
@@ -114,6 +88,104 @@ const elevenLabsSchema = new mongoose.Schema({
     }
 }, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
 
+// Twilio Configuration Schema (for voice calls and SMS)
+const twilioSchema = new mongoose.Schema({
+    // ENCRYPTED: Account credentials
+    accountSid: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    authToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Phone number (not sensitive)
+    phoneNumber: {
+        type: String
+    },
+    // Optional: TwiML App for advanced routing
+    twimlAppSid: {
+        type: String
+    },
+    // ENCRYPTED: API Key credentials (alternative auth)
+    apiKeySid: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    apiKeySecret: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Connection status
+    isConnected: {
+        type: Boolean,
+        default: false
+    },
+    lastTestedAt: {
+        type: Date
+    },
+    lastError: {
+        type: String
+    }
+}, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
+
+// WhatsApp Business API Configuration Schema
+const whatsappSchema = new mongoose.Schema({
+    // ENCRYPTED: Meta access token (very sensitive)
+    accessToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Phone Number ID (Meta's identifier, not sensitive)
+    phoneNumberId: {
+        type: String
+    },
+    // Business Account ID (not sensitive)
+    businessAccountId: {
+        type: String
+    },
+    // Webhook configuration
+    webhookUrl: {
+        type: String
+    },
+    // ENCRYPTED: Webhook verify token
+    verifyToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Meta App credentials
+    appId: {
+        type: String
+    },
+    // ENCRYPTED: App secret (very sensitive)
+    appSecret: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Connection status
+    isConnected: {
+        type: Boolean,
+        default: false
+    },
+    enabled: {
+        type: Boolean,
+        default: false
+    },
+    lastTestedAt: {
+        type: Date
+    },
+    lastError: {
+        type: String
+    }
+}, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
+
 // Main Organization Schema
 const organizationSchema = new mongoose.Schema({
     name: {
@@ -136,6 +208,10 @@ const organizationSchema = new mongoose.Schema({
     zohoCrm: zohoCrmSchema,
     // ElevenLabs AI Calling Integration
     elevenLabs: elevenLabsSchema,
+    // Twilio Voice/SMS Integration
+    twilio: twilioSchema,
+    // WhatsApp Business API Integration
+    whatsapp: whatsappSchema,
     // Subscription/billing info (for future)
     plan: {
         type: String,

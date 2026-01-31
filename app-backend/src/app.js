@@ -593,6 +593,13 @@ async function buildApp() {
         await broadcastProtectedApp.register(broadcastRoutes, { prefix: '/api/broadcasts' });
     });
 
+    // API Settings routes (requires auth) - Encrypted credential management
+    app.register(async function (apiSettingsProtectedApp) {
+        apiSettingsProtectedApp.addHook('onRequest', requireAuth);
+        const apiSettingsRoutes = require('./routes/apiSettings.routes');
+        await apiSettingsProtectedApp.register(apiSettingsRoutes, { prefix: '/api/settings/api' });
+    });
+
     // Twilio voice webhook (no auth - called by Twilio)
     app.post('/twilio/voice', async (request, reply) => {
         const toNumber = request.body.To || request.body.to;

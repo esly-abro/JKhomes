@@ -248,11 +248,17 @@ export default function Settings() {
   const [elevenLabsTestResult, setElevenLabsTestResult] = useState<any>(null);
   const [showElevenLabsApiKey, setShowElevenLabsApiKey] = useState(false);
 
+  // WhatsApp Business API Configuration State
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showWhatsAppAccessToken, setShowWhatsAppAccessToken] = useState(false);
+  const [showWhatsAppAppSecret, setShowWhatsAppAppSecret] = useState(false);
+
   // Load Zoho config on mount
   useEffect(() => {
     loadZohoConfig();
     checkZohoOAuthStatus();
     loadElevenLabsConfig();
+    handleLoadWhatsappSettings();
   }, []);
 
   // Check for OAuth callback success
@@ -518,6 +524,10 @@ export default function Settings() {
     setShowElevenLabsModal(true);
   };
 
+  const handleConfigureWhatsApp = () => {
+    setShowWhatsAppModal(true);
+  };
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => {
     return searchParams.get('tab') || 'profile';
@@ -561,11 +571,16 @@ export default function Settings() {
     appId: '',
     appSecret: '',
     enabled: false,
-    testingEnabled: false
+    testingEnabled: false,
+    isConnected: false,
+    lastTestedAt: null as string | null,
+    lastError: null as string | null
   });
 
   const [loadingWhatsappSettings, setLoadingWhatsappSettings] = useState(false);
-  const [whatsappTestResult, setWhatsappTestResult] = useState(null);
+  const [savingWhatsappSettings, setSavingWhatsappSettings] = useState(false);
+  const [testingWhatsappConnection, setTestingWhatsappConnection] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState<any>(null);
 
   const handleSaveSlackWebhook = () => {
     if (!slackWebhook) {
@@ -597,14 +612,28 @@ export default function Settings() {
   };
 
   const handleSaveWhatsappSettings = async () => {
-    setLoadingWhatsappSettings(true);
+    if (!whatsappSettings.accessToken || !whatsappSettings.phoneNumberId) {
+      alert('Please fill in Access Token and Phone Number ID');
+      return;
+    }
+    
+    setSavingWhatsappSettings(true);
     try {
-      // API call to save WhatsApp settings
+      // API call to save WhatsApp settings (encrypted)
       const api = await import('../../services/api');
-      const response = await api.default.post('/api/settings/whatsapp', whatsappSettings);
+      const response = await api.default.post('/api/settings/api/whatsapp', {
+        accessToken: whatsappSettings.accessToken,
+        phoneNumberId: whatsappSettings.phoneNumberId,
+        businessAccountId: whatsappSettings.businessAccountId,
+        appId: whatsappSettings.appId,
+        appSecret: whatsappSettings.appSecret,
+        verifyToken: whatsappSettings.verifyToken,
+        webhookUrl: whatsappSettings.webhookUrl
+      });
       
       if (response.data.success) {
-        alert('WhatsApp settings saved successfully!');
+        alert('WhatsApp configuration saved! Click "Test Connection" to verify.');
+        handleLoadWhatsappSettings();
       } else {
         throw new Error(response.data.error || 'Failed to save settings');
       }
@@ -612,45 +641,90 @@ export default function Settings() {
       console.error('Error saving WhatsApp settings:', error);
       alert(error.response?.data?.error || 'Failed to save WhatsApp settings. Please try again.');
     } finally {
-      setLoadingWhatsappSettings(false);
+      setSavingWhatsappSettings(false);
     }
   };
 
   const handleTestWhatsappConnection = async () => {
+    setTestingWhatsappConnection(true);
     setWhatsappTestResult(null);
     try {
       const api = await import('../../services/api');
-      const response = await api.default.post('/api/settings/whatsapp/test', {
-        accessToken: whatsappSettings.accessToken,
-        phoneNumberId: whatsappSettings.phoneNumberId
+      const response = await api.default.post('/api/settings/api/whatsapp/test');
+      
+      setWhatsappTestResult({
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.phoneInfo
       });
       
-      setWhatsappTestResult(response.data);
+      if (response.data.success) {
+        handleLoadWhatsappSettings();
+      }
     } catch (error: any) {
       console.error('Error testing WhatsApp connection:', error);
       setWhatsappTestResult({ 
         success: false, 
-        error: error.response?.data?.error || 'Connection test failed' 
+        message: error.response?.data?.error || 'Connection test failed' 
       });
+    } finally {
+      setTestingWhatsappConnection(false);
     }
   };
 
   const handleLoadWhatsappSettings = async () => {
     try {
+      setLoadingWhatsappSettings(true);
       const api = await import('../../services/api');
-      const response = await api.default.get('/api/settings/whatsapp');
-      if (response.data.success) {
-        setWhatsappSettings(response.data.data);
+      const response = await api.default.get('/api/settings/api/credentials/whatsapp');
+      if (response.data.success && response.data.credentials) {
+        setWhatsappSettings(prev => ({
+          ...prev,
+          accessToken: response.data.credentials.accessToken?.includes('•') ? prev.accessToken : (response.data.credentials.accessToken || ''),
+          phoneNumberId: response.data.credentials.phoneNumberId || '',
+          businessAccountId: response.data.credentials.businessAccountId || '',
+          appId: response.data.credentials.appId || '',
+          isConnected: response.data.credentials.isConnected || false,
+          enabled: response.data.credentials.enabled || false,
+        }));
       }
     } catch (error) {
       console.error('Error loading WhatsApp settings:', error);
+    } finally {
+      setLoadingWhatsappSettings(false);
     }
   };
 
-  // Load WhatsApp settings on component mount
-  useEffect(() => {
-    handleLoadWhatsappSettings();
-  }, []);
+  const handleDisconnectWhatsapp = async () => {
+    if (!confirm('Are you sure you want to disconnect WhatsApp? This will remove your saved credentials.')) {
+      return;
+    }
+    try {
+      const api = await import('../../services/api');
+      await api.default.delete('/api/settings/api/credentials/whatsapp');
+      setWhatsappSettings({
+        accessToken: '',
+        phoneNumberId: '',
+        businessAccountId: '',
+        webhookUrl: '',
+        verifyToken: '',
+        appId: '',
+        appSecret: '',
+        enabled: false,
+        testingEnabled: false,
+        isConnected: false,
+        lastTestedAt: null,
+        lastError: null
+      });
+      setWhatsappTestResult(null);
+      setShowWhatsAppModal(false);
+      alert('WhatsApp disconnected successfully');
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to disconnect');
+    }
+  };
+
+  // Load WhatsApp settings on component mount - handled in main useEffect
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1403,50 +1477,52 @@ export default function Settings() {
                   </div>
                 </div>
 
-              </div>
-
-              <div className="border-t pt-6">
-                <h3 className="font-medium mb-4">Available Integrations</h3>
-                <div className="grid grid-cols-1 gap-4">
-                  {integrations.map((integration) => (
-                    <div key={integration.name} className="p-4 border rounded-lg flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{integration.icon}</span>
-                        <div>
-                          <div className="font-semibold">{integration.name}</div>
-                          <div className="text-sm text-gray-600">{integration.description}</div>
-                        </div>
+                {/* WhatsApp Business API Card */}
+                <div className="border rounded-lg p-4 bg-white">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center text-white font-bold">📱</div>
+                      <div>
+                        <h3 className="font-bold">WhatsApp Business API</h3>
+                        {whatsappSettings.isConnected ? (
+                          <p className="text-sm text-green-600 flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" /> Connected
+                          </p>
+                        ) : whatsappSettings.lastError ? (
+                          <p className="text-sm text-red-600 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" /> Connection Error
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-500 flex items-center gap-1">
+                            Not Connected
+                          </p>
+                        )}
                       </div>
-                      <Button
-                        variant={integration.connected ? 'outline' : 'default'}
-                        size="sm"
-                        onClick={() => handleConnectIntegration(integration.name)}
-                      >
-                        {integration.connected ? 'Disconnect' : 'Connect'}
-                      </Button>
                     </div>
-                  ))}
+                    <Button variant="outline" size="sm" onClick={handleConfigureWhatsApp}>Configure</Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-3 rounded">
+                    <div>
+                      <span className="text-gray-500">Access Token:</span>
+                      <div className="font-mono">{whatsappSettings.accessToken ? (whatsappSettings.accessToken.includes('•') ? whatsappSettings.accessToken : whatsappSettings.accessToken.substring(0, 8) + '...') : 'Not configured'}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Phone Number ID:</span>
+                      <div className="font-mono">{whatsappSettings.phoneNumberId || 'Not configured'}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Business Account ID:</span>
+                      <div className="font-mono">{whatsappSettings.businessAccountId || 'Not configured'}</div>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Status:</span>
+                      <div className={whatsappSettings.isConnected ? 'text-green-600' : whatsappSettings.lastError ? 'text-red-600' : 'text-gray-500'}>
+                        {whatsappSettings.isConnected ? 'Healthy' : whatsappSettings.lastError ? 'Error' : 'Not Connected'}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
 
-              {/* Slack Configuration Modal (Mock) */}
-              <div className="border rounded-lg p-4 border-dashed border-gray-300">
-                <div className="flex items-center gap-2 mb-2">
-                  <MessageSquare className="h-4 w-4 text-gray-500" />
-                  <span className="font-medium text-gray-700">Slack Webhook URL</span>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="https://hooks.slack.com/services/..."
-                    className="font-mono text-sm"
-                    value={slackWebhook}
-                    onChange={(e) => setSlackWebhook(e.target.value)}
-                  />
-                  <Button variant="secondary" onClick={handleSaveSlackWebhook}>Save</Button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Paste your Incoming Webhook URL to receive lead alerts.
-                </p>
               </div>
 
             </CardContent>
@@ -1740,6 +1816,223 @@ export default function Settings() {
                   Disconnect ElevenLabs
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp Business API Configuration Modal */}
+      {showWhatsAppModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  📱 WhatsApp Business API Configuration
+                </h2>
+                <button onClick={() => setShowWhatsAppModal(false)} className="text-gray-500 hover:text-gray-700">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Connection Status */}
+              {whatsappSettings.isConnected && (
+                <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-700 font-medium">
+                    <CheckCircle2 className="h-5 w-5" />
+                    WhatsApp Connected
+                  </div>
+                  {whatsappSettings.lastTestedAt && (
+                    <p className="text-sm text-green-600 mt-1">
+                      Last tested: {new Date(whatsappSettings.lastTestedAt).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Test Result */}
+              {whatsappTestResult && (
+                <div className={`mb-4 p-4 rounded-lg ${whatsappTestResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                  <div className={`flex items-center gap-2 font-medium ${whatsappTestResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                    {whatsappTestResult.success ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                    {whatsappTestResult.message}
+                  </div>
+                  {whatsappTestResult.data && (
+                    <p className="text-sm mt-1 text-green-600">
+                      Phone: {whatsappTestResult.data.displayPhoneNumber} | Name: {whatsappTestResult.data.verifiedName}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* How to Get Credentials */}
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                <p className="font-medium text-blue-800 mb-2">How to get your credentials:</p>
+                <ol className="list-decimal list-inside text-blue-700 space-y-1">
+                  <li>Go to <a href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer" className="underline">Meta Developer Portal</a></li>
+                  <li>Select your app → WhatsApp → API Setup</li>
+                  <li>Copy the Phone Number ID and generate a temporary Access Token</li>
+                  <li>For production, create a System User token in Business Settings</li>
+                </ol>
+              </div>
+
+              {/* Configuration Form */}
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="whatsapp-access-token" className="flex items-center gap-1">
+                    Access Token <span className="text-red-500">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="whatsapp-access-token"
+                      type={showWhatsAppAccessToken ? 'text' : 'password'}
+                      value={whatsappSettings.accessToken}
+                      onChange={(e) => handleWhatsappSettingChange('accessToken', e.target.value)}
+                      placeholder="EAAxxxxxxxxxx..."
+                      className="pr-10 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWhatsAppAccessToken(!showWhatsAppAccessToken)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showWhatsAppAccessToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    From Meta Developer Console → WhatsApp → API Setup
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="whatsapp-phone-id" className="flex items-center gap-1">
+                    Phone Number ID <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="whatsapp-phone-id"
+                    value={whatsappSettings.phoneNumberId}
+                    onChange={(e) => handleWhatsappSettingChange('phoneNumberId', e.target.value)}
+                    placeholder="1234567890123456"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The Phone Number ID from Meta (not the phone number itself)
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="whatsapp-business-id">
+                    Business Account ID (Optional)
+                  </Label>
+                  <Input
+                    id="whatsapp-business-id"
+                    value={whatsappSettings.businessAccountId}
+                    onChange={(e) => handleWhatsappSettingChange('businessAccountId', e.target.value)}
+                    placeholder="1234567890123456"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required for fetching message templates
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="whatsapp-app-id">
+                    App ID (Optional)
+                  </Label>
+                  <Input
+                    id="whatsapp-app-id"
+                    value={whatsappSettings.appId}
+                    onChange={(e) => handleWhatsappSettingChange('appId', e.target.value)}
+                    placeholder="123456789012345"
+                    className="font-mono"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="whatsapp-app-secret">
+                    App Secret (Optional)
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="whatsapp-app-secret"
+                      type={showWhatsAppAppSecret ? 'text' : 'password'}
+                      value={whatsappSettings.appSecret}
+                      onChange={(e) => handleWhatsappSettingChange('appSecret', e.target.value)}
+                      placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                      className="pr-10 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWhatsAppAppSecret(!showWhatsAppAppSecret)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showWhatsAppAppSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Required for webhook verification
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="whatsapp-verify-token">
+                    Webhook Verify Token (Optional)
+                  </Label>
+                  <Input
+                    id="whatsapp-verify-token"
+                    value={whatsappSettings.verifyToken}
+                    onChange={(e) => handleWhatsappSettingChange('verifyToken', e.target.value)}
+                    placeholder="your-custom-verify-token"
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Custom token for webhook verification (you choose this)
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6 pt-4 border-t">
+                <Button
+                  onClick={handleSaveWhatsappSettings}
+                  disabled={savingWhatsappSettings}
+                  className="flex-1"
+                >
+                  {savingWhatsappSettings ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                  ) : 'Save Configuration'}
+                </Button>
+                <Button
+                  onClick={handleTestWhatsappConnection}
+                  disabled={testingWhatsappConnection || !whatsappSettings.accessToken || !whatsappSettings.phoneNumberId}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  {testingWhatsappConnection ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Testing...</>
+                  ) : 'Test Connection'}
+                </Button>
+              </div>
+
+              {whatsappSettings.isConnected && (
+                <Button
+                  onClick={handleDisconnectWhatsapp}
+                  variant="outline"
+                  className="w-full mt-3 text-red-600 border-red-200 hover:bg-red-50"
+                >
+                  Disconnect WhatsApp
+                </Button>
+              )}
+
+              {/* Important Note */}
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                <p className="font-medium text-yellow-800">⚠️ Important:</p>
+                <p className="text-yellow-700 mt-1">
+                  To send outbound messages (broadcasts), you need a paid WhatsApp Business API account. 
+                  Test messages are limited to verified numbers only.
+                </p>
+              </div>
             </div>
           </div>
         </div>

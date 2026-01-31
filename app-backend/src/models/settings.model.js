@@ -1,30 +1,44 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt, encryptedString } = require('../utils/encryption');
 
-// WhatsApp Settings Schema
+// WhatsApp Settings Schema with encrypted sensitive fields
 const whatsappSettingsSchema = new mongoose.Schema({
+  // ENCRYPTED: Meta/WhatsApp access token (sensitive)
   accessToken: {
     type: String,
-    default: ''
+    default: '',
+    set: encrypt,
+    get: decrypt
   },
+  // Phone Number ID (not sensitive, just an ID)
   phoneNumberId: {
     type: String,
     default: ''
   },
+  // Business Account ID (not sensitive, just an ID)
   businessAccountId: {
     type: String,
     default: ''
   },
+  // Webhook URL (not sensitive)
   webhookUrl: {
     type: String
   },
+  // ENCRYPTED: Webhook verify token (sensitive)
   verifyToken: {
-    type: String
+    type: String,
+    set: encrypt,
+    get: decrypt
   },
+  // App ID (not sensitive, just an ID)
   appId: {
     type: String
   },
+  // ENCRYPTED: App Secret (very sensitive)
   appSecret: {
-    type: String
+    type: String,
+    set: encrypt,
+    get: decrypt
   },
   enabled: {
     type: Boolean,
@@ -33,9 +47,22 @@ const whatsappSettingsSchema = new mongoose.Schema({
   testingEnabled: {
     type: Boolean,
     default: false
+  },
+  // Connection status
+  isConnected: {
+    type: Boolean,
+    default: false
+  },
+  lastTestedAt: {
+    type: Date
+  },
+  lastError: {
+    type: String
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  toJSON: { getters: true },
+  toObject: { getters: true }
 });
 
 // Main Settings Schema
