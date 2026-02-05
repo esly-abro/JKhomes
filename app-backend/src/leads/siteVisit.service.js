@@ -53,9 +53,29 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) 
         }
     }
     
-    // Fetch lead from Zoho to get details
-    const lead = await zohoClient.getLead(leadId);
-    const zohoLead = lead.data && lead.data[0];
+    // Fetch lead from Zoho to get details (or fallback to MongoDB)
+    let zohoLead = null;
+    try {
+        const lead = await zohoClient.getLead(leadId);
+        zohoLead = lead.data && lead.data[0];
+    } catch (zohoError) {
+        console.warn('[SiteVisit] Zoho fetch failed, trying MongoDB:', zohoError.message);
+        // Try to get lead data from MongoDB instead
+        try {
+            const mongoLead = await Lead.findOne({ zohoId: leadId });
+            if (mongoLead) {
+                zohoLead = {
+                    Full_Name: mongoLead.name,
+                    Last_Name: mongoLead.name,
+                    Phone: mongoLead.phone,
+                    Mobile: mongoLead.phone,
+                    Email: mongoLead.email
+                };
+            }
+        } catch (mongoError) {
+            console.warn('[SiteVisit] MongoDB fallback also failed:', mongoError.message);
+        }
+    }
 
     // Update status via data layer - this syncs to Zoho FIRST, then MongoDB
     try {

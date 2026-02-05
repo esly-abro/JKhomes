@@ -19859,3 +19859,8 @@
 2026-02-05 10:09:14 [INFO]: No exact phone match, using most recent conversation
 2026-02-05 10:09:15 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
 2026-02-05 10:09:15 [INFO]: GET /elevenlabs/summary/6381143136 200 701ms
+2026-02-05 11:23:01 [INFO]: GET /elevenlabs/summary/8457423698 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 11:23:01 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91845***"}
+2026-02-05 11:23:01 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 11:23:02 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
+2026-02-05 11:23:02 [INFO]: GET /elevenlabs/summary/8457423698 200 779ms
