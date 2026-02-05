@@ -1,15 +1,17 @@
 /**
  * WhatsApp Business API Service
  * Integrates with Meta's WhatsApp Business Cloud API
+ * Supports dynamic credentials from database (Settings model) with fallback to env vars
  */
 
 const axios = require('axios');
+const Settings = require('../models/settings.model');
 
 // Meta WhatsApp API Configuration
 const WHATSAPP_API_VERSION = 'v18.0';
 const WHATSAPP_API_BASE = `https://graph.facebook.com/${WHATSAPP_API_VERSION}`;
 
-// Get credentials from environment or use provided token
+// Get credentials from environment (fallback)
 const getAccessToken = () => {
   return process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN;
 };
@@ -26,7 +28,6 @@ const getBusinessAccountId = () => {
  * Get user's WhatsApp settings from database
  */
 async function getUserWhatsappSettings(userId) {
-  const Settings = require('../models/settings.model');
   const settings = await Settings.findOne({ userId });
   
   if (!settings || !settings.whatsapp || !settings.whatsapp.enabled) {
@@ -37,22 +38,67 @@ async function getUserWhatsappSettings(userId) {
 }
 
 /**
- * Fetch all available WhatsApp message templates
+ * Get WhatsApp credentials - tries database first, then falls back to env vars
+ * @param {string} userId - User ID for database lookup (optional)
+ * @returns {Object} - { accessToken, phoneNumberId, businessAccountId }
  */
-async function getTemplates(accessToken = null) {
+async function getCredentials(userId) {
+  // Try to get credentials from database first
+  if (userId) {
+    try {
+      const settings = await Settings.findOne({ userId });
+      
+      if (settings?.whatsapp?.enabled && settings?.whatsapp?.accessToken && settings?.whatsapp?.phoneNumberId) {
+        console.log('📱 Using WhatsApp credentials from database for user:', userId);
+        return {
+          accessToken: settings.whatsapp.accessToken,
+          phoneNumberId: settings.whatsapp.phoneNumberId,
+          businessAccountId: settings.whatsapp.businessAccountId || getBusinessAccountId()
+        };
+      }
+    } catch (error) {
+      console.warn('Could not fetch WhatsApp settings from database:', error.message);
+    }
+  }
+  
+  // Fallback to environment variables
+  console.log('📱 Using WhatsApp credentials from environment variables');
+  return {
+    accessToken: getAccessToken(),
+    phoneNumberId: getPhoneNumberId(),
+    businessAccountId: getBusinessAccountId()
+  };
+}
+
+/**
+ * Fetch all available WhatsApp message templates
+ * @param {string} userId - User ID for dynamic credential lookup (optional)
+ * @param {string} accessToken - Direct access token (optional, overrides lookup)
+ */
+async function getTemplates(userId = null, accessToken = null) {
   try {
-    const token = accessToken || getAccessToken();
-    const businessAccountId = getBusinessAccountId();
+    // Get credentials - use provided token, or lookup dynamically, or fall back to env
+    let token, businessAccountId, phoneNumberId;
+    
+    if (accessToken) {
+      token = accessToken;
+      businessAccountId = getBusinessAccountId();
+      phoneNumberId = getPhoneNumberId();
+    } else {
+      const creds = await getCredentials(userId);
+      token = creds.accessToken;
+      businessAccountId = creds.businessAccountId;
+      phoneNumberId = creds.phoneNumberId;
+    }
     
     if (!token) {
-      throw new Error('WhatsApp access token not configured');
+      throw new Error('WhatsApp access token not configured. Please add your WhatsApp API credentials in Settings.');
     }
 
     if (!businessAccountId) {
       // Try to get templates using phone number ID instead
-      const phoneNumberId = getPhoneNumberId();
       if (!phoneNumberId) {
-        throw new Error('WhatsApp Business Account ID or Phone Number ID not configured');
+        throw new Error('WhatsApp Business Account ID or Phone Number ID not configured. Please add credentials in Settings.');
       }
       
       // First get the WABA ID from phone number
@@ -128,14 +174,29 @@ function extractButtons(components) {
 
 /**
  * Send a template message via WhatsApp
+ * @param {string} phoneNumber - Recipient phone number
+ * @param {string} templateName - Template name to send
+ * @param {string} languageCode - Language code (default: 'en')
+ * @param {Array} components - Template components/variables
+ * @param {string} userId - User ID for dynamic credential lookup (optional)
+ * @param {string} accessToken - Direct access token (optional, overrides lookup)
  */
-async function sendTemplateMessage(phoneNumber, templateName, languageCode = 'en', components = [], accessToken = null) {
+async function sendTemplateMessage(phoneNumber, templateName, languageCode = 'en', components = [], userId = null, accessToken = null) {
   try {
-    const token = accessToken || getAccessToken();
-    const phoneNumberId = getPhoneNumberId();
+    // Get credentials - use provided token, or lookup dynamically, or fall back to env
+    let token, phoneNumberId;
+    
+    if (accessToken) {
+      token = accessToken;
+      phoneNumberId = getPhoneNumberId();
+    } else {
+      const creds = await getCredentials(userId);
+      token = creds.accessToken;
+      phoneNumberId = creds.phoneNumberId;
+    }
     
     if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured');
+      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
     }
 
     // Format phone number (remove spaces, add country code if needed)
@@ -193,14 +254,27 @@ async function sendTemplateMessage(phoneNumber, templateName, languageCode = 'en
 
 /**
  * Send a text message via WhatsApp
+ * @param {string} phoneNumber - Recipient phone number
+ * @param {string} message - Message text to send
+ * @param {string} userId - User ID for dynamic credential lookup (optional)
+ * @param {string} accessToken - Direct access token (optional, overrides lookup)
  */
-async function sendTextMessage(phoneNumber, message, accessToken = null) {
+async function sendTextMessage(phoneNumber, message, userId = null, accessToken = null) {
   try {
-    const token = accessToken || getAccessToken();
-    const phoneNumberId = getPhoneNumberId();
+    // Get credentials - use provided token, or lookup dynamically, or fall back to env
+    let token, phoneNumberId;
+    
+    if (accessToken) {
+      token = accessToken;
+      phoneNumberId = getPhoneNumberId();
+    } else {
+      const creds = await getCredentials(userId);
+      token = creds.accessToken;
+      phoneNumberId = creds.phoneNumberId;
+    }
     
     if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured');
+      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
     }
 
     // Format phone number
@@ -245,14 +319,28 @@ async function sendTextMessage(phoneNumber, message, accessToken = null) {
 
 /**
  * Send interactive message with buttons
+ * @param {string} phoneNumber - Recipient phone number
+ * @param {string} bodyText - Message body text
+ * @param {Array} buttons - Array of button objects
+ * @param {string} userId - User ID for dynamic credential lookup (optional)
+ * @param {string} accessToken - Direct access token (optional, overrides lookup)
  */
-async function sendInteractiveMessage(phoneNumber, bodyText, buttons, accessToken = null) {
+async function sendInteractiveMessage(phoneNumber, bodyText, buttons, userId = null, accessToken = null) {
   try {
-    const token = accessToken || getAccessToken();
-    const phoneNumberId = getPhoneNumberId();
+    // Get credentials - use provided token, or lookup dynamically, or fall back to env
+    let token, phoneNumberId;
+    
+    if (accessToken) {
+      token = accessToken;
+      phoneNumberId = getPhoneNumberId();
+    } else {
+      const creds = await getCredentials(userId);
+      token = creds.accessToken;
+      phoneNumberId = creds.phoneNumberId;
+    }
     
     if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured');
+      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
     }
 
     // Format phone number
@@ -312,5 +400,7 @@ module.exports = {
   sendTemplateMessage,
   sendTextMessage,
   sendInteractiveMessage,
-  extractButtons
+  extractButtons,
+  getCredentials,
+  getUserWhatsappSettings
 };

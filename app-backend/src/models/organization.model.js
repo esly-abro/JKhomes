@@ -114,6 +114,109 @@ const elevenLabsSchema = new mongoose.Schema({
     }
 }, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
 
+// Twilio Configuration Schema (for voice calls and SMS)
+const twilioSchema = new mongoose.Schema({
+    // ENCRYPTED: Account credentials
+    accountSid: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    authToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Phone number (not sensitive)
+    phoneNumber: {
+        type: String
+    },
+    // Optional: TwiML App for advanced routing
+    twimlAppSid: {
+        type: String
+    },
+    // ENCRYPTED: API Key credentials (alternative auth)
+    apiKeySid: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    apiKeySecret: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Connection status
+    isConnected: {
+        type: Boolean,
+        default: false
+    },
+    lastTestedAt: {
+        type: Date
+    },
+    lastError: {
+        type: String
+    }
+}, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
+
+// WhatsApp Business API Configuration Schema
+const whatsappSchema = new mongoose.Schema({
+    // ENCRYPTED: Meta access token (very sensitive)
+    accessToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Phone Number ID (Meta's identifier, not sensitive)
+    phoneNumberId: {
+        type: String
+    },
+    // Business Account ID (not sensitive)
+    businessAccountId: {
+        type: String
+    },
+    // Webhook configuration
+    webhookUrl: {
+        type: String
+    },
+    // ENCRYPTED: Webhook verify token
+    verifyToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Meta App credentials
+    appId: {
+        type: String
+    },
+    // ENCRYPTED: App secret (very sensitive)
+    appSecret: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Feature toggles
+    enabled: {
+        type: Boolean,
+        default: false
+    },
+    testingEnabled: {
+        type: Boolean,
+        default: false
+    },
+    // Connection status
+    isConnected: {
+        type: Boolean,
+        default: false
+    },
+    lastTestedAt: {
+        type: Date
+    },
+    lastError: {
+        type: String
+    }
+}, { _id: false, toJSON: { getters: true }, toObject: { getters: true } });
+
 // Main Organization Schema
 const organizationSchema = new mongoose.Schema({
     name: {
@@ -136,6 +239,10 @@ const organizationSchema = new mongoose.Schema({
     zohoCrm: zohoCrmSchema,
     // ElevenLabs AI Calling Integration
     elevenLabs: elevenLabsSchema,
+    // Twilio Integration (voice, SMS)
+    twilio: twilioSchema,
+    // WhatsApp Business API Integration
+    whatsapp: whatsappSchema,
     // Subscription/billing info (for future)
     plan: {
         type: String,

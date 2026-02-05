@@ -70,7 +70,7 @@ class AssignmentService {
         agents.map(async (agent) => {
           const activeLeads = await leadsService.getLeadsByOwner(agent._id.toString());
           const activeCount = activeLeads.filter(
-            l => !['Deal Closed', 'Lost', 'Disqualified'].includes(l.status)
+            l => !['Not Interested'].includes(l.status)
           ).length;
 
           return {
@@ -160,8 +160,12 @@ class AssignmentService {
       console.error('❌ Find best agent error:', error);
       // Fallback: return first available agent
       const agents = await User.find({ role: { $in: ['agent', 'bpo'] } }).limit(1);
+      if (!agents || agents.length === 0) {
+        console.error('❌ CRITICAL: No agents available even for fallback');
+        throw new Error('No agents available for assignment');
+      }
       console.log(`   Fallback agent: ${agents[0]?.name || agents[0]?.email}`);
-      return agents[0]?._id.toString();
+      return agents[0]._id.toString();
     }
   }
 
@@ -176,10 +180,10 @@ class AssignmentService {
           const leads = await leadsService.getLeadsByOwner(agent._id.toString());
 
           const activeLeads = leads.filter(
-            l => !['Deal Closed', 'Lost', 'Disqualified'].includes(l.status)
+            l => !['Not Interested'].includes(l.status)
           );
 
-          const closedDeals = leads.filter(l => l.status === 'Deal Closed');
+          const closedDeals = leads.filter(l => l.status === 'Interested');
 
           return {
             agentId: agent._id,
@@ -214,7 +218,7 @@ class AssignmentService {
         // Reassign all active leads from agent
         const allLeads = await leadsService.getLeadsByOwner(fromAgentId);
         leadsToReassign = allLeads
-          .filter(l => !['Deal Closed', 'Lost', 'Disqualified'].includes(l.status))
+          .filter(l => !['Not Interested'].includes(l.status))
           .map(l => l.id);
       }
 

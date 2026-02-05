@@ -36,8 +36,12 @@ function canAccessLead(user, lead) {
 
     if (user.role === 'agent' || user.role === 'bpo') {
         // Check if lead is assigned to this user
-        // For now, allow all (TODO: implement ownership check from Zoho)
-        return true;
+        const userId = user._id?.toString() || user.id;
+        const leadAssignedTo = lead.assignedTo?.toString() || lead.ownerId?.toString();
+        const leadOwner = typeof lead.owner === 'object' ? lead.owner?._id?.toString() : lead.owner;
+        
+        // Agent can access if they are assigned to the lead or own it
+        return leadAssignedTo === userId || leadOwner === userId;
     }
 
     return false;

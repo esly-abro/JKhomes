@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
-import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink } from 'lucide-react';
 import { getUsers } from '../../services/leads';
 
 interface Profile {
@@ -21,11 +21,13 @@ interface Profile {
 }
 
 interface TeamMember {
-  id: number;
+  id?: number;
+  _id?: string;
   name: string;
   email: string;
   role: string;
-  status: string;
+  status?: string;
+  createdAt?: string;
 }
 
 interface CrmSettings {
@@ -253,6 +255,7 @@ export default function Settings() {
     loadZohoConfig();
     checkZohoOAuthStatus();
     loadElevenLabsConfig();
+    handleLoadWhatsappSettings();
   }, []);
 
   // Check for OAuth callback success
@@ -561,11 +564,19 @@ export default function Settings() {
     appId: '',
     appSecret: '',
     enabled: false,
-    testingEnabled: false
+    testingEnabled: false,
+    isConnected: false,
+    lastTestedAt: null as string | null,
+    lastError: null as string | null
   });
 
   const [loadingWhatsappSettings, setLoadingWhatsappSettings] = useState(false);
-  const [whatsappTestResult, setWhatsappTestResult] = useState(null);
+  const [savingWhatsappSettings, setSavingWhatsappSettings] = useState(false);
+  const [testingWhatsappConnection, setTestingWhatsappConnection] = useState(false);
+  const [whatsappTestResult, setWhatsappTestResult] = useState<any>(null);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showWhatsAppAccessToken, setShowWhatsAppAccessToken] = useState(false);
+  const [showWhatsAppAppSecret, setShowWhatsAppAppSecret] = useState(false);
 
   const handleSaveSlackWebhook = () => {
     if (!slackWebhook) {
@@ -597,14 +608,27 @@ export default function Settings() {
   };
 
   const handleSaveWhatsappSettings = async () => {
-    setLoadingWhatsappSettings(true);
+    if (!whatsappSettings.accessToken || !whatsappSettings.phoneNumberId) {
+      alert('Please fill in Access Token and Phone Number ID');
+      return;
+    }
+    setSavingWhatsappSettings(true);
     try {
-      // API call to save WhatsApp settings
+      // API call to save WhatsApp settings (encrypted)
       const api = await import('../../services/api');
-      const response = await api.default.post('/api/settings/whatsapp', whatsappSettings);
+      const response = await api.default.post('/api/settings/api/whatsapp', {
+        accessToken: whatsappSettings.accessToken,
+        phoneNumberId: whatsappSettings.phoneNumberId,
+        businessAccountId: whatsappSettings.businessAccountId,
+        appId: whatsappSettings.appId,
+        appSecret: whatsappSettings.appSecret,
+        verifyToken: whatsappSettings.verifyToken,
+        webhookUrl: whatsappSettings.webhookUrl
+      });
       
       if (response.data.success) {
-        alert('WhatsApp settings saved successfully!');
+        alert('WhatsApp configuration saved! Click "Test Connection" to verify.');
+        handleLoadWhatsappSettings();
       } else {
         throw new Error(response.data.error || 'Failed to save settings');
       }
@@ -612,45 +636,89 @@ export default function Settings() {
       console.error('Error saving WhatsApp settings:', error);
       alert(error.response?.data?.error || 'Failed to save WhatsApp settings. Please try again.');
     } finally {
-      setLoadingWhatsappSettings(false);
+      setSavingWhatsappSettings(false);
     }
   };
 
   const handleTestWhatsappConnection = async () => {
+    setTestingWhatsappConnection(true);
     setWhatsappTestResult(null);
     try {
       const api = await import('../../services/api');
-      const response = await api.default.post('/api/settings/whatsapp/test', {
-        accessToken: whatsappSettings.accessToken,
-        phoneNumberId: whatsappSettings.phoneNumberId
+      const response = await api.default.post('/api/settings/api/whatsapp/test');
+      
+      setWhatsappTestResult({
+        success: response.data.success,
+        message: response.data.message,
+        data: response.data.phoneInfo
       });
       
-      setWhatsappTestResult(response.data);
+      if (response.data.success) {
+        handleLoadWhatsappSettings();
+      }
     } catch (error: any) {
       console.error('Error testing WhatsApp connection:', error);
       setWhatsappTestResult({ 
         success: false, 
-        error: error.response?.data?.error || 'Connection test failed' 
+        message: error.response?.data?.error || 'Connection test failed' 
       });
+    } finally {
+      setTestingWhatsappConnection(false);
     }
   };
 
   const handleLoadWhatsappSettings = async () => {
     try {
+      setLoadingWhatsappSettings(true);
       const api = await import('../../services/api');
-      const response = await api.default.get('/api/settings/whatsapp');
-      if (response.data.success) {
-        setWhatsappSettings(response.data.data);
+      const response = await api.default.get('/api/settings/api/credentials/whatsapp');
+      if (response.data.success && response.data.credentials) {
+        setWhatsappSettings(prev => ({
+          ...prev,
+          accessToken: response.data.credentials.accessToken?.includes('•') ? prev.accessToken : (response.data.credentials.accessToken || ''),
+          phoneNumberId: response.data.credentials.phoneNumberId || '',
+          businessAccountId: response.data.credentials.businessAccountId || '',
+          appId: response.data.credentials.appId || '',
+          isConnected: response.data.credentials.isConnected || false,
+          enabled: response.data.credentials.enabled || false,
+        }));
       }
     } catch (error) {
       console.error('Error loading WhatsApp settings:', error);
+    } finally {
+      setLoadingWhatsappSettings(false);
     }
   };
 
-  // Load WhatsApp settings on component mount
-  useEffect(() => {
-    handleLoadWhatsappSettings();
-  }, []);
+  const handleDisconnectWhatsapp = async () => {
+    if (!confirm('Are you sure you want to disconnect WhatsApp? This will remove your saved credentials.')) {
+      return;
+    }
+    try {
+      const api = await import('../../services/api');
+      await api.default.delete('/api/settings/api/credentials/whatsapp');
+      setWhatsappSettings({
+        accessToken: '',
+        phoneNumberId: '',
+        businessAccountId: '',
+        webhookUrl: '',
+        verifyToken: '',
+        appId: '',
+        appSecret: '',
+        enabled: false,
+        testingEnabled: false,
+        isConnected: false,
+        lastTestedAt: null,
+        lastError: null
+      });
+      setWhatsappTestResult(null);
+      alert('WhatsApp disconnected successfully');
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to disconnect');
+    }
+  };
+
+  // Load WhatsApp settings on component mount - handled in main useEffect
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1192,6 +1260,61 @@ export default function Settings() {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Connection Status */}
+              {whatsappSettings.isConnected && (
+                <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-600" />
+                    <div>
+                      <div className="font-medium text-green-700">Connected</div>
+                      {whatsappSettings.lastTestedAt && (
+                        <div className="text-sm text-green-600">
+                          Last tested: {new Date(whatsappSettings.lastTestedAt).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleDisconnectWhatsapp}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    Disconnect
+                  </Button>
+                </div>
+              )}
+
+              {whatsappSettings.lastError && !whatsappSettings.isConnected && (
+                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                  <div className="flex items-center gap-2 text-red-700">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="font-medium">Connection Error</span>
+                  </div>
+                  <p className="text-sm text-red-600 mt-1">{whatsappSettings.lastError}</p>
+                </div>
+              )}
+
+              {/* Save Button */}
+              <div className="flex justify-end pt-4">
+                <Button 
+                  onClick={handleSaveWhatsappSettings}
+                  disabled={savingWhatsappSettings || !whatsappSettings.accessToken || !whatsappSettings.phoneNumberId}
+                >
+                  {savingWhatsappSettings ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save WhatsApp Settings
+                    </>
+                  )}
+                </Button>
               </div>
 
               {/* Testing Section */}

@@ -79,13 +79,13 @@ export default function Signup({ onSignup }: SignupProps) {
         <div>
           <div className="flex items-center gap-2 mb-8">
             <Building2 className="h-8 w-8" />
-            <span className="text-2xl font-bold">LeadFlow</span>
+            <span className="text-2xl font-bold">Pulsar</span>
           </div>
           <h1 className="text-4xl font-bold mb-6">
             Join Our Team
           </h1>
           <p className="text-xl opacity-90 mb-8">
-            Create your account and start managing leads with LeadFlow.
+            Create your account and start managing leads with Pulsar.
           </p>
         </div>
         <div className="space-y-6">

@@ -341,6 +341,49 @@ async function updateLead(leadId, updateData, organizationId = null) {
 }
 
 /**
+ * Create a new lead in Zoho CRM
+ * 
+ * @param {Object} leadData - Lead data with Zoho field names (Last_Name, Email, Phone, etc.)
+ * @param {string} [organizationId] - Organization ID for multi-tenant
+ * @returns {Promise<Object>} - Creation result with lead ID
+ */
+async function createLead(leadData, organizationId = null) {
+    try {
+        // Remove internal tracking fields that Zoho doesn't understand
+        const zohoData = { ...leadData };
+        delete zohoData._original;
+        
+        const data = {
+            data: [zohoData]
+        };
+        
+        const result = await makeRequest('POST', '/Leads', data, null, organizationId);
+        
+        if (result?.data?.[0]?.code === 'SUCCESS') {
+            return { 
+                success: true, 
+                data: result.data,
+                leadId: result.data[0].details.id
+            };
+        }
+        
+        // Handle Zoho-specific error codes
+        const errorCode = result?.data?.[0]?.code;
+        const errorMessage = result?.data?.[0]?.message || 'Unknown Zoho error';
+        
+        return { 
+            success: false, 
+            error: errorMessage,
+            code: errorCode,
+            data: result.data
+        };
+    } catch (error) {
+        console.error('Error creating lead:', error.message);
+        throw error;
+    }
+}
+
+/**
  * Get organization info from Zoho
  */
 async function getZohoOrganization(organizationId = null) {
@@ -365,6 +408,7 @@ module.exports = {
     getLeads,
     getLead,
     getLeadNotes,
+    createLead,
     createLeadNote,
     createLeadCall,
     createTask,

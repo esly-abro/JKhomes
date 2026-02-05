@@ -1,24 +1,28 @@
 /**
- * Leads Service
- * Business logic for lead management
+ * Leads Service (Refactored)
+ * Core lead management only - activities, tasks, site visits, call logs
+ * are now in their own focused services.
+ * 
+ * This file re-exports from child services for backward compatibility.
  */
 
 const zohoClient = require('../clients/zoho.client');
 const ingestionClient = require('../clients/ingestion.client');
 const { mapZohoLeadToFrontend, mapZohoNoteToActivity } = require('./zoho.mapper');
-const { filterLeadsByPermission } = require('../middleware/roles');
+const { filterLeadsByPermission, canAccessLead } = require('../middleware/roles');
 const { NotFoundError } = require('../utils/errors');
 
 // MongoDB Lead model
 const Lead = require('../models/Lead');
-const SiteVisit = require('../models/SiteVisit');
-const Activity = require('../models/Activity');
-
-// Google Sheets sync
-const googleSheetsService = require('../services/googleSheets.service');
 
 // Workflow Engine for automation triggers
 const workflowEngine = require('../services/workflow.engine');
+
+// Data Layer for proper data source management
+const dataLayer = require('./lead.dataLayer');
+
+// AWS Email Service for notifications
+const awsEmailService = require('../services/awsEmail.service');
 
 // Check if MongoDB is available
 const useDatabase = () => !!process.env.MONGODB_URI;
@@ -135,7 +139,6 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
         };
     }
 
-    // Always fetch leads from Zoho CRM (single source of truth)
     // Build search criteria
     const criteria = [];
 
@@ -144,7 +147,6 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
     }
 
     if (source) {
-        // Map frontend source to Zoho source
         const zohoSource = mapFrontendSourceToZoho(source);
         criteria.push(`(Lead_Source:equals:${zohoSource})`);
     }
@@ -153,52 +155,78 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
         criteria.push(`(Owner:equals:${owner})`);
     }
 
-    // Fetch from Zoho
-    let zohoResponse;
-    if (criteria.length > 0) {
-        const criteriaString = criteria.join('and');
-        zohoResponse = await zohoClient.searchLeads(criteriaString, page, limit);
-    } else {
-        zohoResponse = await zohoClient.getLeads(page, limit);
+    // Try to fetch from Zoho, fallback to MongoDB if it fails
+    let leads = [];
+    let zohoResponse = null;
+    let useZohoData = false;
+
+    try {
+        // Fetch from Zoho
+        if (criteria.length > 0) {
+            const criteriaString = criteria.join('and');
+            zohoResponse = await zohoClient.searchLeads(criteriaString, page, limit);
+        } else {
+            zohoResponse = await zohoClient.getLeads(page, limit);
+        }
+        
+        // Map leads from Zoho
+        leads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
+        useZohoData = true;
+    } catch (zohoError) {
+        console.warn('Zoho API unavailable, falling back to MongoDB:', zohoError.message);
+        
+        // Fallback to MongoDB
+        if (useDatabase()) {
+            try {
+                const query = {};
+                if (status) query.status = status;
+                if (source) query.source = source;
+                if (owner) query.assignedTo = owner;
+                
+                const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+                const mongoLeads = await Lead.find(query)
+                    .sort({ updatedAt: -1 })
+                    .skip(skip)
+                    .limit(parseInt(limit, 10))
+                    .lean();
+                
+                const total = await Lead.countDocuments(query);
+                
+                // Map MongoDB leads to frontend format
+                leads = mongoLeads.map(lead => ({
+                    id: lead.zohoLeadId || lead._id.toString(),
+                    ...lead,
+                    _id: undefined
+                }));
+                
+                // Return MongoDB data with pagination
+                const filteredLeads = filterLeadsByPermission(user, leads);
+                return {
+                    data: filteredLeads,
+                    pagination: {
+                        page: parseInt(page, 10),
+                        limit: parseInt(limit, 10),
+                        total,
+                        totalPages: Math.ceil(total / parseInt(limit, 10))
+                    },
+                    source: 'mongodb-fallback'
+                };
+            } catch (dbError) {
+                console.error('MongoDB fallback also failed:', dbError);
+                throw zohoError; // Re-throw original Zoho error
+            }
+        } else {
+            throw zohoError;
+        }
     }
 
-    // Map leads
-    let leads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
-
-    // Merge propertyId and assignedTo from MongoDB if available
-    if (useDatabase() && leads.length > 0) {
+    // Merge local-only fields from MongoDB (propertyId, assignedTo, notes)
+    // NOTE: Status is NOT merged - Zoho is source of truth for status
+    if (useDatabase() && leads.length > 0 && useZohoData) {
         try {
-            const zohoIds = leads.map(l => l.id);
-            const mongoLeads = await Lead.find({ zohoId: { $in: zohoIds } }).lean();
-            const mongoLeadMap = new Map(mongoLeads.map(l => [l.zohoId, l]));
-
-            leads = leads.map(lead => {
-                const mongoLead = mongoLeadMap.get(lead.id);
-                if (mongoLead) {
-                    const updates = {};
-                    if (mongoLead.propertyId) {
-                        updates.propertyId = mongoLead.propertyId.toString();
-                    }
-                    if (mongoLead.assignedTo) {
-                        updates.assignedTo = mongoLead.assignedTo.toString();
-                        updates.assignedToName = mongoLead.assignedToName || null;
-                    }
-                    // Merge status from MongoDB if it exists (overrides Zoho status)
-                    if (mongoLead.status) {
-                        updates.status = mongoLead.status;
-                    }
-                    if (mongoLead.notes) {
-                        updates.notes = mongoLead.notes;
-                    }
-                    if (Object.keys(updates).length > 0) {
-                        return { ...lead, ...updates };
-                    }
-                }
-                return lead;
-            });
+            leads = await dataLayer.batchMergeWithLocalData(leads);
         } catch (dbError) {
-            console.error('Failed to fetch lead data from MongoDB:', dbError);
-            // Continue without MongoDB data
+            console.error('Failed to merge local data from MongoDB:', dbError);
         }
     }
 
@@ -230,7 +258,6 @@ async function getLead(user, leadId) {
             throw new NotFoundError('Lead not found');
         }
 
-        const { canAccessLead } = require('../middleware/roles');
         if (!canAccessLead(user, lead)) {
             throw new NotFoundError('Lead not found');
         }
@@ -238,7 +265,6 @@ async function getLead(user, leadId) {
         return { ...lead, activities: [] };
     }
 
-    // Always fetch lead from Zoho CRM (single source of truth)
     // Fetch lead from Zoho
     const zohoResponse = await zohoClient.getLead(leadId);
 
@@ -249,7 +275,6 @@ async function getLead(user, leadId) {
     const lead = mapZohoLeadToFrontend(zohoResponse.data[0]);
 
     // Check permissions
-    const { canAccessLead } = require('../middleware/roles');
     if (!canAccessLead(user, lead)) {
         throw new NotFoundError('Lead not found');
     }
@@ -257,23 +282,55 @@ async function getLead(user, leadId) {
     // Fetch activities/notes
     try {
         const notesResponse = await zohoClient.getLeadNotes(leadId);
-        lead.activities = (notesResponse.data || [])
-            .map(mapZohoNoteToActivity)
+        lead.activities = (notesResponse.data || []).map(mapZohoNoteToActivity);
     } catch (error) {
-        // Notes might fail, that's okay
         lead.activities = [];
     }
 
-    // Merge notes from MongoDB (ElevenLabs summary)
+    // Merge local-only fields from MongoDB (notes, propertyId, etc.)
+    // Status comes from Zoho - MongoDB is NOT source of truth for status
     if (useDatabase()) {
-        const Lead = require('../models/Lead');
-        const mongoLead = await Lead.findOne({ zohoId: leadId });
-        if (mongoLead && mongoLead.notes) {
-            lead.notes = mongoLead.notes;
-        }
+        const mergedLead = await dataLayer.mergeWithLocalData(lead);
+        return mergedLead;
     }
 
     return lead;
+}
+
+/**
+ * Get lead by ID (without user permission check)
+ */
+async function getLeadById(leadId) {
+    try {
+        const zohoResponse = await zohoClient.getLead(leadId);
+        if (!zohoResponse || !zohoResponse.data || zohoResponse.data.length === 0) {
+            throw new NotFoundError('Lead not found');
+        }
+        return mapZohoLeadToFrontend(zohoResponse.data[0]);
+    } catch (error) {
+        console.error('Get lead by ID error:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get leads by owner ID
+ */
+async function getLeadsByOwner(ownerId) {
+    try {
+        const zohoResponse = await zohoClient.getLeads(1, 200);
+        const allLeads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
+
+        const ownerLeads = allLeads.filter(lead => {
+            const leadOwner = typeof lead.owner === 'string' ? lead.owner : lead.owner?.id;
+            return leadOwner === ownerId;
+        });
+
+        return ownerLeads;
+    } catch (error) {
+        console.error('Get leads by owner error:', error);
+        return [];
+    }
 }
 
 /**
@@ -318,11 +375,10 @@ async function createLead(leadData) {
             }
         } catch (error) {
             console.error('Failed to fetch property for auto-assignment:', error);
-            // Continue without auto-assignment
         }
     }
 
-    // Try to create in Zoho CRM via ingestion service, but fallback to local DB only
+    // Try to create in Zoho CRM via ingestion service
     let zohoResult = null;
     let useLocalOnly = false;
     
@@ -331,7 +387,6 @@ async function createLead(leadData) {
     } catch (ingestionError) {
         console.warn('⚠️  Ingestion service unavailable, using local database only:', ingestionError.message);
         useLocalOnly = true;
-        // Generate a local ID if ingestion fails
         zohoResult = {
             success: true,
             leadId: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -352,20 +407,17 @@ async function createLead(leadData) {
                 status: 'New'
             };
 
-            // Add propertyId if provided
             if (leadData.propertyId) {
                 mongoData.propertyId = leadData.propertyId;
             }
 
-            // Add auto-assignment if agent found
             if (assignedAgentId) {
                 mongoData.assignedTo = assignedAgentId;
                 mongoData.assignedToName = assignedAgentName;
                 mongoData.assignedAt = new Date();
-                mongoData.assignedBy = 'auto'; // Mark as auto-assigned
+                mongoData.assignedBy = 'auto';
             }
 
-            // Find or update the lead in MongoDB by zohoId
             await Lead.findOneAndUpdate(
                 { zohoId: zohoResult.leadId },
                 mongoData,
@@ -378,25 +430,41 @@ async function createLead(leadData) {
 
             // Trigger automation workflows for new lead
             try {
-                const workflowEngine = require('../services/workflow.engine');
                 const savedLead = await Lead.findOne({ zohoId: zohoResult.leadId });
                 if (savedLead) {
-                    // Trigger asynchronously to not block the response
                     workflowEngine.triggerNewLead(savedLead).catch(err => {
                         console.error('Error triggering new lead automations:', err);
                     });
                 }
             } catch (automationError) {
                 console.error('Failed to trigger automations:', automationError);
-                // Don't fail the request - lead creation succeeded
+            }
+
+            // Send AWS email notification for new lead (non-blocking)
+            if (awsEmailService.isConfigured()) {
+                try {
+                    awsEmailService.sendNewLeadEmail({
+                        leadName: leadData.name,
+                        leadEmail: leadData.email,
+                        leadPhone: leadData.phone,
+                        leadSource: leadData.source || 'Website',
+                        leadId: zohoResult.leadId,
+                        assignedAgent: assignedAgentName || 'Unassigned',
+                        propertyName: leadData.propertyName || null
+                    }).then(result => {
+                        console.log('[AWSEmail] New lead notification sent:', result?.messageId);
+                    }).catch(err => {
+                        console.error('[AWSEmail] New lead email failed:', err.message);
+                    });
+                } catch (emailError) {
+                    console.error('[AWSEmail] New lead email error:', emailError.message);
+                }
             }
         } catch (dbError) {
             console.error('Failed to save lead data to MongoDB:', dbError);
-            // Don't fail the request - Zoho creation succeeded
         }
     }
 
-    // Add assignment info to response
     if (assignedAgentId) {
         zohoResult.assignedTo = assignedAgentId.toString();
         zohoResult.assignedToName = assignedAgentName;
@@ -404,6 +472,82 @@ async function createLead(leadData) {
     }
 
     return zohoResult;
+}
+
+/**
+ * Update lead
+ */
+async function updateLead(user, leadId, updateData) {
+    // Demo mode - update in memory
+    if (isDemoMode) {
+        const index = mockLeads.findIndex(l => l.id === leadId);
+        if (index === -1) {
+            throw new NotFoundError('Lead not found');
+        }
+        mockLeads[index] = { ...mockLeads[index], ...updateData, updatedAt: new Date().toISOString() };
+        return mockLeads[index];
+    }
+
+    // Update lead in Zoho CRM
+    const zohoUpdateData = mapFrontendToZohoFields(updateData);
+    const result = await zohoClient.updateLead(leadId, zohoUpdateData);
+
+    if (!result.success) {
+        const { ExternalServiceError } = require('../utils/errors');
+        throw new ExternalServiceError('Zoho CRM', new Error(result.error));
+    }
+
+    // Fetch updated lead to return
+    const updatedLead = await getLead(user, leadId);
+
+    // Trigger automation workflows for lead update
+    try {
+        if (useDatabase()) {
+            const mongoLead = await Lead.findOne({ zohoId: leadId });
+            if (mongoLead) {
+                workflowEngine.triggerLeadUpdated(mongoLead, updateData).catch(err => {
+                    console.error('Error triggering lead updated automations:', err);
+                });
+            }
+        }
+    } catch (automationError) {
+        console.error('Failed to trigger lead update automations:', automationError);
+    }
+
+    return updatedLead;
+}
+
+/**
+ * Assign lead to agent - updates both Zoho and MongoDB
+ */
+async function assignLeadToAgent(leadId, agentId, assignedBy) {
+    try {
+        const User = require('../models/User');
+        const agent = await User.findById(agentId);
+        if (!agent) {
+            throw new NotFoundError('Agent not found');
+        }
+
+        if (useDatabase()) {
+            await Lead.findOneAndUpdate(
+                { zohoId: leadId },
+                {
+                    zohoId: leadId,
+                    assignedTo: agentId,
+                    assignedToName: agent.name || agent.email,
+                    assignedAt: new Date(),
+                    assignedBy: assignedBy
+                },
+                { upsert: true, new: true }
+            );
+            console.log(`Lead ${leadId} assigned to agent ${agent.name || agent.email} (${agentId})`);
+        }
+
+        return { success: true, leadId, assignedTo: agentId, agentName: agent.name || agent.email };
+    } catch (error) {
+        console.error('Assign lead to agent error:', error);
+        throw error;
+    }
 }
 
 /**
@@ -419,50 +563,6 @@ function mapFrontendSourceToZoho(source) {
         'WhatsApp': 'WhatsApp'
     };
     return map[source] || source;
-}
-
-/**
- * Update lead
- */
-async function updateLead(user, leadId, updateData) {
-    // Demo mode - update in memory (won't persist)
-    if (isDemoMode) {
-        const index = mockLeads.findIndex(l => l.id === leadId);
-        if (index === -1) {
-            throw new NotFoundError('Lead not found');
-        }
-        mockLeads[index] = { ...mockLeads[index], ...updateData, updatedAt: new Date().toISOString() };
-        return mockLeads[index];
-    }
-
-    // Update lead in Zoho CRM
-    const zohoUpdateData = mapFrontendToZohoFields(updateData);
-    const result = await zohoClient.updateLead(leadId, zohoUpdateData);
-
-    if (!result.success) {
-        throw new ExternalServiceError('Zoho CRM', new Error(result.error));
-    }
-
-    // Fetch updated lead to return
-    const updatedLead = await getLead(user, leadId);
-
-    // Trigger automation workflows for lead update
-    try {
-        if (useDatabase()) {
-            const mongoLead = await Lead.findOne({ zohoId: leadId });
-            if (mongoLead) {
-                // Trigger asynchronously to not block the response
-                workflowEngine.triggerLeadUpdated(mongoLead, updateData).catch(err => {
-                    console.error('Error triggering lead updated automations:', err);
-                });
-            }
-        }
-    } catch (automationError) {
-        console.error('Failed to trigger lead update automations:', automationError);
-        // Don't fail the request - update succeeded
-    }
-
-    return updatedLead;
 }
 
 /**
@@ -487,426 +587,18 @@ function mapFrontendToZohoFields(data) {
     return zohoData;
 }
 
-/**
- * Confirm site visit
- */
-async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) {
-    // Import availability service for conflict checking
-    const availabilityService = require('../services/availability.service');
-    
-    // Parse scheduledAt to get date and time
-    const scheduledDate = new Date(scheduledAt);
-    const dateStr = scheduledDate.toISOString().split('T')[0];
-    const hours = scheduledDate.getHours().toString().padStart(2, '0');
-    const minutes = scheduledDate.getMinutes().toString().padStart(2, '0');
-    const startTime = `${hours}:${minutes}`;
-    
-    // Check for conflicts if propertyId is provided
-    if (propertyId) {
-        const conflicts = await availabilityService.checkConflicts(propertyId, userId, dateStr, startTime);
-        
-        if (conflicts.hasConflict) {
-            const messages = [];
-            if (conflicts.propertyConflict) {
-                messages.push(conflicts.propertyConflict.message);
-            }
-            if (conflicts.agentConflict) {
-                messages.push(conflicts.agentConflict.message);
-            }
-            const error = new Error(messages.join('. '));
-            error.statusCode = 409; // Conflict
-            error.conflicts = conflicts;
-            throw error;
-        }
-        
-        // Also check if the slot is available according to property settings
-        const slotCheck = await availabilityService.checkSlotAvailability(propertyId, dateStr, startTime);
-        if (!slotCheck.available) {
-            const error = new Error(slotCheck.reason || 'Selected time slot is not available');
-            error.statusCode = 400;
-            throw error;
-        }
-    }
-    
-    // Fetch lead from Zoho to get details (pass a dummy user for now)
-    // In production, this should receive the user object
-    const lead = await zohoClient.getLead(leadId);
-    const zohoLead = lead.data && lead.data[0];
+// ============================================================================
+// RE-EXPORTS FOR BACKWARD COMPATIBILITY
+// Import from child services and re-export
+// ============================================================================
 
-    // Always update the lead status in MongoDB when confirming a site visit
-    if (useDatabase()) {
-        try {
-            const updateData = {
-                zohoId: leadId,
-                name: zohoLead?.Full_Name || zohoLead?.Last_Name || 'Unknown',
-                phone: zohoLead?.Phone || zohoLead?.Mobile || '',
-                status: 'Site Visit Scheduled'
-            };
-
-            // Add propertyId if provided
-            if (propertyId) {
-                updateData.propertyId = propertyId;
-            }
-
-            await Lead.findOneAndUpdate(
-                { zohoId: leadId },
-                updateData,
-                { upsert: true, new: true }
-            );
-            console.log(`Updated lead ${leadId} with status 'Site Visit Scheduled'${propertyId ? ` and propertyId ${propertyId}` : ''}`);
-        } catch (dbError) {
-            console.error('Failed to update lead status:', dbError);
-        }
-    }
-
-    // Create a new site visit with updated schema
-    const visit = await SiteVisit.create({
-        leadId: leadId,
-        leadName: zohoLead?.Full_Name || zohoLead?.Last_Name || 'Unknown',
-        leadPhone: zohoLead?.Phone || zohoLead?.Mobile || '',
-        scheduledAt,
-        agentId: userId,
-        propertyId: propertyId,
-        status: 'scheduled',
-        syncStatus: 'pending'
-    });
-
-    // Sync site visit to Google Sheets (non-blocking)
-    try {
-        const populatedVisit = await SiteVisit.findById(visit._id)
-            .populate('propertyId', 'name location')
-            .populate('agentId', 'name');
-        googleSheetsService.syncSiteVisit(populatedVisit).catch(err => {
-            console.error('[GoogleSheets] Site visit sync error:', err.message);
-        });
-    } catch (err) {
-        console.error('[GoogleSheets] Site visit sync error:', err.message);
-    }
-
-    // Trigger automation workflows for site visit scheduled
-    try {
-        const mongoLead = await Lead.findOne({ zohoId: leadId });
-        if (mongoLead) {
-            // Trigger asynchronously to not block the response
-            workflowEngine.triggerSiteVisitScheduled(mongoLead, {
-                visitId: visit._id,
-                scheduledAt: visit.scheduledAt,
-                propertyId: visit.propertyId,
-                agentId: visit.agentId,
-                status: visit.status
-            }).catch(err => {
-                console.error('Error triggering site visit automations:', err);
-            });
-        }
-    } catch (automationError) {
-        console.error('Failed to trigger site visit automations:', automationError);
-        // Don't fail the request - site visit creation succeeded
-    }
-
-    return visit;
-}
-
-/**
- * Get site visits for today
- */
-async function getSiteVisitsForToday(userId) {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-
-    // Use agentId instead of confirmedBy
-    const visits = await SiteVisit.find({
-        agentId: userId,
-        scheduledAt: { $gte: start, $lte: end }
-    }).populate('agentId', 'name email');
-
-    // Map visits to include lead data from Zoho if needed
-    return visits;
-}
-
-/**
- * Create activity
- */
-async function createActivity(activityData) {
-    return Activity.create(activityData);
-}
-
-/**
- * Get recent activities (all users)
- */
-async function getRecentActivities(limit = 50) {
-    return Activity.getRecent(limit);
-}
-
-/**
- * Get activities by user ID (for agent's own activities)
- */
-async function getActivitiesByUser(userId, limit = 50) {
-    return Activity.find({ userId })
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .populate('userId', 'name email');
-}
-
-/**
- * Get all activities (for owner/admin/manager)
- */
-async function getAllActivities(limit = 100) {
-    return Activity.find()
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .populate('userId', 'name email');
-}
-
-/**
- * Get call logs by user ID (for agent's own calls)
- */
-async function getCallLogsByUser(userId, limit = 50) {
-    const CallLog = require('../models/CallLog');
-    return CallLog.find({ agentId: userId })
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .populate('agentId', 'name email');
-}
-
-/**
- * Get all call logs (for owner/admin/manager)
- */
-async function getAllCallLogs(limit = 100) {
-    const CallLog = require('../models/CallLog');
-    return CallLog.find()
-        .sort({ createdAt: -1 })
-        .limit(parseInt(limit))
-        .populate('agentId', 'name email');
-}
-
-/**
- * Get site visits by user ID (for agent's own visits)
- */
-async function getSiteVisitsByUser(userId, limit = 50) {
-    return SiteVisit.find({ agentId: userId })
-        .sort({ scheduledAt: -1 })
-        .limit(parseInt(limit))
-        .populate('agentId', 'name email');
-}
-
-/**
- * Get all site visits (for owner/admin/manager)
- */
-async function getAllSiteVisits(limit = 100) {
-    return SiteVisit.find()
-        .sort({ scheduledAt: -1 })
-        .limit(parseInt(limit))
-        .populate('agentId', 'name email');
-}
-
-/**
- * Get tasks/reminders for a user
- */
-async function getTasks(userId, { status, priority } = {}) {
-    const query = { userId, type: 'task' };
-
-    if (status === 'completed') {
-        query.isCompleted = true;
-    } else if (status === 'pending') {
-        query.isCompleted = false;
-    }
-
-    if (priority) {
-        query['metadata.priority'] = priority;
-    }
-
-    return Activity.find(query)
-        .sort({ scheduledAt: 1, createdAt: -1 })
-        .limit(100);
-}
-
-/**
- * Create a new task
- */
-async function createTask(taskData) {
-    const { userId, userName, title, description, scheduledAt, priority, leadId } = taskData;
-
-    const task = new Activity({
-        leadId: leadId || 'general',
-        type: 'task',
-        title,
-        description,
-        userId,
-        userName,
-        scheduledAt: scheduledAt || new Date(),
-        isCompleted: false,
-        metadata: {
-            priority: priority || 'medium'
-        }
-    });
-
-    return task.save();
-}
-
-/**
- * Update a task
- */
-async function updateTask(taskId, userId, updates) {
-    const task = await Activity.findOne({ _id: taskId, userId, type: 'task' });
-
-    if (!task) {
-        throw new NotFoundError('Task not found or access denied');
-    }
-
-    if (updates.isCompleted !== undefined) {
-        task.isCompleted = updates.isCompleted;
-        if (updates.isCompleted) {
-            task.completedAt = new Date();
-            
-            // Check if this task is linked to an automation run (Issue #5 fix)
-            if (task.metadata?.automationRunId) {
-                try {
-                    const workflowEngine = require('../services/workflow.engine');
-                    await workflowEngine.resumeFromTaskCompletion(task);
-                    console.log(`✅ Automation resumed from task completion: ${taskId}`);
-                } catch (err) {
-                    console.error('Error resuming automation from task:', err);
-                }
-            }
-        }
-    }
-
-    if (updates.title) task.title = updates.title;
-    if (updates.description) task.description = updates.description;
-    if (updates.scheduledAt) task.scheduledAt = updates.scheduledAt;
-
-    if (updates.priority) {
-        task.metadata = task.metadata || {};
-        task.metadata.priority = updates.priority;
-    }
-
-    return task.save();
-}
-
-/**
- * Delete a task
- */
-async function deleteTask(taskId, userId) {
-    const result = await Activity.deleteOne({ _id: taskId, userId, type: 'task' });
-
-    if (result.deletedCount === 0) {
-        throw new NotFoundError('Task not found or access denied');
-    }
-
-    return result;
-}
-
-/**
- * Get all users from MongoDB
- */
-async function getUsers() {
-    const User = require('../models/User');
-    return User.find()
-        .select('name email role createdAt')
-        .sort({ name: 1 });
-}
-
-/**
- * Get leads by owner ID
- */
-async function getLeadsByOwner(ownerId) {
-    try {
-        // Fetch all leads from Zoho and filter by owner
-        const zohoResponse = await zohoClient.getLeads(1, 200); // Get more leads
-        const allLeads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
-
-        // Filter by owner
-        const ownerLeads = allLeads.filter(lead => {
-            const leadOwner = typeof lead.owner === 'string' ? lead.owner : lead.owner?.id;
-            return leadOwner === ownerId;
-        });
-
-        return ownerLeads;
-    } catch (error) {
-        console.error('Get leads by owner error:', error);
-        return [];
-    }
-}
-
-/**
- * Get lead by ID (without user permission check)
- */
-async function getLeadById(leadId) {
-    try {
-        const zohoResponse = await zohoClient.getLead(leadId);
-        if (!zohoResponse || !zohoResponse.data || zohoResponse.data.length === 0) {
-            throw new NotFoundError('Lead not found');
-        }
-        return mapZohoLeadToFrontend(zohoResponse.data[0]);
-    } catch (error) {
-        console.error('Get lead by ID error:', error);
-        throw error;
-    }
-}
-
-/**
- * Assign lead to agent - updates both Zoho and MongoDB
- */
-async function assignLeadToAgent(leadId, agentId, assignedBy) {
-    try {
-        // Get agent details
-        const User = require('../models/User');
-        const agent = await User.findById(agentId);
-        if (!agent) {
-            throw new NotFoundError('Agent not found');
-        }
-
-        // Update in MongoDB with assignment info
-        if (useDatabase()) {
-            await Lead.findOneAndUpdate(
-                { zohoId: leadId },
-                {
-                    zohoId: leadId,
-                    assignedTo: agentId,
-                    assignedToName: agent.name || agent.email,
-                    assignedAt: new Date(),
-                    assignedBy: assignedBy
-                },
-                { upsert: true, new: true }
-            );
-            console.log(`Lead ${leadId} assigned to agent ${agent.name || agent.email} (${agentId})`);
-        }
-
-        // Optionally update in Zoho as well (if Owner field mapping is available)
-        // For now, we just store in MongoDB
-
-        return { success: true, leadId, assignedTo: agentId, agentName: agent.name || agent.email };
-    } catch (error) {
-        console.error('Assign lead to agent error:', error);
-        throw error;
-    }
-}
-
-/**
- * Sync all site visits to Google Sheets
- */
-async function syncAllSiteVisitsToGoogleSheets() {
-    try {
-        const visits = await SiteVisit.find({ status: { $in: ['scheduled', 'completed'] } })
-            .populate('propertyId', 'name location')
-            .populate('agentId', 'name')
-            .sort({ scheduledAt: -1 });
-        
-        const result = await googleSheetsService.syncAllSiteVisits(visits);
-        return {
-            success: true,
-            message: `Synced ${visits.length} site visits to Google Sheets`,
-            result
-        };
-    } catch (error) {
-        console.error('Sync all site visits to Google Sheets error:', error);
-        throw error;
-    }
-}
+const activityService = require('./activity.service');
+const taskService = require('./task.service');
+const siteVisitService = require('./siteVisit.service');
+const callLogService = require('./callLog.service');
 
 module.exports = {
+    // Lead operations (this file)
     getLeads,
     getLead,
     getLeadById,
@@ -914,20 +606,30 @@ module.exports = {
     createLead,
     updateLead,
     assignLeadToAgent,
-    confirmSiteVisit,
-    getSiteVisitsForToday,
-    createActivity,
-    getRecentActivities,
-    getActivitiesByUser,
-    getAllActivities,
-    getCallLogsByUser,
-    getAllCallLogs,
-    getSiteVisitsByUser,
-    getAllSiteVisits,
-    getTasks,
-    createTask,
-    updateTask,
-    deleteTask,
-    getUsers,
-    syncAllSiteVisitsToGoogleSheets
+    
+    // Activity operations (re-exported from activity.service.js)
+    createActivity: activityService.createActivity,
+    getRecentActivities: activityService.getRecentActivities,
+    getActivitiesByUser: activityService.getActivitiesByUser,
+    getAllActivities: activityService.getAllActivities,
+    
+    // Task operations (re-exported from task.service.js)
+    getTasks: taskService.getTasks,
+    createTask: taskService.createTask,
+    updateTask: taskService.updateTask,
+    deleteTask: taskService.deleteTask,
+    
+    // Site visit operations (re-exported from siteVisit.service.js)
+    confirmSiteVisit: siteVisitService.confirmSiteVisit,
+    getSiteVisitsForToday: siteVisitService.getSiteVisitsForToday,
+    getSiteVisitsByUser: siteVisitService.getSiteVisitsByUser,
+    getAllSiteVisits: siteVisitService.getAllSiteVisits,
+    syncAllSiteVisitsToGoogleSheets: siteVisitService.syncAllSiteVisitsToGoogleSheets,
+    
+    // Call log operations (re-exported from callLog.service.js)
+    getCallLogsByUser: callLogService.getCallLogsByUser,
+    getAllCallLogs: callLogService.getAllCallLogs,
+    
+    // User operations (moved to users/user.service.js but re-exported for compatibility)
+    getUsers: require('../users/user.service').getUsers
 };

@@ -46,7 +46,7 @@ const faqs: FAQItem[] = [
   },
   {
     question: 'How do I track lead status and activities?',
-    answer: 'Each lead has a status (New, Contacted, Qualified, etc.) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.'
+    answer: 'Each lead has a status (New, Call Attended, No Response, Not Interested, Site Visit Booked, Site Visit Scheduled, Interested) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.'
   },
   {
     question: 'How do I view analytics and reports?',
@@ -105,7 +105,7 @@ export default function Help() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900">Help & Support</h1>
         <p className="text-gray-600 mt-2">
-          Everything you need to know about using JK Homes LeadFlow CRM
+          Everything you need to know about using JK Homes Pulsar CRM
         </p>
       </div>
 

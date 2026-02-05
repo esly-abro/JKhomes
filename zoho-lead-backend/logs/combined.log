@@ -19794,3 +19794,68 @@
 2026-01-29 14:57:40 [INFO]:   GET    http://localhost:3000/health
 2026-01-29 14:57:40 [INFO]: 
 2026-01-29 14:57:40 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-01-31 10:45:52 [INFO]: Twilio client initialized
+2026-01-31 10:45:52 [INFO]: WhatsApp service initialized via Twilio
+2026-01-31 10:45:52 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-01-31 10:45:52 [INFO]: Post-Call Orchestrator initialized
+2026-01-31 10:45:52 [INFO]: 🚀 Server started on port 3000
+2026-01-31 10:45:52 [INFO]: Environment: development
+2026-01-31 10:45:52 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-01-31 10:45:52 [INFO]: Twilio Configured: true
+2026-01-31 10:45:52 [INFO]: OpenAI Configured: false
+2026-01-31 10:45:52 [INFO]: WhatsApp Configured: true
+2026-01-31 10:45:52 [INFO]: 
+2026-01-31 10:45:52 [INFO]: Available endpoints:
+2026-01-31 10:45:52 [INFO]:   POST   http://localhost:3000/leads
+2026-01-31 10:45:52 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-01-31 10:45:52 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-01-31 10:45:52 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-01-31 10:45:52 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-01-31 10:45:52 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-01-31 10:45:52 [INFO]:   GET    http://localhost:3000/health
+2026-01-31 10:45:52 [INFO]: 
+2026-01-31 10:45:52 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-05 09:52:38 [INFO]: Twilio client initialized
+2026-02-05 09:52:38 [INFO]: WhatsApp service initialized via Twilio
+2026-02-05 09:52:38 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-05 09:52:38 [INFO]: Post-Call Orchestrator initialized
+2026-02-05 09:52:38 [INFO]: 🚀 Server started on port 3000
+2026-02-05 09:52:38 [INFO]: Environment: development
+2026-02-05 09:52:38 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-05 09:52:38 [INFO]: Twilio Configured: true
+2026-02-05 09:52:38 [INFO]: OpenAI Configured: false
+2026-02-05 09:52:38 [INFO]: WhatsApp Configured: true
+2026-02-05 09:52:38 [INFO]: 
+2026-02-05 09:52:38 [INFO]: Available endpoints:
+2026-02-05 09:52:38 [INFO]:   POST   http://localhost:3000/leads
+2026-02-05 09:52:38 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-05 09:52:38 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-05 09:52:38 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-05 09:52:38 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-05 09:52:38 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-05 09:52:38 [INFO]:   GET    http://localhost:3000/health
+2026-02-05 09:52:38 [INFO]: 
+2026-02-05 09:52:38 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-05 10:05:28 [INFO]: GET /elevenlabs/summary/6381143136 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 10:05:28 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91638***"}
+2026-02-05 10:05:29 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 10:05:29 [INFO]: Returning conversation summary {"conversationId":"conv_8301kgc8kw0mf71r0tfqzxa59s74","hasSummary":false,"summaryTitle":null,"matchType":"fallback","callStatus":"failed"}
+2026-02-05 10:05:29 [INFO]: GET /elevenlabs/summary/6381143136 200 841ms
+2026-02-05 10:05:31 [INFO]: POST /elevenlabs/call {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 10:05:31 [INFO]: Initiating ElevenLabs native outbound call {"phoneNumber":"+91638***","leadId":"6970c2e3ee8028f5c48e8ff1","leadName":"Esly Abro","agentId":"agent_7001kfj41mkef7qv5grsg74wzysd"}
+2026-02-05 10:05:32 [INFO]: ElevenLabs call initiated successfully {"conversationId":"conv_9501kgp1azepfh0bmqsbqrymad2d"}
+2026-02-05 10:05:32 [INFO]: POST /elevenlabs/call 200 641ms
+2026-02-05 10:07:46 [INFO]: GET /elevenlabs/summary/6381143136 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 10:07:46 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91638***"}
+2026-02-05 10:07:46 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 10:07:46 [INFO]: Returning conversation summary {"conversationId":"conv_9501kgp1azepfh0bmqsbqrymad2d","hasSummary":true,"summaryTitle":"JK Homes cold call","matchType":"fallback","callStatus":"success"}
+2026-02-05 10:07:46 [INFO]: GET /elevenlabs/summary/6381143136 200 627ms
+2026-02-05 10:07:52 [INFO]: POST /elevenlabs/call {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 10:07:52 [INFO]: Initiating ElevenLabs native outbound call {"phoneNumber":"+91638***","leadId":"6970c2e3ee8028f5c48e8ff1","leadName":"Esly Abro","agentId":"agent_7001kfj41mkef7qv5grsg74wzysd"}
+2026-02-05 10:07:53 [INFO]: ElevenLabs call initiated successfully {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg"}
+2026-02-05 10:07:53 [INFO]: POST /elevenlabs/call 200 631ms
+2026-02-05 10:09:14 [INFO]: GET /elevenlabs/summary/6381143136 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 10:09:14 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91638***"}
+2026-02-05 10:09:14 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 10:09:15 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
+2026-02-05 10:09:15 [INFO]: GET /elevenlabs/summary/6381143136 200 701ms

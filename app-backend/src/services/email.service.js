@@ -33,7 +33,7 @@ async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
   const transporter = createTransporter();
   
   const mailOptions = {
-    from: `"LeadFlow CRM" <${process.env.SMTP_USER}>`,
+    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: ownerEmail,
     subject: '🔔 New Agent Signup Pending Approval',
     html: `
@@ -58,7 +58,7 @@ async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
           </div>
           <div class="content">
             <p>Hi there,</p>
-            <p>A new agent has signed up for LeadFlow CRM and is awaiting your approval.</p>
+            <p>A new agent has signed up for Pulsar CRM and is awaiting your approval.</p>
             
             <div class="agent-info">
               <p><strong>📧 Email:</strong> ${agentData.email}</p>
@@ -67,7 +67,7 @@ async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
               <p><strong>🕐 Signed up:</strong> ${new Date().toLocaleString()}</p>
             </div>
             
-            <p>Please log in to LeadFlow CRM to review and approve or reject this registration.</p>
+            <p>Please log in to Pulsar CRM to review and approve or reject this registration.</p>
             
             <div style="text-align: center; margin: 30px 0;">
               <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings/users" class="button">
@@ -76,7 +76,7 @@ async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
             </div>
             
             <div class="footer">
-              <p>This is an automated message from LeadFlow CRM</p>
+              <p>This is an automated message from Pulsar CRM</p>
               <p>If you didn't expect this email, please contact support</p>
             </div>
           </div>
@@ -110,9 +110,9 @@ async function notifyAgentApproval(agentEmail, agentName) {
   const transporter = createTransporter();
   
   const mailOptions = {
-    from: `"LeadFlow CRM" <${process.env.SMTP_USER}>`,
+    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: agentEmail,
-    subject: '✅ Your LeadFlow CRM Account Has Been Approved',
+    subject: '✅ Your Pulsar CRM Account Has Been Approved',
     html: `
       <!DOCTYPE html>
       <html>
@@ -129,11 +129,11 @@ async function notifyAgentApproval(agentEmail, agentName) {
       <body>
         <div class="container">
           <div class="header">
-            <h1>🎉 Welcome to LeadFlow CRM!</h1>
+            <h1>🎉 Welcome to Pulsar CRM!</h1>
           </div>
           <div class="content">
             <p>Hi ${agentName},</p>
-            <p>Great news! Your LeadFlow CRM account has been approved.</p>
+            <p>Great news! Your Pulsar CRM account has been approved.</p>
             <p>You can now log in and start managing your assigned leads.</p>
             
             <div style="text-align: center;">
@@ -145,7 +145,7 @@ async function notifyAgentApproval(agentEmail, agentName) {
             <p>If you have any questions, please contact your team manager.</p>
             
             <div class="footer">
-              <p>This is an automated message from LeadFlow CRM</p>
+              <p>This is an automated message from Pulsar CRM</p>
             </div>
           </div>
         </div>
@@ -176,9 +176,9 @@ async function notifyAgentRejection(agentEmail, agentName, reason) {
   const transporter = createTransporter();
   
   const mailOptions = {
-    from: `"LeadFlow CRM" <${process.env.SMTP_USER}>`,
+    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: agentEmail,
-    subject: 'LeadFlow CRM Account Update',
+    subject: 'Pulsar CRM Account Update',
     html: `
       <!DOCTYPE html>
       <html>
@@ -199,7 +199,7 @@ async function notifyAgentRejection(agentEmail, agentName, reason) {
           </div>
           <div class="content">
             <p>Hi ${agentName},</p>
-            <p>We wanted to inform you that your LeadFlow CRM registration was not approved at this time.</p>
+            <p>We wanted to inform you that your Pulsar CRM registration was not approved at this time.</p>
             
             ${reason ? `
             <div class="reason-box">
@@ -211,7 +211,7 @@ async function notifyAgentRejection(agentEmail, agentName, reason) {
             <p>If you believe this is a mistake or have questions, please contact the team administrator.</p>
             
             <div class="footer">
-              <p>This is an automated message from LeadFlow CRM</p>
+              <p>This is an automated message from Pulsar CRM</p>
             </div>
           </div>
         </div>

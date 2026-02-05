@@ -85,7 +85,7 @@ export default function MainLayout() {
 
             <div className="flex items-center gap-2">
               <Building2 className="h-6 w-6 text-blue-600" />
-              <span className="font-bold text-lg hidden sm:block">LeadFlow</span>
+              <span className="font-bold text-lg hidden sm:block">Pulsar</span>
             </div>
 
 

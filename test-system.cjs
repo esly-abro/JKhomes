@@ -99,7 +99,7 @@ async function testCallLogs() {
 
 async function runTests() {
   console.log('═══════════════════════════════════════════════');
-  console.log('  LeadFlow - Complete System Test');
+  console.log('  Pulsar - Complete System Test');
   console.log('═══════════════════════════════════════════════');
 
   const loginSuccess = await testLogin();

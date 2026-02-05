@@ -31,6 +31,11 @@ async function login(email, password, ipAddress, userAgent) {
         }
     }
 
+    // Check if user account is active (not disabled)
+    if (user.isActive === false) {
+        throw new UnauthorizedError('Your account has been disabled. Please contact the administrator.');
+    }
+
     // Verify password
     const isValidPassword = await usersModel.verifyPassword(password, user.passwordHash);
     if (!isValidPassword) {
@@ -80,7 +85,8 @@ async function refresh(refreshToken) {
     }
 
     // Verify token exists in store
-    if (!usersModel.hasRefreshToken(refreshToken)) {
+    const hasToken = await usersModel.hasRefreshToken(refreshToken);
+    if (!hasToken) {
         throw new UnauthorizedError('Invalid refresh token');
     }
 

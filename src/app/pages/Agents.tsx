@@ -73,10 +73,13 @@ export default function Agents() {
 
     try {
       // Register the agent with createdByOwner flag - auto-approves them
-      const registerResponse = await fetch('http://localhost:4000/auth/register', {
+      const token = localStorage.getItem('accessToken');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const registerResponse = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           name: newAgent.name,
@@ -127,7 +130,8 @@ export default function Agents() {
     setDeletingAgent(agentId);
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:4000/api/users/${agentId}`, {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${API_URL}/api/users/${agentId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -155,7 +159,8 @@ export default function Agents() {
     
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:4000/api/users', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+      const response = await fetch(`${API_URL}/api/users`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -187,8 +192,9 @@ export default function Agents() {
     setLoadingLeads(agentId);
     try {
       const token = localStorage.getItem('accessToken');
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
       // Fetch all leads and filter by assignedTo on the frontend
-      const response = await fetch(`http://localhost:4000/api/leads?limit=200`, {
+      const response = await fetch(`${API_URL}/api/leads?limit=200`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -232,12 +238,12 @@ export default function Agents() {
   const getLeadStatusBadge = (status: string) => {
     const statusColors: { [key: string]: string } = {
       'new': 'bg-blue-100 text-blue-800',
-      'contacted': 'bg-purple-100 text-purple-800',
-      'qualified': 'bg-green-100 text-green-800',
-      'negotiation': 'bg-yellow-100 text-yellow-800',
-      'won': 'bg-emerald-100 text-emerald-800',
-      'lost': 'bg-red-100 text-red-800',
-      'follow-up': 'bg-orange-100 text-orange-800',
+      'call attended': 'bg-purple-100 text-purple-800',
+      'no response': 'bg-orange-100 text-orange-800',
+      'not interested': 'bg-red-100 text-red-800',
+      'site visit booked': 'bg-yellow-100 text-yellow-800',
+      'site visit scheduled': 'bg-emerald-100 text-emerald-800',
+      'interested': 'bg-green-100 text-green-800',
     };
     return statusColors[status?.toLowerCase()] || 'bg-gray-100 text-gray-800';
   };

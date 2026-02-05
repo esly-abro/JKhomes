@@ -84,14 +84,29 @@ export function getStoredUser(): User | null {
     if (!token) return null;
 
     try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const parts = token.split('.');
+        // Validate token structure - must have 3 parts (header.payload.signature)
+        if (parts.length !== 3 || !parts[1]) {
+            console.warn('Malformed JWT token - invalid structure');
+            return null;
+        }
+        
+        const payload = JSON.parse(atob(parts[1]));
+        
+        // Validate required fields exist
+        if (!payload.userId || !payload.email || !payload.role) {
+            console.warn('JWT token missing required fields');
+            return null;
+        }
+        
         return {
             id: payload.userId,
             email: payload.email,
             name: payload.name || '',
             role: payload.role
         };
-    } catch {
+    } catch (error) {
+        console.error('Failed to parse JWT token:', error);
         return null;
     }
 }

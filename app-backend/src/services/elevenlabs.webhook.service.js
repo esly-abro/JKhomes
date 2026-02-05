@@ -2,12 +2,15 @@
  * ElevenLabs Webhook Service
  * Handles incoming webhooks from ElevenLabs for call completion events
  * This enables automation workflows to branch based on AI call results
+ * 
+ * Integrated with PostCallOrchestrator for advanced post-call actions
  */
 
 const AutomationRun = require('../models/AutomationRun');
 const Lead = require('../models/Lead');
 const config = require('../config/env');
 const axios = require('axios');
+const { PostCallOrchestrator } = require('./postCall.orchestrator');
 
 class ElevenLabsWebhookService {
   constructor() {
@@ -122,6 +125,37 @@ class ElevenLabsWebhookService {
   async handleWebhook(payload) {
     console.log('📞 ElevenLabs webhook received:', JSON.stringify(payload, null, 2));
     
+    // Check if this is an ElevenLabs post-call webhook format
+    // These have type: 'post_call_transcription' or similar
+    if (payload.type && payload.data) {
+      // Use PostCallOrchestrator for advanced processing
+      const orchestratorResult = await PostCallOrchestrator.processPostCallWebhook(payload);
+      
+      // Also check for automation run to resume
+      const leadInfo = PostCallOrchestrator.extractLeadInfo(payload.data);
+      if (leadInfo.automationRunId) {
+        try {
+          const run = await AutomationRun.findById(leadInfo.automationRunId)
+            .populate('lead')
+            .populate('automation');
+          
+          if (run && run.waitingForCall?.isWaiting) {
+            const parsedPayload = this.parseWebhookPayload({
+              ...payload.data,
+              status: 'completed',
+              conversation_id: payload.data.conversation_id
+            });
+            const workflowEngine = require('./workflow.engine');
+            await workflowEngine.resumeFromCallResult(run, parsedPayload);
+          }
+        } catch (e) {
+          console.error('Error resuming automation from orchestrator:', e);
+        }
+      }
+      
+      return orchestratorResult;
+    }
+    
     const parsed = this.parseWebhookPayload(payload);
     if (!parsed.valid) {
       console.log('❌ Invalid webhook payload:', parsed.error);
@@ -211,10 +245,10 @@ class ElevenLabsWebhookService {
 
       // Update status based on outcome
       if (callData.outcome === 'interested') {
-        lead.status = 'Qualified';
+        lead.status = 'Interested';
       } else if (callData.outcome === 'answered' && 
-                (lead.status === 'New' || lead.status === 'Unassigned')) {
-        lead.status = 'Contacted';
+                (lead.status === 'New' || lead.status === 'No Response')) {
+        lead.status = 'Call Attended';
       }
 
       await lead.save();

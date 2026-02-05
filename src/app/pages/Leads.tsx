@@ -190,7 +190,7 @@ const LeadsList = ({ leads }: { leads: Lead[] }) => (
 );
 
 const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
-  const statuses = ['New', 'Follow-up Completed', 'Site Visit Scheduled', 'Site Visit Completed', 'Interested', 'Negotiation', 'Deal Closed', 'Not Interested'];
+  const statuses = ['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'];
   // Include statuses that are in leads but not in the default list
   const allStatuses = Array.from(new Set([...statuses, ...leads.map(l => l.status)]));
 
@@ -241,8 +241,6 @@ const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
 const StatusBadge = ({ status }: { status: string }) => {
   const getStatusStyles = (s: string) => {
     switch (s) {
-      case 'Follow-up Completed':
-      case 'Contacted':
       case 'Call Attended':
         return 'bg-blue-100 text-blue-700 hover:bg-blue-100';
       case 'No Response':
@@ -251,14 +249,8 @@ const StatusBadge = ({ status }: { status: string }) => {
       case 'Site Visit Scheduled':
       case 'Site Visit Booked':
         return 'bg-purple-100 text-purple-700 hover:bg-purple-100';
-      case 'Site Visit Completed':
       case 'Interested':
-      case 'Negotiation':
         return 'bg-green-100 text-green-700 hover:bg-green-100';
-      case 'Deal Closed':
-      case 'Closed':
-        return 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100';
-      case 'Lost':
       case 'Not Interested':
         return 'bg-red-100 text-red-700 hover:bg-red-100';
       default:
@@ -402,9 +394,9 @@ export default function Leads() {
   };
 
   const filteredLeads = leads.filter(lead => {
-    const matchesSearch = lead.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lead.company?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (lead.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lead.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lead.company || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
     const matchesSource = sourceFilter === 'all' || lead.source === sourceFilter;
 
@@ -412,8 +404,15 @@ export default function Leads() {
     let matchesOwner = true;
     if (ownerFilter !== 'all') {
       if (ownerFilter === 'my-leads') {
-        // TODO: Check against current user
-        matchesOwner = true; // Placeholder
+        // Check if lead is assigned to current user
+        const currentUser = getStoredUser();
+        if (currentUser) {
+          const leadData = lead as any;
+          const assignedToId = leadData.assignedTo || (typeof lead.owner === 'object' ? lead.owner?.id : lead.owner);
+          matchesOwner = assignedToId === currentUser.id;
+        } else {
+          matchesOwner = false;
+        }
       } else if (ownerFilter === 'unassigned') {
         matchesOwner = !lead.owner || lead.owner === 'Unassigned';
       } else {

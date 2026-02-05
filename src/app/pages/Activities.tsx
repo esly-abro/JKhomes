@@ -1,8 +1,7 @@
 import { useData } from '../context/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Plus, Phone, Mail, FileText, Calendar as CalendarIcon, MessageSquare, MapPin } from 'lucide-react';
+import { Phone, Mail, FileText, Calendar as CalendarIcon, MessageSquare, MapPin } from 'lucide-react';
 import { useMemo } from 'react';
 
 export default function Activities() {
@@ -101,10 +100,6 @@ export default function Activities() {
           <h1 className="text-3xl font-bold text-gray-900">Activities</h1>
           <p className="text-gray-600">Track all your interactions and tasks</p>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Activity
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -139,7 +134,7 @@ export default function Activities() {
                           </div>
                           <p className="text-gray-700">{activity.description}</p>
                           <div className="text-sm text-gray-500 mt-1">
-                            {activity.user || activity.userName} • {new Date(activity.scheduledAt || activity.createdAt || activity.timestamp).toLocaleString()}
+                            {activity.user || (activity as any).userName} • {new Date((activity as any).scheduledAt || (activity as any).createdAt || activity.timestamp).toLocaleString()}
                           </div>
                         </div>
                       </div>
@@ -154,11 +149,8 @@ export default function Activities() {
         {/* Tasks & Reminders */}
         <div className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader>
               <CardTitle>Tasks & Reminders</CardTitle>
-              <Button size="sm">
-                <Plus className="h-4 w-4" />
-              </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">

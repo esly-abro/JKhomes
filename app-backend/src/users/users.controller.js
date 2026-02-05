@@ -434,7 +434,7 @@ async function getAgentActivity(req, reply) {
 
     // Calculate performance metrics
     const conversionRate = leadStats.total > 0 
-      ? ((leadStats.byStatus['Won'] || leadStats.byStatus['Converted'] || 0) / leadStats.total * 100).toFixed(1)
+      ? ((leadStats.byStatus['Interested'] || 0) / leadStats.total * 100).toFixed(1)
       : 0;
 
     // Recent activities (last 10)

@@ -244,9 +244,9 @@ async function getWhatsappTemplates(request, reply) {
       });
     }
 
-    // Use the WhatsApp service to get templates
+    // Use the WhatsApp service to get templates - pass userId for dynamic credential lookup
     const whatsappService = require('../services/whatsapp.service');
-    const templates = await whatsappService.getTemplates(settings.whatsapp.accessToken);
+    const templates = await whatsappService.getTemplates(userId);
 
     return reply.send({
       success: true,
@@ -286,12 +286,13 @@ async function sendWhatsappTemplate(request, reply) {
     }
 
     const whatsappService = require('../services/whatsapp.service');
+    // Pass userId for dynamic credential lookup (new signature)
     const result = await whatsappService.sendTemplateMessage(
       phoneNumber,
       templateName,
       languageCode || 'en',
       components,
-      settings.whatsapp.accessToken
+      userId // Pass userId instead of accessToken
     );
 
     return reply.send({

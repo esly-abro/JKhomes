@@ -68,11 +68,11 @@ async function getMonthlyTrends(userId, range = '30days') {
  */
 async function getConversionFunnel(userId) {
     const stages = [
-        { stage: 'Leads', statuses: ['New', 'Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Deal Closed', 'Not Interested', 'Lost'] },
-        { stage: 'Contacted', statuses: ['Contacted', 'Qualified', 'Proposal Sent', 'Negotiation', 'Deal Closed'] },
-        { stage: 'Qualified', statuses: ['Qualified', 'Proposal Sent', 'Negotiation', 'Deal Closed'] },
-        { stage: 'Proposal', statuses: ['Proposal Sent', 'Negotiation', 'Deal Closed'] },
-        { stage: 'Closed', statuses: ['Deal Closed', 'Closed', 'Won'] }
+        { stage: 'Leads', statuses: ['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
+        { stage: 'Contacted', statuses: ['Call Attended', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
+        { stage: 'Qualified', statuses: ['Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
+        { stage: 'Proposal', statuses: ['Site Visit Scheduled', 'Interested'] },
+        { stage: 'Closed', statuses: ['Interested'] }
     ];
 
     const funnelData = await Promise.all(

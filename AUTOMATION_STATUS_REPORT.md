@@ -78,7 +78,14 @@
   - `isTrue` / `isFalse` ✅
 
 - **Supported Fields:**
-  - Lead status, source, budget ✅
+  - Lead status (only these allowed):
+    - New
+    - Call Attended
+    - No Response
+    - Not Interested
+    - Site Visit Booked
+    - Site Visit Scheduled
+    - Interested
   - Call status, WhatsApp status ✅
   - Property type, location ✅
   - Call attempts count ✅

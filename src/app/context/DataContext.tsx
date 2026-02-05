@@ -65,6 +65,12 @@ export interface SiteVisit {
   propertyId?: string;
   status: 'scheduled' | 'completed' | 'cancelled' | 'no_show';
   createdAt: string;
+  confirmedBy?: string;
+  lead?: {
+    _id?: string;
+    id?: string;
+    name?: string;
+  };
 }
 
 interface DataContextType {
@@ -77,7 +83,7 @@ interface DataContextType {
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addActivity: (activity: Omit<Activity, 'id'>) => void;
   siteVisits: SiteVisit[];
-  confirmSiteVisit: (leadId: string, scheduledAt: string, leadName?: string) => Promise<void>;
+  confirmSiteVisit: (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -116,6 +122,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
+    // Store previous state for rollback
+    const previousLeads = leads;
+    
     // Update local state immediately for responsiveness
     setLeads(prev => prev.map(lead =>
       lead.id === id ? { ...lead, ...updates } : lead
@@ -126,8 +135,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await updateLeadAPI(id, updates);
     } catch (err) {
       console.error('Failed to update lead:', err);
-      // Optionally revert on error
-      // refreshLeads();
+      // Revert to previous state on error
+      setLeads(previousLeads);
+      throw err; // Re-throw so caller knows it failed
     }
   };
 

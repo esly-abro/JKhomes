@@ -39,7 +39,7 @@ export default function Login({ onLogin }: LoginProps) {
         <div>
           <div className="flex items-center gap-2 mb-8">
             <Building2 className="h-8 w-8" />
-            <span className="text-2xl font-bold">LeadFlow</span>
+            <span className="text-2xl font-bold">Pulsar</span>
           </div>
           <h1 className="text-4xl font-bold mb-6">
             Manage Your Leads, <br />Close More Deals

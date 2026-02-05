@@ -4,29 +4,74 @@ const config = require('../config/env');
 
 class ElevenLabsService {
     constructor() {
-        this.apiKey = config.elevenLabs.apiKey;
-        this.agentId = config.elevenLabs.agentId;
-        this.phoneNumberId = config.elevenLabs.phoneNumberId;
+        // Static credentials from environment (fallback/default)
+        this.defaultApiKey = config.elevenLabs.apiKey;
+        this.defaultAgentId = config.elevenLabs.agentId;
+        this.defaultPhoneNumberId = config.elevenLabs.phoneNumberId;
         this.baseUrl = 'https://api.elevenlabs.io/v1/convai/conversations';
         // Correct endpoint for Twilio-based outbound phone calls
         this.callUrl = 'https://api.elevenlabs.io/v1/convai/twilio/outbound_call';
         
         // Debug log at startup
         console.log('📞 ElevenLabs Service initialized:');
-        console.log(`   API Key: ${this.apiKey ? this.apiKey.substring(0,10) + '...' : 'NOT SET'}`);
-        console.log(`   Agent ID: ${this.agentId || 'NOT SET'}`);
-        console.log(`   Phone Number ID: ${this.phoneNumberId || 'NOT SET'}`);
+        console.log(`   Default API Key: ${this.defaultApiKey ? this.defaultApiKey.substring(0,10) + '...' : 'NOT SET'}`);
+        console.log(`   Default Agent ID: ${this.defaultAgentId || 'NOT SET'}`);
+        console.log(`   Default Phone Number ID: ${this.defaultPhoneNumberId || 'NOT SET'}`);
+    }
+
+    /**
+     * Get ElevenLabs credentials for a specific user/organization
+     * Falls back to environment config if no user-specific config found
+     */
+    async getCredentials(userId) {
+        try {
+            if (userId) {
+                const Organization = require('../models/organization.model');
+                const org = await Organization.findByUser(userId);
+                
+                if (org?.elevenLabs?.isConnected && org?.elevenLabs?.apiKey) {
+                    console.log('📞 Using organization-specific ElevenLabs credentials');
+                    return {
+                        apiKey: org.elevenLabs.apiKey,
+                        agentId: org.elevenLabs.agentId,
+                        phoneNumberId: org.elevenLabs.phoneNumberId,
+                        source: 'organization'
+                    };
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching organization ElevenLabs config:', error);
+        }
+        
+        // Fallback to environment config
+        console.log('📞 Using default ElevenLabs credentials from environment');
+        return {
+            apiKey: this.defaultApiKey,
+            agentId: this.defaultAgentId,
+            phoneNumberId: this.defaultPhoneNumberId,
+            source: 'environment'
+        };
     }
 
     /**
      * Make an outbound AI call to a phone number
+     * @param {string} phoneNumber - Phone number to call
+     * @param {object} options - Call options including userId for credential lookup
      */
     async makeCall(phoneNumber, options = {}) {
         console.log(`📞 Initiating AI call to ${phoneNumber}...`);
-        console.log(`   Agent ID: ${this.agentId}`);
-        console.log(`   Phone Number ID: ${this.phoneNumberId}`);
         
-        if (!this.apiKey) {
+        // Get credentials - prioritize user-specific config
+        const userId = options.userId || options.leadData?.assignedTo;
+        const credentials = await this.getCredentials(userId);
+        
+        const { apiKey, agentId, phoneNumberId, source } = credentials;
+        
+        console.log(`   Credentials source: ${source}`);
+        console.log(`   Agent ID: ${agentId}`);
+        console.log(`   Phone Number ID: ${phoneNumberId}`);
+        
+        if (!apiKey) {
             console.log('⚠️ ElevenLabs API key not configured - simulating call');
             return {
                 success: true,
@@ -36,7 +81,7 @@ class ElevenLabsService {
             };
         }
         
-        if (!this.agentId || !this.phoneNumberId) {
+        if (!agentId || !phoneNumberId) {
             console.log('⚠️ ElevenLabs Agent/Phone not configured - simulating call');
             return {
                 success: true,
@@ -65,8 +110,8 @@ class ElevenLabsService {
             // Correct request body for Twilio outbound call endpoint
             // Include automation metadata for webhook callback integration
             const requestBody = {
-                agent_id: this.agentId,
-                agent_phone_number_id: this.phoneNumberId,
+                agent_id: agentId,
+                agent_phone_number_id: phoneNumberId,
                 to_number: formattedPhone,
                 // Custom data for the conversation - includes automation metadata
                 conversation_initiation_client_data: {
@@ -97,7 +142,7 @@ class ElevenLabsService {
                 requestBody,
                 {
                     headers: {
-                        'xi-api-key': this.apiKey,
+                        'xi-api-key': apiKey,
                         'Content-Type': 'application/json'
                     }
                 }
@@ -134,11 +179,21 @@ class ElevenLabsService {
         }
     }
 
-    async syncConversations() {
+    async syncConversations(userId = null) {
         console.log('Syncing ElevenLabs conversations...');
+        
+        // Get credentials for sync
+        const credentials = await this.getCredentials(userId);
+        const { apiKey } = credentials;
+        
+        if (!apiKey) {
+            console.log('⚠️ ElevenLabs not configured - skipping sync');
+            return { success: false, error: 'ElevenLabs not configured' };
+        }
+        
         try {
             const response = await axios.get(this.baseUrl, {
-                headers: { 'xi-api-key': this.apiKey },
+                headers: { 'xi-api-key': apiKey },
                 params: { page_size: 100 } // Fetch last 100
             });
 
@@ -226,11 +281,11 @@ class ElevenLabsService {
             lead.lastContactedAt = new Date(conv.start_time_unix_secs * 1000);
 
             // Update Status Logic
-            if (lead.status === 'New' || lead.status === 'Unassigned') {
-                lead.status = 'Contacted';
+            if (lead.status === 'New' || lead.status === 'No Response') {
+                lead.status = 'Call Attended';
             }
 
-            // Simple logic: if duration > 30s, maybe "Qualified"? (Conservative approach: just Contacted)
+            // Simple logic: if duration > 30s, consider Interested
 
             await lead.save();
             console.log(`Updated lead ${lead._id} with conversation ${conv.conversation_id}`);

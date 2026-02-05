@@ -1,6 +1,13 @@
 /**
  * Fastify Application Setup
  * Main application configuration and routes
+ * 
+ * Production-Ready Architecture:
+ * - Structured logging (Winston)
+ * - Rate limiting per endpoint type
+ * - Security headers
+ * - Centralized error handling
+ * - Request validation (Zod)
  */
 
 const fastify = require('fastify');
@@ -18,8 +25,35 @@ const syncController = require('./sync/sync.controller');
 const requireAuth = require('./middleware/requireAuth');
 const { requireRole } = require('./middleware/roles');
 
-// Errors
-const { AppError } = require('./utils/errors');
+// NEW: Production Middleware
+const { 
+    errorHandler, 
+    asyncHandler 
+} = require('./middleware/errorHandler');
+const { 
+    apiLimiter, 
+    authLimiter, 
+    voiceCallLimiter, 
+    zohoSyncLimiter,
+    whatsappLimiter
+} = require('./middleware/rateLimiter');
+const { 
+    setupFastifySecurity, 
+    addRequestId 
+} = require('./middleware/security');
+
+// NEW: Structured Logging
+const logger = require('./utils/logger');
+const { createFastifyRequestLogger } = require('./utils/logger');
+
+// NEW: Health Check Routes
+const { registerFastifyHealthRoutes } = require('./routes/health');
+
+// Errors - Updated import
+const { AppError } = require('./errors/AppError');
+
+// Constants
+const { HTTP_STATUS, ERROR_CODES } = require('./constants');
 
 async function buildApp() {
     const app = fastify({
@@ -31,8 +65,28 @@ async function buildApp() {
                     ignore: 'pid,hostname'
                 }
             }
-        } : true
+        } : true,
+        // Production settings
+        trustProxy: true,
+        requestIdHeader: 'x-request-id',
+        requestIdLogLabel: 'requestId'
     });
+
+    // ======================================
+    // SECURITY MIDDLEWARE
+    // ======================================
+    
+    // Add request ID for tracing
+    app.addHook('onRequest', async (request, reply) => {
+        request.requestId = request.id || require('crypto').randomUUID();
+        reply.header('X-Request-ID', request.requestId);
+    });
+
+    // Request logging (structured) - pass fastify instance
+    createFastifyRequestLogger(app);
+
+    // Security headers
+    await setupFastifySecurity(app);
 
     // CORS - Allow all localhost ports in development
     await app.register(cors, {
@@ -72,43 +126,61 @@ async function buildApp() {
 
     // Global error handler
     app.setErrorHandler((error, request, reply) => {
-        // Log error
-        request.log.error(error);
+        // Log error with structured logging
+        logger.error('Request error', {
+            requestId: request.requestId,
+            method: request.method,
+            url: request.url,
+            error: error.message,
+            stack: config.nodeEnv === 'development' ? error.stack : undefined,
+            statusCode: error.statusCode || 500
+        });
 
         // Handle operational errors
         if (error instanceof AppError) {
             return reply.code(error.statusCode).send({
                 success: false,
-                error: error.message
+                error: error.message,
+                errorCode: error.errorCode,
+                requestId: request.requestId
             });
         }
 
         // Handle Fastify validation errors
         if (error.validation) {
-            return reply.code(400).send({
+            return reply.code(HTTP_STATUS.BAD_REQUEST).send({
                 success: false,
                 error: 'Validation failed',
-                details: error.validation
+                errorCode: ERROR_CODES.VALIDATION_ERROR,
+                details: error.validation,
+                requestId: request.requestId
             });
         }
 
-        // Unknown errors
-        const statusCode = error.statusCode || 500;
+        // Handle JWT errors
+        if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+            return reply.code(HTTP_STATUS.UNAUTHORIZED).send({
+                success: false,
+                error: error.name === 'TokenExpiredError' ? 'Token expired' : 'Invalid token',
+                errorCode: error.name === 'TokenExpiredError' ? ERROR_CODES.TOKEN_EXPIRED : ERROR_CODES.INVALID_TOKEN,
+                requestId: request.requestId
+            });
+        }
+
+        // Unknown errors - hide details in production
+        const statusCode = error.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
         return reply.code(statusCode).send({
             success: false,
-            error: config.nodeEnv === 'development' ? error.message : 'Internal server error'
+            error: config.nodeEnv === 'development' ? error.message : 'Internal server error',
+            errorCode: ERROR_CODES.INTERNAL_ERROR,
+            requestId: request.requestId
         });
     });
 
-    // Health check
-    app.get('/health', async (request, reply) => {
-        return {
-            status: 'ok',
-            timestamp: new Date().toISOString(),
-            service: 'app-backend',
-            version: '1.0.0'
-        };
-    });
+    // ======================================
+    // HEALTH CHECK ROUTES (Public)
+    // ======================================
+    registerFastifyHealthRoutes(app);
 
     // Root endpoint
     app.get('/', async (request, reply) => {
@@ -129,14 +201,44 @@ async function buildApp() {
     });
 
     // Auth routes (no auth required)
-    app.post('/auth/register', authController.register); // NEW: User registration
-    app.post('/auth/login', authController.login);
+    // Rate limited to prevent brute force attacks
+    app.post('/auth/register', { 
+        preHandler: authLimiter 
+    }, authController.register);
+    app.post('/auth/login', { 
+        preHandler: authLimiter 
+    }, authController.login);
     app.post('/auth/refresh', authController.refresh);
     app.post('/auth/logout', authController.logout);
+    
+    // Auth route (requires auth) - Get current user
+    app.get('/auth/me', { preHandler: [requireAuth] }, async (request, reply) => {
+        try {
+            // request.user is already the safe user from requireAuth middleware
+            if (!request.user) {
+                return reply.status(401).send({ success: false, error: 'Not authenticated' });
+            }
+            return reply.send({ success: true, user: request.user });
+        } catch (error) {
+            request.log.error('Get current user error:', error);
+            return reply.status(500).send({ success: false, error: 'Failed to get user' });
+        }
+    });
 
     // Knowledge Base routes (PUBLIC - for ElevenLabs AI to crawl)
     const knowledgeBaseRoutes = require('./routes/knowledgeBase.routes');
     app.register(knowledgeBaseRoutes, { prefix: '/api/knowledge-base' });
+
+    // Lead Ingestion routes (PUBLIC - for external webhooks from Meta Ads, Google Ads, etc.)
+    // These endpoints accept leads from external sources without authentication
+    const leadIngestionController = require('./leads/lead.ingestion.controller');
+    app.post('/api/ingest/leads', leadIngestionController.ingestLead);
+    app.get('/api/ingest/sources', leadIngestionController.getSources);
+    app.post('/api/ingest/leads/batch', leadIngestionController.ingestLeadsBatch);
+
+    // Legacy endpoint for backward compatibility with zoho-lead-backend
+    app.post('/leads', leadIngestionController.ingestLead);
+    app.get('/leads/sources', leadIngestionController.getSources);
 
     // Zoho OAuth routes (PUBLIC - for OAuth flow)
     const zohoOAuthRoutes = require('./routes/zohoOAuth.routes');
@@ -178,6 +280,9 @@ async function buildApp() {
     app.register(async function (protectedApp) {
         // Apply auth middleware to all routes in this scope
         protectedApp.addHook('onRequest', requireAuth);
+        
+        // Apply rate limiting to all API routes
+        protectedApp.addHook('preHandler', apiLimiter);
 
         // Add auth decorator for nested routes
         protectedApp.decorate('auth', requireAuth);
@@ -220,7 +325,10 @@ async function buildApp() {
         }, metricsController.getKPIMetrics);
 
         // Twilio routes (protected)
-        protectedApp.post('/api/twilio/call', async (request, reply) => {
+        // Voice call rate limited (10 calls per hour per user)
+        protectedApp.post('/api/twilio/call', { 
+            preHandler: voiceCallLimiter 
+        }, async (request, reply) => {
             const twilioService = require('./twilio/twilio.service');
             const { phoneNumber, leadId, leadName } = request.body;
             const userId = request.user._id;
@@ -303,9 +411,15 @@ async function buildApp() {
 
         // User Management routes (owner/admin only)
         const usersController = require('./users/users.controller');
+        
+        // IMPORTANT: Static routes MUST come before parameterized routes
         protectedApp.get('/api/users/pending', {
             preHandler: requireRole(['owner', 'admin'])
         }, usersController.getPendingUsers);
+        
+        // Add /api/users/agents route before :id route
+        protectedApp.get('/api/users/agents', usersController.getAgents);
+        
         protectedApp.get('/api/users/:id', usersController.getUserById);
         protectedApp.patch('/api/users/:id/approve', {
             preHandler: requireRole(['owner', 'admin'])
@@ -320,7 +434,7 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin'])
         }, usersController.deleteUser);
 
-        // Agents route (for property assignment)
+        // Agents route (for property assignment) - keep both for backward compatibility
         protectedApp.get('/api/agents', usersController.getAgents);
         
         // Agent activity/stats route
@@ -536,21 +650,21 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, assignmentController.getAgentWorkload);
 
-        // Zoho Sync routes (owner/admin only)
+        // Zoho Sync routes (owner/admin only, rate limited)
         protectedApp.post('/api/sync/call-log/:callLogId', {
-            preHandler: requireRole(['owner', 'admin'])
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncCallLog);
 
         protectedApp.post('/api/sync/activity/:activityId', {
-            preHandler: requireRole(['owner', 'admin'])
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncActivity);
 
         protectedApp.post('/api/sync/site-visit/:siteVisitId', {
-            preHandler: requireRole(['owner', 'admin'])
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncSiteVisit);
 
         protectedApp.post('/api/sync/pending', {
-            preHandler: requireRole(['owner', 'admin'])
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncAllPending);
 
         // Upload routes
@@ -586,6 +700,13 @@ async function buildApp() {
         await elevenLabsProtectedApp.register(elevenLabsRoutes, { prefix: '/api/integrations/elevenlabs' });
     });
 
+    // API Settings routes (requires auth) - Encrypted credential management
+    app.register(async function (apiSettingsProtectedApp) {
+        apiSettingsProtectedApp.addHook('onRequest', requireAuth);
+        const apiSettingsRoutes = require('./routes/apiSettings.routes');
+        await apiSettingsProtectedApp.register(apiSettingsRoutes, { prefix: '/api/settings/api' });
+    });
+
     // Broadcast routes (requires auth) - WhatsApp campaigns with image + CTA buttons
     app.register(async function (broadcastProtectedApp) {
         broadcastProtectedApp.addHook('onRequest', requireAuth);
@@ -615,6 +736,70 @@ async function buildApp() {
 
         reply.header('Content-Type', 'text/xml');
         return reply.send(twiml);
+    });
+
+    // ==========================================================================
+    // PUBLIC WEBHOOK ROUTES (No auth - called by external services)
+    // Migrated from zoho-lead-backend for single backend architecture
+    // ==========================================================================
+
+    // ElevenLabs post-call webhook (main entry point)
+    const elevenLabsWebhookService = require('./services/elevenlabs.webhook.service');
+    
+    app.post('/webhook/elevenlabs', async (request, reply) => {
+        try {
+            if (!elevenLabsWebhookService.verifyWebhook(request)) {
+                return reply.code(401).send({ error: 'Invalid signature' });
+            }
+
+            const result = await elevenLabsWebhookService.handleWebhook(request.body);
+            
+            // Always return 200 to acknowledge (prevents ElevenLabs from retrying)
+            return reply.send({ status: 'received', ...result });
+        } catch (error) {
+            console.error('❌ ElevenLabs webhook error:', error);
+            return reply.send({ status: 'error', error: error.message });
+        }
+    });
+
+    // Legacy AI call webhook endpoint (backwards compatibility)
+    app.post('/ai-call-webhook', async (request, reply) => {
+        try {
+            const { PostCallOrchestrator } = require('./services/postCall.orchestrator');
+            await PostCallOrchestrator.processCallStatus(request.body);
+            return reply.send({ success: true });
+        } catch (error) {
+            console.error('Legacy AI webhook error:', error);
+            return reply.send({ success: false });
+        }
+    });
+
+    // Twilio call status callback
+    app.post('/elevenlabs/status', async (request, reply) => {
+        const { CallSid, CallStatus, CallDuration } = request.body;
+        console.log(`Call status: ${CallSid} -> ${CallStatus}`);
+        
+        try {
+            const twilioService = require('./twilio/twilio.service');
+            await twilioService.updateCallStatus(CallSid, CallStatus, CallDuration);
+        } catch (error) {
+            console.error('Call status update error:', error);
+        }
+        
+        return reply.send({ success: true });
+    });
+
+    // Webhook health check
+    app.get('/webhook/health', async (request, reply) => {
+        return reply.send({
+            status: 'ok',
+            timestamp: new Date().toISOString(),
+            endpoints: [
+                'POST /webhook/elevenlabs',
+                'POST /ai-call-webhook',
+                'POST /elevenlabs/status'
+            ]
+        });
     });
 
     return app;

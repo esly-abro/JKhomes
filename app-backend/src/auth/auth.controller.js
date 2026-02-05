@@ -40,8 +40,31 @@ async function register(request, reply) {
         // Determine if we're in database mode or fallback mode
         const isDbMode = usersModel.useDatabase();
         
-        // If created by owner, auto-approve the agent
-        const autoApprove = createdByOwner === true;
+        // SECURITY FIX: Validate createdByOwner from JWT, not just request body
+        // Only auto-approve if the requester is actually an owner/admin
+        let autoApprove = false;
+        if (createdByOwner === true) {
+            // Check if there's a valid JWT token with owner/admin role
+            const authHeader = request.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                try {
+                    const { verifyToken } = require('./jwt');
+                    const token = authHeader.substring(7);
+                    const decoded = verifyToken(token);
+                    // Only auto-approve if the requester is owner or admin
+                    if (decoded && (decoded.role === 'owner' || decoded.role === 'admin')) {
+                        autoApprove = true;
+                        console.log(`✅ Agent creation auto-approved by ${decoded.role}: ${decoded.email}`);
+                    } else {
+                        console.log(`⚠️ createdByOwner flag ignored - requester role is: ${decoded?.role || 'unknown'}`);
+                    }
+                } catch (tokenErr) {
+                    console.log('⚠️ createdByOwner flag ignored - invalid/missing auth token');
+                }
+            } else {
+                console.log('⚠️ createdByOwner flag ignored - no auth header provided');
+            }
+        }
         
         // Create new user - requires admin approval unless created by owner
         const newUser = await usersModel.createUser({
@@ -152,8 +175,8 @@ async function logout(request, reply) {
             // Find the session by session ID (we need userId from token)
             const { verifyToken } = require('./jwt');
             const decoded = verifyToken(refreshToken);
-            if (decoded && decoded.id) {
-                await LoginHistory.recordLogout(decoded.id, sessionId);
+            if (decoded && decoded.userId) {
+                await LoginHistory.recordLogout(decoded.userId, sessionId);
             }
         }
     } catch (err) {

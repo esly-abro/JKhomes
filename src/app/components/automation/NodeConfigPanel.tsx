@@ -417,14 +417,13 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select status...</option>
-                      <option value="new">New</option>
-                      <option value="contacted">Contacted</option>
-                      <option value="interested">Interested</option>
-                      <option value="not_interested">Not Interested</option>
-                      <option value="follow_up">Follow Up Required</option>
-                      <option value="qualified">Qualified</option>
-                      <option value="converted">Converted</option>
-                      <option value="lost">Lost</option>
+                      <option value="New">New</option>
+                      <option value="Call Attended">Call Attended</option>
+                      <option value="No Response">No Response</option>
+                      <option value="Not Interested">Not Interested</option>
+                      <option value="Site Visit Booked">Site Visit Booked</option>
+                      <option value="Site Visit Scheduled">Site Visit Scheduled</option>
+                      <option value="Interested">Interested</option>
                     </select>
                   )}
 

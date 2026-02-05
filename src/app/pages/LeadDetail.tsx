@@ -755,7 +755,7 @@ export default function LeadDetail() {
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Select Template
               </label>
-              {templateLoading ? (
+              {isLoadingTemplates ? (
                 <div className="flex items-center gap-2 p-3 border rounded-lg">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span className="text-sm text-gray-600">Loading templates...</span>

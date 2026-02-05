@@ -46,7 +46,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <div className="mb-8 text-center">
             <div className="flex items-center justify-center gap-2 mb-4">
               <Building2 className="h-8 w-8 text-blue-600" />
-              <span className="text-2xl font-bold">LeadFlow</span>
+              <span className="text-2xl font-bold">Pulsar</span>
             </div>
             <div className="flex gap-2 justify-center mb-6">
               {[1, 2, 3, 4, 5].map((s) => (
@@ -64,7 +64,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           {/* Step 1: Welcome */}
           {step === 1 && (
             <div className="text-center space-y-6">
-              <h1 className="text-3xl font-bold">Welcome to LeadFlow! 👋</h1>
+              <h1 className="text-3xl font-bold">Welcome to Pulsar! 👋</h1>
               <p className="text-lg text-gray-600">
                 Let's get you set up in just a few steps. This will only take 2 minutes.
               </p>
@@ -111,7 +111,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     placeholder="My Sales Team"
                   />
                   <p className="text-sm text-gray-500">
-                    URL: leadflow.com/{workspaceName.toLowerCase().replace(/\s+/g, '-')}
+                    URL: pulsar.com/{workspaceName.toLowerCase().replace(/\s+/g, '-')}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -228,7 +228,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           {step === 5 && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">Automation Preferences</h2>
-              <p className="text-gray-600">Configure how LeadFlow helps you work smarter</p>
+              <p className="text-gray-600">Configure how Pulsar helps you work smarter</p>
               <div className="space-y-4">
                 <div className="flex items-start justify-between p-4 border rounded-lg">
                   <div>

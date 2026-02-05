@@ -1,0 +1,22 @@
+{
+  "name": "reminder-scheduler",
+  "version": "1.0.0",
+  "description": "AWS Lambda function for sending site visit reminders",
+  "main": "index.js",
+  "scripts": {
+    "zip": "zip -r function.zip index.js node_modules package.json",
+    "deploy": "aws lambda update-function-code --function-name reminder-scheduler --zip-file fileb://function.zip"
+  },
+  "dependencies": {
+    "mongodb": "^6.0.0"
+  },
+  "keywords": [
+    "aws",
+    "lambda",
+    "reminder",
+    "scheduler",
+    "mongodb"
+  ],
+  "author": "JK Construction",
+  "license": "MIT"
+}
