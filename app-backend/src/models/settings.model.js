@@ -77,6 +77,52 @@ const settingsSchema = new mongoose.Schema({
     default: 'default'
   },
   whatsapp: whatsappSettingsSchema,
+  // CRM Settings
+  crm: {
+    duplicateDetection: {
+      type: Boolean,
+      default: true
+    },
+    leadStages: [{
+      id: String,
+      name: String,
+      color: String,
+      order: Number
+    }],
+    assignmentMethod: {
+      type: String,
+      enum: ['round_robin', 'by_location', 'manual'],
+      default: 'round_robin'
+    },
+    responseSlaEnabled: {
+      type: Boolean,
+      default: true
+    },
+    responseSlaHours: {
+      type: Number,
+      default: 2
+    },
+    notifyOnNewLead: {
+      type: Boolean,
+      default: true
+    },
+    notifyViaEmail: {
+      type: Boolean,
+      default: true
+    },
+    notifyViaWhatsApp: {
+      type: Boolean,
+      default: false
+    },
+    staleAlertEnabled: {
+      type: Boolean,
+      default: true
+    },
+    staleAlertDays: {
+      type: Number,
+      default: 7
+    }
+  },
   // Other settings can be added here
   notifications: {
     email: {

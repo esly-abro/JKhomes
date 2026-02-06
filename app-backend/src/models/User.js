@@ -46,6 +46,16 @@ const userSchema = new mongoose.Schema({
         type: String,
         default: 'Asia/Kolkata'
     },
+    // Locations/areas assigned to this agent for location-based lead assignment
+    assignedLocations: [{
+        type: String,
+        trim: true
+    }],
+    // Track lead count for round-robin assignment
+    leadAssignmentCount: {
+        type: Number,
+        default: 0
+    },
     isActive: {
         type: Boolean,
         default: true

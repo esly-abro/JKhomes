@@ -8,6 +8,8 @@ const leadRepository = require('../repositories/leadRepository');
 const { NotFoundError, ValidationError, ConflictError } = require('../errors/AppError');
 const logger = require('../utils/logger');
 const { LEAD_STATUSES, LEAD_STATUS_TRANSITIONS } = require('../constants');
+const Settings = require('../models/settings.model');
+const leadAssignmentService = require('./leadAssignment.service');
 
 class LeadService {
     /**
@@ -110,19 +112,58 @@ class LeadService {
      * @returns {Promise<Object>} Created lead
      */
     async createLead(leadData, createdBy = null) {
-        // Check for duplicate phone
-        if (leadData.phone) {
-            const existingLead = await leadRepository.findByPhone(leadData.phone);
-            if (existingLead) {
-                throw new ConflictError('Lead with this phone number already exists');
+        // Check if duplicate detection is enabled for this user
+        let duplicateDetectionEnabled = true; // Default to enabled
+        
+        if (createdBy) {
+            try {
+                const userId = createdBy._id || createdBy;
+                const settings = await Settings.findOne({ userId });
+                if (settings && settings.crm && typeof settings.crm.duplicateDetection === 'boolean') {
+                    duplicateDetectionEnabled = settings.crm.duplicateDetection;
+                }
+            } catch (error) {
+                logger.warn('Failed to check CRM settings for duplicate detection', { error: error.message });
+                // Continue with default (enabled)
             }
         }
 
-        // Check for duplicate email
-        if (leadData.email) {
-            const existingLead = await leadRepository.findByEmail(leadData.email);
-            if (existingLead) {
-                throw new ConflictError('Lead with this email already exists');
+        // Only check for duplicates if enabled
+        if (duplicateDetectionEnabled) {
+            // Check for duplicate phone
+            if (leadData.phone) {
+                const existingLead = await leadRepository.findByPhone(leadData.phone);
+                if (existingLead) {
+                    throw new ConflictError('Lead with this phone number already exists');
+                }
+            }
+
+            // Check for duplicate email
+            if (leadData.email) {
+                const existingLead = await leadRepository.findByEmail(leadData.email);
+                if (existingLead) {
+                    throw new ConflictError('Lead with this email already exists');
+                }
+            }
+        } else {
+            logger.debug('Duplicate detection disabled - skipping duplicate check');
+        }
+
+        // Auto-assign lead based on CRM settings (if not already assigned)
+        let assignedAgent = null;
+        if (!leadData.assignedTo && createdBy) {
+            try {
+                const userId = createdBy._id || createdBy;
+                assignedAgent = await leadAssignmentService.getNextAgent(userId, leadData);
+                if (assignedAgent) {
+                    logger.info('Lead auto-assigned', { 
+                        agentId: assignedAgent._id, 
+                        agentName: assignedAgent.name 
+                    });
+                }
+            } catch (error) {
+                logger.warn('Failed to auto-assign lead', { error: error.message });
+                // Continue without assignment
             }
         }
 
@@ -131,7 +172,8 @@ class LeadService {
             ...leadData,
             status: leadData.status || LEAD_STATUSES.NEW,
             source: leadData.source || 'manual',
-            createdBy: createdBy?._id || createdBy
+            createdBy: createdBy?._id || createdBy,
+            assignedTo: leadData.assignedTo || (assignedAgent ? assignedAgent._id : null)
         };
 
         const createdLead = await leadRepository.create(lead);

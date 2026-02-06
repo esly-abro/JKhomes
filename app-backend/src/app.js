@@ -451,6 +451,62 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, usersController.getAgentActivity);
 
+        // Agent location assignment routes (for location-based lead assignment)
+        const leadAssignmentService = require('./services/leadAssignment.service');
+        
+        // Get all locations and their assigned agents
+        protectedApp.get('/api/agents/locations', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, async (request, reply) => {
+            try {
+                const locationMap = await leadAssignmentService.getAllAssignedLocations();
+                return reply.send({ success: true, data: locationMap });
+            } catch (error) {
+                console.error('Error getting agent locations:', error);
+                return reply.status(500).send({ error: 'Failed to get agent locations' });
+            }
+        });
+
+        // Update agent's assigned locations
+        protectedApp.put('/api/agents/:id/locations', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, async (request, reply) => {
+            try {
+                const { id } = request.params;
+                const { locations } = request.body;
+                
+                if (!Array.isArray(locations)) {
+                    return reply.status(400).send({ error: 'Locations must be an array' });
+                }
+                
+                const agent = await leadAssignmentService.updateAgentLocations(id, locations);
+                return reply.send({ 
+                    success: true, 
+                    data: { 
+                        id: agent._id, 
+                        name: agent.name, 
+                        assignedLocations: agent.assignedLocations 
+                    } 
+                });
+            } catch (error) {
+                console.error('Error updating agent locations:', error);
+                return reply.status(500).send({ error: 'Failed to update agent locations' });
+            }
+        });
+
+        // Reset lead assignment counts (admin only)
+        protectedApp.post('/api/agents/reset-assignment-counts', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, async (request, reply) => {
+            try {
+                await leadAssignmentService.resetAssignmentCounts();
+                return reply.send({ success: true, message: 'Assignment counts reset' });
+            } catch (error) {
+                console.error('Error resetting assignment counts:', error);
+                return reply.status(500).send({ error: 'Failed to reset assignment counts' });
+            }
+        });
+
         // Properties routes
         const propertiesController = require('./properties/properties.controller');
         protectedApp.get('/api/properties', propertiesController.getProperties);
@@ -512,6 +568,134 @@ async function buildApp() {
         protectedApp.post('/api/settings/whatsapp/test', {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, settingsController.testWhatsappConnection);
+        
+        // CRM settings routes
+        protectedApp.get('/api/settings/crm', settingsController.getCrmSettings);
+        protectedApp.put('/api/settings/crm', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, settingsController.updateCrmSettings);
+        
+        // Stale leads route
+        const staleLeadChecker = require('./services/staleLeadChecker');
+        protectedApp.get('/api/leads/stale', async (request, reply) => {
+            try {
+                const userId = request.user.id || request.user._id;
+                const summary = await staleLeadChecker.getStaleLeadsSummary(userId);
+                return reply.send({ success: true, data: summary });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // Manual trigger for stale lead check (admin only)
+        protectedApp.post('/api/leads/stale/check', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, async (request, reply) => {
+            try {
+                const result = await staleLeadChecker.runStaleLeadCheck();
+                return reply.send({ success: true, data: result });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // SLA status route
+        const slaChecker = require('./services/slaChecker');
+        protectedApp.get('/api/leads/sla/status', async (request, reply) => {
+            try {
+                const userId = request.user.id || request.user._id;
+                const status = await slaChecker.getSlaStatus(userId);
+                return reply.send({ success: true, data: status });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // Manual trigger for SLA check (admin only)
+        protectedApp.post('/api/leads/sla/check', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, async (request, reply) => {
+            try {
+                const result = await slaChecker.runSlaCheck();
+                return reply.send({ success: true, data: result });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // Notifications routes
+        const Notification = require('./models/Notification');
+        
+        // Get user notifications
+        protectedApp.get('/api/notifications', async (request, reply) => {
+            try {
+                const userId = request.user.id || request.user._id;
+                const { limit = 20, unreadOnly = false } = request.query;
+                
+                const filter = { userId };
+                if (unreadOnly === 'true' || unreadOnly === true) {
+                    filter.isRead = false;
+                }
+                
+                const notifications = await Notification.find(filter)
+                    .sort({ createdAt: -1 })
+                    .limit(parseInt(limit))
+                    .lean();
+                
+                const unreadCount = await Notification.countDocuments({ userId, isRead: false });
+                
+                return reply.send({ 
+                    success: true, 
+                    data: { 
+                        notifications, 
+                        unreadCount,
+                        total: notifications.length 
+                    } 
+                });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // Mark notification as read
+        protectedApp.put('/api/notifications/:id/read', async (request, reply) => {
+            try {
+                const { id } = request.params;
+                const userId = request.user.id || request.user._id;
+                
+                await Notification.findOneAndUpdate(
+                    { _id: id, userId },
+                    { isRead: true, readAt: new Date() }
+                );
+                
+                return reply.send({ success: true, message: 'Notification marked as read' });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
+        
+        // Mark all notifications as read
+        protectedApp.put('/api/notifications/read-all', async (request, reply) => {
+            try {
+                const userId = request.user.id || request.user._id;
+                
+                await Notification.updateMany(
+                    { userId, isRead: false },
+                    { isRead: true, readAt: new Date() }
+                );
+                
+                return reply.send({ success: true, message: 'All notifications marked as read' });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
+            }
+        });
         
         // Get property availability settings
         protectedApp.get('/api/properties/:id/availability', async (request, reply) => {

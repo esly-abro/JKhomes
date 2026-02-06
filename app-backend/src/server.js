@@ -14,6 +14,8 @@ const config = require('./config/env');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const { seedDefaultUsers, useDatabase } = require('./users/users.model');
 const workflowEngine = require('./services/workflow.engine');
+const staleLeadChecker = require('./services/staleLeadChecker');
+const slaChecker = require('./services/slaChecker');
 
 // Structured logging
 const logger = require('./utils/logger');
@@ -21,6 +23,14 @@ const logger = require('./utils/logger');
 // Track active connections for graceful shutdown
 let activeConnections = new Set();
 let isShuttingDown = false;
+
+// Load environment variables from .env file
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+
+// Test dotenv loading
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
+console.log('ZOHO_CLIENT_ID:', process.env.ZOHO_CLIENT_ID);
+console.log('INGESTION_SERVICE_URL:', process.env.INGESTION_SERVICE_URL);
 
 async function start() {
     let app;
@@ -37,6 +47,14 @@ async function start() {
             // Start workflow engine for automation processing
             logger.info('⚙️  Starting Workflow Engine...');
             workflowEngine.start(10000); // Process jobs every 10 seconds
+            
+            // Start stale lead checker (runs every 24 hours)
+            logger.info('⏰  Starting Stale Lead Checker...');
+            staleLeadChecker.startStaleLeadChecker(24);
+            
+            // Start SLA checker (runs every 15 minutes)
+            logger.info('⏱️  Starting Response SLA Checker...');
+            slaChecker.startSlaChecker(15);
         } else {
             logger.warn('⚠️  MONGODB_URI not set - using in-memory storage');
             logger.warn('   Set MONGODB_URI in .env for persistent storage');
@@ -117,6 +135,14 @@ async function start() {
             // Stop workflow engine
             logger.info('Stopping Workflow Engine...');
             workflowEngine.stop();
+            
+            // Stop stale lead checker
+            logger.info('Stopping Stale Lead Checker...');
+            staleLeadChecker.stopStaleLeadChecker();
+            
+            // Stop SLA checker
+            logger.info('Stopping SLA Checker...');
+            slaChecker.stopSlaChecker();
 
             // Wait for active connections to complete (max 10 seconds)
             if (activeConnections.size > 0) {

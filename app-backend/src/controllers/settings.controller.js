@@ -308,11 +308,105 @@ async function sendWhatsappTemplate(request, reply) {
   }
 }
 
+/**
+ * Get CRM settings
+ */
+async function getCrmSettings(request, reply) {
+  try {
+    const userId = request.user.id || request.user._id;
+    
+    let settings = await Settings.findOne({ userId });
+    
+    // Default CRM settings
+    const defaultCrmSettings = {
+      duplicateDetection: true,
+      leadStages: [
+        { id: '1', name: 'New', color: '#3B82F6', order: 1 },
+        { id: '2', name: 'Contacted', color: '#F59E0B', order: 2 },
+        { id: '3', name: 'Site Visit', color: '#8B5CF6', order: 3 },
+        { id: '4', name: 'Negotiation', color: '#EC4899', order: 4 },
+        { id: '5', name: 'Won', color: '#10B981', order: 5 },
+        { id: '6', name: 'Lost', color: '#EF4444', order: 6 }
+      ],
+      assignmentMethod: 'round_robin',
+      responseSlaEnabled: true,
+      responseSlaHours: 2,
+      notifyOnNewLead: true,
+      notifyViaEmail: true,
+      notifyViaWhatsApp: false,
+      staleAlertEnabled: true,
+      staleAlertDays: 7
+    };
+    
+    if (!settings || !settings.crm) {
+      return reply.send({
+        success: true,
+        data: defaultCrmSettings
+      });
+    }
+
+    return reply.send({
+      success: true,
+      data: settings.crm
+    });
+  } catch (error) {
+    console.error('Error getting CRM settings:', error);
+    return reply.code(500).send({
+      success: false,
+      error: 'Failed to retrieve CRM settings'
+    });
+  }
+}
+
+/**
+ * Update CRM settings
+ */
+async function updateCrmSettings(request, reply) {
+  try {
+    const userId = request.user.id || request.user._id;
+    const crmSettingsData = request.body;
+
+    let settings = await Settings.findOne({ userId });
+    
+    if (!settings) {
+      settings = new Settings({
+        userId,
+        crm: crmSettingsData
+      });
+    } else {
+      settings.crm = {
+        ...settings.crm?.toObject(),
+        ...crmSettingsData
+      };
+    }
+
+    await settings.save();
+
+    console.log(`CRM settings updated for user ${userId}:`, {
+      assignmentMethod: crmSettingsData.assignmentMethod,
+      stagesCount: crmSettingsData.leadStages?.length
+    });
+
+    return reply.send({
+      success: true,
+      message: 'CRM settings updated successfully'
+    });
+  } catch (error) {
+    console.error('Error updating CRM settings:', error);
+    return reply.code(500).send({
+      success: false,
+      error: 'Failed to update CRM settings'
+    });
+  }
+}
+
 module.exports = {
   getWhatsappSettings,
   updateWhatsappSettings,
   testWhatsappConnection,
   getAllSettings,
   getWhatsappTemplates,
-  sendWhatsappTemplate
+  sendWhatsappTemplate,
+  getCrmSettings,
+  updateCrmSettings
 };

@@ -210,6 +210,67 @@ async function knowledgeBaseRoutes(fastify, options) {
       reply.status(500).send({ error: 'Failed to fetch summary' });
     }
   });
+
+  /**
+   * PUT /api/agents/:agentId/locations
+   * Assigns all leads in the specified locations to the given agent
+   */
+  fastify.put('/agents/:agentId/locations', {
+    schema: {
+      description: 'Assign leads in specified locations to an agent',
+      tags: ['Agents'],
+      params: {
+        type: 'object',
+        properties: {
+          agentId: { type: 'string' }
+        },
+        required: ['agentId']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          locations: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['locations']
+      },
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const { agentId } = request.params;
+    const { locations } = request.body;
+
+    try {
+      // Update agent's locations
+      const agent = await fastify.mongoose.Agent.findByIdAndUpdate(
+        agentId,
+        { $set: { locations } },
+        { new: true }
+      );
+
+      if (!agent) {
+        return reply.status(404).send({ success: false, message: 'Agent not found' });
+      }
+
+      // Assign leads in the specified locations to the agent
+      await fastify.mongoose.Lead.updateMany(
+        { location: { $in: locations } },
+        { $set: { assignedAgent: agentId } }
+      );
+
+      reply.send({ success: true, message: 'Leads assigned successfully' });
+    } catch (error) {
+      fastify.log.error('Failed to assign leads:', error);
+      reply.status(500).send({ success: false, message: 'Failed to assign leads' });
+    }
+  });
 }
 
 module.exports = knowledgeBaseRoutes;

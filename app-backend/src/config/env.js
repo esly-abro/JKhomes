@@ -25,6 +25,16 @@ if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
 }
 
+// Test dotenv loading
+console.log('Loaded Environment Variables:', {
+    JWT_SECRET: process.env.JWT_SECRET,
+    ZOHO_CLIENT_ID: process.env.ZOHO_CLIENT_ID,
+    ZOHO_CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET,
+    ZOHO_REFRESH_TOKEN: process.env.ZOHO_REFRESH_TOKEN,
+    INGESTION_SERVICE_URL: process.env.INGESTION_SERVICE_URL,
+    INGESTION_SERVICE_API_KEY: process.env.INGESTION_SERVICE_API_KEY
+});
+
 const config = {
     // Server
     nodeEnv: process.env.NODE_ENV || 'development',

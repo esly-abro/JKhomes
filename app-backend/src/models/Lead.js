@@ -159,6 +159,24 @@ const leadSchema = new mongoose.Schema({
     },
     lastSyncedAt: {
         type: Date
+    },
+    
+    // Stale lead tracking
+    isStale: {
+        type: Boolean,
+        default: false
+    },
+    staleMarkedAt: {
+        type: Date
+    },
+    
+    // SLA tracking
+    slaBreachNotified: {
+        type: Boolean,
+        default: false
+    },
+    slaBreachedAt: {
+        type: Date
     }
 }, {
     timestamps: true
