@@ -16,7 +16,7 @@ const automationRunSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['running', 'completed', 'failed', 'paused', 'cancelled', 'waiting_for_response'],
+    enum: ['running', 'completed', 'failed', 'paused', 'cancelled', 'waiting_for_response', 'waiting_for_task'],
     default: 'running'
   },
   currentNodeId: String,
@@ -79,6 +79,14 @@ const automationRunSchema = new mongoose.Schema({
     sentiment: String,           // Detected sentiment
     intent: String,              // Detected intent
     receivedAt: Date
+  },
+  
+  // For waiting on manual tasks
+  waitingForTask: {
+    isWaiting: { type: Boolean, default: false },
+    taskId: { type: mongoose.Schema.Types.ObjectId, ref: 'Task' },
+    nodeId: String,              // The node that created the task
+    startedAt: Date
   },
   
   // Store the last received response

@@ -97,6 +97,11 @@ automationSchema.methods.getTriggerNode = function() {
   return this.nodes.find(node => node.type === 'trigger');
 };
 
+// Method to find nodes by type
+automationSchema.methods.findNodesByType = function(type) {
+  return this.nodes.filter(node => node.type === type || node.data?.type === type);
+};
+
 // Method to get next nodes after a given node
 automationSchema.methods.getNextNodes = function(nodeId, handleId = null) {
   const outgoingEdges = this.edges.filter(edge => {

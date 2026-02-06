@@ -1,15 +1,35 @@
 /**
  * Activity Service
  * Manages activity logging and retrieval
+ * Now also triggers task auto-completion when activities are logged
  */
 
 const Activity = require('../models/Activity');
 
 /**
- * Create activity
+ * Create activity and check for task auto-completion
  */
 async function createActivity(activityData) {
-    return Activity.create(activityData);
+    const activity = await Activity.create(activityData);
+    
+    // Check for task auto-completion based on activity type
+    if (activity.lead && activity.type) {
+        try {
+            const { taskService } = require('../tasks');
+            const completedCount = await taskService.checkAutoCompleteForActivity({
+                lead: activity.lead,
+                type: activity.type
+            });
+            if (completedCount > 0) {
+                console.log(`✅ Auto-completed ${completedCount} task(s) from activity: ${activity.type}`);
+            }
+        } catch (err) {
+            // Don't fail activity creation if task auto-complete fails
+            console.error('Task auto-complete check failed:', err.message);
+        }
+    }
+    
+    return activity;
 }
 
 /**

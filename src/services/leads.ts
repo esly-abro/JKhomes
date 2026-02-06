@@ -150,6 +150,27 @@ export async function deleteTask(taskId: string) {
 }
 
 /**
+ * Delete a single lead
+ */
+export async function deleteLead(leadId: string): Promise<{ success: boolean; message: string }> {
+  const { data } = await api.delete(`/api/leads/${leadId}`);
+  return data;
+}
+
+/**
+ * Bulk delete multiple leads
+ */
+export async function deleteLeads(leadIds: string[]): Promise<{
+  success: boolean;
+  results: { leadId: string; success: boolean; error?: string }[];
+  deletedCount: number;
+  failedCount: number;
+}> {
+  const { data } = await api.post('/api/leads/bulk-delete', { leadIds });
+  return data;
+}
+
+/**
  * Get all users (for team members)
  */
 export async function getUsers() {

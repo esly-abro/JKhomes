@@ -41,6 +41,10 @@ import {
   Undo2,
   Redo2,
   Loader2,
+  FileDown,
+  Power,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -49,14 +53,24 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '../components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Switch } from '../components/ui/switch';
 
 // Custom Node Components
 import { TriggerNode, ActionNode, ConditionNode, DelayNode } from '../components/automation';
 import NodeConfigPanel from '../components/automation/NodeConfigPanel';
 
 // Automation service
-import automationService, { type Automation } from '../../services/automations';
+import automationService, { type Automation, type AutomationTemplate } from '../../services/automations';
 
 // Node types configuration
 const nodeTypes = {
@@ -120,6 +134,7 @@ function AutomationFlow() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<Edge | null>(null);
   const [configPanelNode, setConfigPanelNode] = useState<Node | null>(null);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   
   // Loading states
   const [isLoading, setIsLoading] = useState(true);
@@ -130,6 +145,9 @@ function AutomationFlow() {
   const [history, setHistory] = useState<{ nodes: Node[]; edges: Edge[] }[]>([{ nodes: [], edges: [] }]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoAction = useRef(false);
+  
+  // Ref for save function to avoid circular dependency in keyboard shortcuts
+  const saveAutomationRef = useRef<() => void>(() => {});
 
   // Save state to history (for undo/redo)
   const saveToHistory = useCallback((newNodes: Node[], newEdges: Edge[]) => {
@@ -173,57 +191,268 @@ function AutomationFlow() {
     }
   }, [historyIndex, history]);
 
-  // Keyboard shortcuts for undo/redo and delete
+  // Clipboard for copy/paste
+  const clipboard = useRef<{ nodes: Node[]; edges: Edge[] } | null>(null);
+
+  // Select all nodes
+  const handleSelectAll = useCallback(() => {
+    if (nodes.length > 0) {
+      // Select all nodes by updating their selected state
+      setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
+      setEdges((eds) => eds.map((e) => ({ ...e, selected: true })));
+    }
+  }, [nodes.length]);
+
+  // Deselect all
+  const handleDeselectAll = useCallback(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })));
+    setEdges((eds) => eds.map((e) => ({ ...e, selected: false })));
+    setSelectedNode(null);
+    setSelectedEdge(null);
+  }, []);
+
+  // Copy selected nodes
+  const handleCopy = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected || n.id === selectedNode?.id);
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const selectedEdgesForCopy = edges.filter(
+      (e) => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
+    );
+    
+    if (selectedNodes.length > 0) {
+      clipboard.current = {
+        nodes: selectedNodes,
+        edges: selectedEdgesForCopy,
+      };
+      console.log(`📋 Copied ${selectedNodes.length} nodes`);
+    }
+  }, [nodes, edges, selectedNode]);
+
+  // Paste from clipboard
+  const handlePaste = useCallback(() => {
+    if (!clipboard.current || clipboard.current.nodes.length === 0) return;
+
+    const offset = 50; // Offset for pasted nodes
+    const timestamp = Date.now();
+    const idMap: Record<string, string> = {};
+
+    // Create new nodes with offset positions and new IDs
+    const newNodes = clipboard.current.nodes.map((node, index) => {
+      const newId = `${node.id.split('-')[0]}-${timestamp}-${index}`;
+      idMap[node.id] = newId;
+      return {
+        ...node,
+        id: newId,
+        position: {
+          x: node.position.x + offset,
+          y: node.position.y + offset,
+        },
+        selected: true,
+      };
+    });
+
+    // Create new edges with updated references
+    const newEdges = clipboard.current.edges.map((edge, index) => ({
+      ...edge,
+      id: `e-${timestamp}-${index}`,
+      source: idMap[edge.source] || edge.source,
+      target: idMap[edge.target] || edge.target,
+      selected: false,
+    }));
+
+    // Deselect existing nodes and add new ones
+    setNodes((nds) => [
+      ...nds.map((n) => ({ ...n, selected: false })),
+      ...newNodes,
+    ]);
+    setEdges((eds) => [...eds, ...newEdges]);
+    
+    saveToHistory([...nodes, ...newNodes], [...edges, ...newEdges]);
+    console.log(`📋 Pasted ${newNodes.length} nodes`);
+  }, [nodes, edges, saveToHistory]);
+
+  // Duplicate selected nodes (Ctrl+D)
+  const handleDuplicateSelected = useCallback(() => {
+    const selectedNodes = nodes.filter((n) => n.selected || n.id === selectedNode?.id);
+    if (selectedNodes.length === 0) return;
+
+    const selectedNodeIds = new Set(selectedNodes.map((n) => n.id));
+    const selectedEdgesForDupe = edges.filter(
+      (e) => selectedNodeIds.has(e.source) && selectedNodeIds.has(e.target)
+    );
+
+    const offset = 50;
+    const timestamp = Date.now();
+    const idMap: Record<string, string> = {};
+
+    const newNodes = selectedNodes.map((node, index) => {
+      const newId = `${node.id.split('-')[0]}-${timestamp}-${index}`;
+      idMap[node.id] = newId;
+      return {
+        ...node,
+        id: newId,
+        position: {
+          x: node.position.x + offset,
+          y: node.position.y + offset,
+        },
+        selected: true,
+      };
+    });
+
+    const newEdges = selectedEdgesForDupe.map((edge, index) => ({
+      ...edge,
+      id: `e-${timestamp}-${index}`,
+      source: idMap[edge.source] || edge.source,
+      target: idMap[edge.target] || edge.target,
+    }));
+
+    setNodes((nds) => [
+      ...nds.map((n) => ({ ...n, selected: false })),
+      ...newNodes,
+    ]);
+    setEdges((eds) => [...eds, ...newEdges]);
+    
+    saveToHistory([...nodes, ...newNodes], [...edges, ...newEdges]);
+    console.log(`🔄 Duplicated ${newNodes.length} nodes`);
+  }, [nodes, edges, selectedNode, saveToHistory]);
+
+  // Delete selected nodes/edges
+  const handleDeleteSelected = useCallback(() => {
+    const selectedNodesList = nodes.filter((n) => n.selected || n.id === selectedNode?.id);
+    const selectedEdgesList = edges.filter((e) => e.selected || e.id === selectedEdge?.id);
+    
+    if (selectedNodesList.length > 0 || selectedEdgesList.length > 0) {
+      const nodeIdsToDelete = new Set(selectedNodesList.map((n) => n.id));
+      const edgeIdsToDelete = new Set(selectedEdgesList.map((e) => e.id));
+      
+      const newNodes = nodes.filter((n) => !nodeIdsToDelete.has(n.id));
+      const newEdges = edges.filter((e) => 
+        !edgeIdsToDelete.has(e.id) && 
+        !nodeIdsToDelete.has(e.source) && 
+        !nodeIdsToDelete.has(e.target)
+      );
+      
+      setNodes(newNodes);
+      setEdges(newEdges);
+      saveToHistory(newNodes, newEdges);
+      setSelectedNode(null);
+      setSelectedEdge(null);
+      console.log(`🗑️ Deleted ${selectedNodesList.length} nodes, ${selectedEdgesList.length} edges`);
+    }
+  }, [nodes, edges, selectedNode, selectedEdge, saveToHistory]);
+
+  // Figma-like Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Ctrl+Z for undo
-      if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+      // Don't trigger shortcuts when typing in inputs
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+
+      // Ctrl+A - Select All
+      if (isCtrlOrCmd && event.key === 'a') {
+        event.preventDefault();
+        handleSelectAll();
+        return;
+      }
+
+      // Ctrl+Z - Undo
+      if (isCtrlOrCmd && event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
         handleUndo();
+        return;
       }
-      // Ctrl+Y or Ctrl+Shift+Z for redo
-      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
+
+      // Ctrl+Y or Ctrl+Shift+Z - Redo
+      if (isCtrlOrCmd && (event.key === 'y' || (event.key === 'z' && event.shiftKey))) {
         event.preventDefault();
         handleRedo();
+        return;
       }
-      // Delete or Backspace to delete selected node/edge
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        // Don't delete if user is typing in an input
-        if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
-          return;
-        }
+
+      // Ctrl+C - Copy
+      if (isCtrlOrCmd && event.key === 'c') {
         event.preventDefault();
-        // Delete selected edge or node
-        if (selectedEdge) {
-          const newEdges = edges.filter((e) => e.id !== selectedEdge.id);
-          setEdges(newEdges);
-          saveToHistory(nodes, newEdges);
-          setSelectedEdge(null);
-        } else if (selectedNode) {
-          const newNodes = nodes.filter((n) => n.id !== selectedNode.id);
-          const newEdges = edges.filter((e) => e.source !== selectedNode.id && e.target !== selectedNode.id);
-          setNodes(newNodes);
-          setEdges(newEdges);
-          saveToHistory(newNodes, newEdges);
-          setSelectedNode(null);
-        }
+        handleCopy();
+        return;
+      }
+
+      // Ctrl+V - Paste
+      if (isCtrlOrCmd && event.key === 'v') {
+        event.preventDefault();
+        handlePaste();
+        return;
+      }
+
+      // Ctrl+D - Duplicate
+      if (isCtrlOrCmd && event.key === 'd') {
+        event.preventDefault();
+        handleDuplicateSelected();
+        return;
+      }
+
+      // Ctrl+S - Save
+      if (isCtrlOrCmd && event.key === 's') {
+        event.preventDefault();
+        saveAutomationRef.current?.();
+        return;
+      }
+
+      // Escape - Deselect all
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleDeselectAll();
+        return;
+      }
+
+      // Delete or Backspace - Delete selected
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        handleDeleteSelected();
+        return;
+      }
+
+      // ? - Show keyboard shortcuts
+      if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+        event.preventDefault();
+        setShowKeyboardShortcuts(true);
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, selectedNode, selectedEdge, nodes, edges, saveToHistory]);
+  }, [
+    handleUndo, 
+    handleRedo, 
+    handleSelectAll, 
+    handleDeselectAll, 
+    handleCopy, 
+    handlePaste, 
+    handleDuplicateSelected, 
+    handleDeleteSelected
+  ]);
   
   // Saved automations state
   const [savedAutomations, setSavedAutomations] = useState<SavedAutomation[]>([]);
   const [activeAutomationId, setActiveAutomationId] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<AutomationTemplate[]>([]);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [duplicateAutomationId, setDuplicateAutomationId] = useState<string | null>(null);
+  const [duplicateName, setDuplicateName] = useState('');
 
-  // Load automations from API
+  // Load automations and templates from API
   useEffect(() => {
-    const loadAutomations = async () => {
+    const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        
+        // Load automations
         const data = await automationService.getAutomations();
         const mapped = data.map((a: Automation) => ({
           id: a._id,
@@ -237,6 +466,14 @@ function AutomationFlow() {
           runsCount: a.runsCount,
         }));
         setSavedAutomations(mapped);
+
+        // Load templates
+        try {
+          const templateData = await automationService.getTemplates();
+          setTemplates(templateData);
+        } catch (err) {
+          console.log('Templates not available');
+        }
       } catch (err) {
         console.error('Failed to load automations:', err);
         setError('Failed to load automations');
@@ -244,7 +481,7 @@ function AutomationFlow() {
         setIsLoading(false);
       }
     };
-    loadAutomations();
+    loadData();
   }, []);
 
   // Handle node changes
@@ -450,6 +687,11 @@ function AutomationFlow() {
     }
   };
 
+  // Update ref when handleSaveAutomation changes
+  useEffect(() => {
+    saveAutomationRef.current = handleSaveAutomation;
+  }, [automationName, nodes, edges, activeAutomationId]);
+
   // Load automation
   const handleLoadAutomation = (automation: SavedAutomation) => {
     setNodes(automation.nodes);
@@ -502,6 +744,103 @@ function AutomationFlow() {
     } catch (err) {
       console.error('Failed to toggle automation:', err);
       setError('Failed to toggle automation');
+    }
+  };
+
+  // Load template as new automation
+  const handleLoadTemplate = async (templateId: string) => {
+    try {
+      setLoadingTemplate(true);
+      setError(null);
+      
+      const template = await automationService.getTemplate(templateId);
+      
+      // Load template into canvas
+      setNodes(template.nodes as unknown as Node[]);
+      setEdges(template.edges as unknown as Edge[]);
+      setAutomationName(template.name);
+      setActiveAutomationId(null); // It's a new automation
+      
+      // Reset history
+      setHistory([{ nodes: template.nodes as unknown as Node[], edges: template.edges as unknown as Edge[] }]);
+      setHistoryIndex(0);
+      
+      setShowTemplateDialog(false);
+    } catch (err) {
+      console.error('Failed to load template:', err);
+      setError('Failed to load template');
+    } finally {
+      setLoadingTemplate(false);
+    }
+  };
+
+  // Save template as new automation directly
+  const handleSaveTemplateAsAutomation = async (templateId: string) => {
+    try {
+      setLoadingTemplate(true);
+      setError(null);
+      
+      const created = await automationService.loadTemplate(templateId);
+      
+      const newAutomation: SavedAutomation = {
+        id: created._id,
+        _id: created._id,
+        name: created.name,
+        description: created.description || '',
+        nodes: created.nodes as unknown as Node[],
+        edges: created.edges as unknown as Edge[],
+        isActive: created.isActive,
+        lastModified: 'Just now',
+        runsCount: 0,
+      };
+      
+      setSavedAutomations((prev) => [...prev, newAutomation]);
+      handleLoadAutomation(newAutomation);
+      setShowTemplateDialog(false);
+    } catch (err) {
+      console.error('Failed to save template as automation:', err);
+      setError('Failed to save template');
+    } finally {
+      setLoadingTemplate(false);
+    }
+  };
+
+  // Open duplicate dialog
+  const handleOpenDuplicateDialog = (id: string, currentName: string) => {
+    setDuplicateAutomationId(id);
+    setDuplicateName(`${currentName} (Copy)`);
+    setDuplicateDialogOpen(true);
+  };
+
+  // Duplicate automation
+  const handleDuplicateAutomation = async () => {
+    if (!duplicateAutomationId) return;
+    
+    try {
+      const duplicated = await automationService.duplicateAutomation(duplicateAutomationId, duplicateName);
+      
+      const newAutomation: SavedAutomation = {
+        id: duplicated._id,
+        _id: duplicated._id,
+        name: duplicated.name,
+        description: duplicated.description || '',
+        nodes: duplicated.nodes as unknown as Node[],
+        edges: duplicated.edges as unknown as Edge[],
+        isActive: duplicated.isActive,
+        lastModified: 'Just now',
+        runsCount: 0,
+      };
+      
+      setSavedAutomations((prev) => [...prev, newAutomation]);
+      setDuplicateDialogOpen(false);
+      setDuplicateAutomationId(null);
+      setDuplicateName('');
+      
+      // Load the duplicated automation for editing
+      handleLoadAutomation(newAutomation);
+    } catch (err) {
+      console.error('Failed to duplicate automation:', err);
+      setError('Failed to duplicate automation');
     }
   };
 
@@ -685,17 +1024,37 @@ function AutomationFlow() {
           </div>
         </div>
 
-        {/* Instructions */}
-        <div className="mt-6 p-3 bg-blue-50 rounded-lg space-y-2">
-          <p className="text-xs text-blue-700">
-            <strong>Tip:</strong> Drag blocks onto the canvas and connect them by dragging from one handle to another.
-          </p>
-          <p className="text-xs text-blue-600">
-            <strong>Shortcuts:</strong><br />
-            • Click arrow to select, Delete to remove<br />
-            • Ctrl+Z to undo, Ctrl+Y to redo<br />
-            • Double-click node to configure
-          </p>
+        {/* Keyboard Shortcuts Button */}
+        <div className="mt-6">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="w-full text-xs"
+            onClick={() => setShowKeyboardShortcuts(true)}
+          >
+            ⌨️ Keyboard Shortcuts (?)
+          </Button>
+        </div>
+
+        {/* Quick Tips */}
+        <div className="mt-3 p-3 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg space-y-2 border border-blue-100">
+          <p className="text-xs font-semibold text-blue-800">⚡ Quick Tips</p>
+          <div className="text-xs text-blue-700 space-y-1">
+            <p>• Drag blocks to canvas</p>
+            <p>• Connect handles to link</p>
+            <p>• Double-click to configure</p>
+          </div>
+          <div className="pt-2 border-t border-blue-200">
+            <p className="text-xs text-blue-600">
+              <kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">Ctrl</kbd>+<kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">A</kbd> Select All
+            </p>
+            <p className="text-xs text-blue-600">
+              <kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">Ctrl</kbd>+<kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">Z</kbd> Undo
+            </p>
+            <p className="text-xs text-blue-600">
+              <kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">Ctrl</kbd>+<kbd className="px-1 py-0.5 bg-white rounded text-[10px] border">D</kbd> Duplicate
+            </p>
+          </div>
         </div>
       </div>
 
@@ -751,6 +1110,10 @@ function AutomationFlow() {
             <Button variant="outline" size="sm" onClick={handleNewAutomation}>
               <Plus className="h-4 w-4 mr-1" />
               New
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setShowTemplateDialog(true)}>
+              <FileDown className="h-4 w-4 mr-1" />
+              Load Template
             </Button>
             <Button size="sm" onClick={handleSaveAutomation} disabled={isSaving}>
               {isSaving ? (
@@ -850,62 +1213,64 @@ function AutomationFlow() {
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex-1">
                     <h4 className="font-medium text-sm">{automation.name}</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">{automation.description}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{automation.description}</p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-6 w-6">
+                        <MoreVertical className="h-3 w-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleLoadAutomation(automation); }}>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleOpenDuplicateDialog(automation.id, automation.name); }}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Duplicate
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(automation.id); }}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-6 w-6">
-                      <MoreVertical className="h-3 w-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleLoadAutomation(automation); }}>
-                      <Settings className="h-4 w-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); }}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={(e) => { e.stopPropagation(); handleDeleteAutomation(automation.id); }}
-                      className="text-red-600"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <span>{automation.runsCount} runs</span>
-                  <span>•</span>
-                  <span>{automation.lastModified}</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>{automation.runsCount} runs</span>
+                    <span>•</span>
+                    <span>{automation.lastModified}</span>
+                  </div>
+                  {/* Toggle Switch */}
+                  <div 
+                    className="flex items-center gap-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className={`text-xs font-medium ${automation.isActive ? 'text-green-600' : 'text-gray-500'}`}>
+                      {automation.isActive ? 'ON' : 'OFF'}
+                    </span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleAutomation(automation.id); }}
+                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                        automation.isActive ? 'bg-green-500' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                          automation.isActive ? 'translate-x-4' : 'translate-x-0.5'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleToggleAutomation(automation.id); }}
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
-                    automation.isActive
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {automation.isActive ? (
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Active
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      Paused
-                    </span>
-                  )}
-                </button>
               </div>
-            </div>
             ))}
           </div>
         )}
@@ -939,6 +1304,232 @@ function AutomationFlow() {
           onAddConditionNode={handleAddConditionNode}
         />
       )}
+
+      {/* Template Selection Dialog */}
+      <Dialog open={showTemplateDialog} onOpenChange={setShowTemplateDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileDown className="h-5 w-5 text-blue-500" />
+              Load Automation Template
+            </DialogTitle>
+            <DialogDescription>
+              Choose a pre-built automation template to get started quickly. You can customize it after loading.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-3">
+            {templates.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                <p className="text-sm">Loading templates...</p>
+              </div>
+            ) : (
+              templates.map((template) => (
+                <div 
+                  key={template.id}
+                  className="border rounded-lg p-4 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium">{template.name}</h4>
+                        {template.isDefault && (
+                          <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">
+                            Recommended
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                      <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                        <span>{template.nodeCount} nodes</span>
+                        <span>•</span>
+                        <span>{template.category}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleLoadTemplate(template.id)}
+                      disabled={loadingTemplate}
+                    >
+                      {loadingTemplate ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Settings className="h-4 w-4 mr-1" />
+                      )}
+                      Load & Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleSaveTemplateAsAutomation(template.id)}
+                      disabled={loadingTemplate}
+                    >
+                      {loadingTemplate ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-1" />
+                      )}
+                      Save as New
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowTemplateDialog(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Automation Dialog */}
+      <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Copy className="h-5 w-5 text-blue-500" />
+              Duplicate Automation
+            </DialogTitle>
+            <DialogDescription>
+              Create a copy of this automation. You can rename it and make changes.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              New Automation Name
+            </label>
+            <Input
+              value={duplicateName}
+              onChange={(e) => setDuplicateName(e.target.value)}
+              placeholder="Enter a name for the duplicate"
+            />
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleDuplicateAutomation} disabled={!duplicateName.trim()}>
+              <Copy className="h-4 w-4 mr-1" />
+              Duplicate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Keyboard Shortcuts Dialog - Figma Style */}
+      <Dialog open={showKeyboardShortcuts} onOpenChange={setShowKeyboardShortcuts}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              ⌨️ Keyboard Shortcuts
+            </DialogTitle>
+            <DialogDescription>
+              Figma-style shortcuts for faster workflow editing
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            {/* Selection */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                Selection
+              </h4>
+              <div className="space-y-1.5 pl-4">
+                <ShortcutRow keys={['Ctrl', 'A']} description="Select all nodes" />
+                <ShortcutRow keys={['Esc']} description="Deselect all" />
+                <ShortcutRow keys={['Click']} description="Select node/edge" />
+              </div>
+            </div>
+
+            {/* Edit */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                Edit
+              </h4>
+              <div className="space-y-1.5 pl-4">
+                <ShortcutRow keys={['Ctrl', 'Z']} description="Undo" />
+                <ShortcutRow keys={['Ctrl', 'Y']} description="Redo" />
+                <ShortcutRow keys={['Ctrl', 'Shift', 'Z']} description="Redo (alt)" />
+                <ShortcutRow keys={['Delete']} description="Delete selected" />
+                <ShortcutRow keys={['Backspace']} description="Delete selected" />
+              </div>
+            </div>
+
+            {/* Clipboard */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                Clipboard
+              </h4>
+              <div className="space-y-1.5 pl-4">
+                <ShortcutRow keys={['Ctrl', 'C']} description="Copy selected" />
+                <ShortcutRow keys={['Ctrl', 'V']} description="Paste" />
+                <ShortcutRow keys={['Ctrl', 'D']} description="Duplicate selected" />
+              </div>
+            </div>
+
+            {/* File */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                File
+              </h4>
+              <div className="space-y-1.5 pl-4">
+                <ShortcutRow keys={['Ctrl', 'S']} description="Save automation" />
+                <ShortcutRow keys={['?']} description="Show shortcuts" />
+              </div>
+            </div>
+
+            {/* Canvas */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                Canvas
+              </h4>
+              <div className="space-y-1.5 pl-4">
+                <ShortcutRow keys={['Scroll']} description="Zoom in/out" />
+                <ShortcutRow keys={['Drag']} description="Pan canvas" />
+                <ShortcutRow keys={['Double-click']} description="Open node config" />
+              </div>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button onClick={() => setShowKeyboardShortcuts(false)}>
+              Got it!
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Helper component for keyboard shortcut rows
+function ShortcutRow({ keys, description }: { keys: string[]; description: string }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-gray-600">{description}</span>
+      <div className="flex items-center gap-1">
+        {keys.map((key, index) => (
+          <span key={index} className="flex items-center">
+            <kbd className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-mono shadow-sm">
+              {key}
+            </kbd>
+            {index < keys.length - 1 && <span className="mx-0.5 text-gray-400">+</span>}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

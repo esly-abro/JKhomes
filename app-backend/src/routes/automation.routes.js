@@ -6,9 +6,195 @@ const Automation = require('../models/Automation');
 const AutomationRun = require('../models/AutomationRun');
 const AutomationJob = require('../models/AutomationJob');
 const workflowEngine = require('../services/workflow.engine');
+const defaultAutomationTemplate = require('../config/defaultAutomationTemplate');
 
 async function automationRoutes(fastify, options) {
   const { requireRole } = require('../middleware/roles');
+
+  /**
+   * GET /api/automations/templates
+   * Get available automation templates
+   */
+  fastify.get('/templates', async (request, reply) => {
+    try {
+      const templates = [
+        {
+          id: 'jk-lead-nurturing',
+          name: defaultAutomationTemplate.name,
+          description: defaultAutomationTemplate.description,
+          nodeCount: defaultAutomationTemplate.nodes.length,
+          isDefault: true,
+          category: 'Lead Nurturing'
+        }
+      ];
+
+      return {
+        success: true,
+        data: templates
+      };
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch templates'
+      });
+    }
+  });
+
+  /**
+   * GET /api/automations/templates/:templateId
+   * Get a specific template's full data
+   */
+  fastify.get('/templates/:templateId', async (request, reply) => {
+    try {
+      const { templateId } = request.params;
+
+      if (templateId === 'jk-lead-nurturing') {
+        return {
+          success: true,
+          data: {
+            id: 'jk-lead-nurturing',
+            ...defaultAutomationTemplate
+          }
+        };
+      }
+
+      return reply.code(404).send({
+        success: false,
+        error: 'Template not found'
+      });
+    } catch (error) {
+      console.error('Error fetching template:', error);
+      return reply.code(500).send({
+        success: false,
+        error: 'Failed to fetch template'
+      });
+    }
+  });
+
+  /**
+   * POST /api/automations/templates/:templateId/load
+   * Load a template as a new automation
+   */
+  fastify.post('/templates/:templateId/load', async (request, reply) => {
+    try {
+      const { templateId } = request.params;
+      const { name } = request.body;
+
+      let templateData;
+      if (templateId === 'jk-lead-nurturing') {
+        templateData = defaultAutomationTemplate;
+      } else {
+        return reply.code(404).send({
+          success: false,
+          error: 'Template not found'
+        });
+      }
+
+      // Get user ID if available
+      const ownerId = request.user?._id || null;
+
+      // Find trigger node to determine trigger type
+      const triggerNode = templateData.nodes.find(n => n.type === 'trigger');
+      const triggerType = triggerNode?.data?.type || 'newLead';
+
+      const automation = new Automation({
+        name: name || templateData.name,
+        description: templateData.description,
+        owner: ownerId,
+        nodes: templateData.nodes,
+        edges: templateData.edges,
+        isActive: false, // Start as inactive so user can review
+        triggerType
+      });
+
+      await automation.save();
+
+      console.log(`✅ Template loaded as automation: ${automation.name}`);
+
+      return reply.code(201).send({
+        success: true,
+        data: automation,
+        message: 'Template loaded successfully'
+      });
+    } catch (error) {
+      console.error('Error loading template:', error);
+      return reply.code(500).send({
+        success: false,
+        error: error.message || 'Failed to load template'
+      });
+    }
+  });
+
+  /**
+   * POST /api/automations/:id/duplicate
+   * Duplicate an existing automation
+   */
+  fastify.post('/:id/duplicate', async (request, reply) => {
+    try {
+      const originalAutomation = await Automation.findById(request.params.id);
+
+      if (!originalAutomation) {
+        return reply.code(404).send({
+          success: false,
+          error: 'Automation not found'
+        });
+      }
+
+      const { name } = request.body;
+      const ownerId = request.user?._id || originalAutomation.owner;
+
+      // Create duplicate with modified name
+      const duplicateData = {
+        name: name || `${originalAutomation.name} (Copy)`,
+        description: originalAutomation.description,
+        owner: ownerId,
+        nodes: originalAutomation.nodes.map(node => ({
+          ...node,
+          id: `${node.id}-${Date.now()}` // Generate new IDs
+        })),
+        edges: originalAutomation.edges.map(edge => ({
+          ...edge,
+          id: `${edge.id}-${Date.now()}`,
+          source: `${edge.source}-${Date.now()}`,
+          target: `${edge.target}-${Date.now()}`
+        })),
+        isActive: false, // Start as inactive
+        triggerType: originalAutomation.triggerType,
+        triggerConditions: originalAutomation.triggerConditions
+      };
+
+      // Fix edge references to match new node IDs
+      const nodeIdMap = {};
+      originalAutomation.nodes.forEach((node, index) => {
+        nodeIdMap[node.id] = duplicateData.nodes[index].id;
+      });
+
+      duplicateData.edges = originalAutomation.edges.map(edge => ({
+        ...edge,
+        id: `e-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        source: nodeIdMap[edge.source] || edge.source,
+        target: nodeIdMap[edge.target] || edge.target
+      }));
+
+      const duplicate = new Automation(duplicateData);
+      await duplicate.save();
+
+      console.log(`✅ Automation duplicated: ${originalAutomation.name} → ${duplicate.name}`);
+
+      return reply.code(201).send({
+        success: true,
+        data: duplicate,
+        message: 'Automation duplicated successfully'
+      });
+    } catch (error) {
+      console.error('Error duplicating automation:', error);
+      return reply.code(500).send({
+        success: false,
+        error: error.message || 'Failed to duplicate automation'
+      });
+    }
+  });
 
   /**
    * GET /api/automations

@@ -7,7 +7,7 @@ import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import {
   Plus, Upload, Filter, Search, Phone, Mail, Calendar,
-  MoreHorizontal, Layout, LayoutList, Table as TableIcon, Headphones, X, Download, User, Building, UserCheck, Home
+  MoreHorizontal, Layout, LayoutList, Table as TableIcon, Headphones, X, Download, User, Building, UserCheck, Home, Trash2
 } from 'lucide-react';
 import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import {
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../components/ui/select';
-import { createLead } from '../../services/leads';
+import { createLead, deleteLead, deleteLeads } from '../../services/leads';
 import { Label } from '../components/ui/label';
 import ImportLeadsDialog from '../components/ImportLeadsDialog';
 import { assignLeads } from '../../services/assignments';
@@ -33,13 +33,17 @@ const LeadsTable = ({
   selectedLeads,
   onSelectLead,
   onSelectAll,
-  properties
+  properties,
+  onDeleteLead,
+  isAdminOrManager
 }: {
   leads: Lead[];
   selectedLeads: Set<string>;
   onSelectLead: (leadId: string) => void;
   onSelectAll: (checked: boolean) => void;
   properties: any[];
+  onDeleteLead?: (leadId: string, leadName: string) => void;
+  isAdminOrManager?: boolean;
 }) => {
   const allSelected = leads.length > 0 && leads.every(lead => selectedLeads.has(lead.id));
 
@@ -64,7 +68,7 @@ const LeadsTable = ({
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Source</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Last Action</th>
-              <th className="px-6 py-4"></th>
+              <th className="px-6 py-4 text-center text-sm font-semibold text-gray-900">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -116,11 +120,23 @@ const LeadsTable = ({
                     {lead.lastActivity ? new Date(lead.lastActivity).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-6 py-4">
-                    <Link to={`/leads/${lead.id}`}>
-                      <Button variant="outline" size="sm" className="rounded-md border-blue-300 text-blue-600 hover:bg-blue-50">
-                        Call Agent
-                      </Button>
-                    </Link>
+                    <div className="flex items-center justify-center gap-2">
+                      <Link to={`/leads/${lead.id}`}>
+                        <Button variant="outline" size="sm" className="rounded-md border-blue-300 text-blue-600 hover:bg-blue-50">
+                          Call Agent
+                        </Button>
+                      </Link>
+                      {isAdminOrManager && onDeleteLead && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="rounded-md border-red-300 text-red-600 hover:bg-red-50"
+                          onClick={() => onDeleteLead(lead.id, lead.name)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -279,9 +295,12 @@ export default function Leads() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [users, setUsers] = useState<any[]>([]);
   const [properties, setProperties] = useState<any[]>([]);
@@ -391,6 +410,64 @@ export default function Leads() {
     } finally {
       setAssigning(false);
     }
+  };
+
+  // Handle single lead delete
+  const handleDeleteLead = (leadId: string, leadName: string) => {
+    setDeleteTarget({ id: leadId, name: leadName });
+    setShowDeleteDialog(true);
+  };
+
+  // Confirm and execute delete
+  const confirmDelete = async () => {
+    if (!deleteTarget && selectedLeads.size === 0) return;
+
+    try {
+      setDeleting(true);
+      
+      if (deleteTarget) {
+        // Single delete
+        await deleteLead(deleteTarget.id);
+        addNotification({
+          type: 'system',
+          iconType: 'trash',
+          title: `Lead deleted: <strong>${deleteTarget.name}</strong>`,
+          description: 'Lead has been permanently removed',
+          isUnread: true,
+        });
+      } else {
+        // Bulk delete
+        const leadIds = Array.from(selectedLeads);
+        const result = await deleteLeads(leadIds);
+        addNotification({
+          type: 'system',
+          iconType: 'trash',
+          title: `${result.deletedCount} lead(s) deleted`,
+          description: result.failedCount > 0 ? `${result.failedCount} failed to delete` : 'All leads removed successfully',
+          isUnread: true,
+        });
+        setSelectedLeads(new Set());
+      }
+
+      setShowDeleteDialog(false);
+      setDeleteTarget(null);
+      await refreshLeads();
+    } catch (error: any) {
+      console.error('Failed to delete lead(s):', error);
+      alert(error.response?.data?.error || 'Failed to delete lead(s)');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // Handle bulk delete button click
+  const handleBulkDelete = () => {
+    if (selectedLeads.size === 0) {
+      alert('Please select at least one lead to delete');
+      return;
+    }
+    setDeleteTarget(null); // null means bulk delete
+    setShowDeleteDialog(true);
   };
 
   const filteredLeads = leads.filter(lead => {
@@ -531,10 +608,16 @@ export default function Leads() {
         </div>
         <div className="flex gap-2">
           {selectedLeads.size > 0 && isAdminOrManager && (
-            <Button onClick={() => setShowAssignDialog(true)} className="bg-purple-600 hover:bg-purple-700">
-              <UserCheck className="h-4 w-4 mr-2" />
-              Assign ({selectedLeads.size})
-            </Button>
+            <>
+              <Button onClick={() => setShowAssignDialog(true)} className="bg-purple-600 hover:bg-purple-700">
+                <UserCheck className="h-4 w-4 mr-2" />
+                Assign ({selectedLeads.size})
+              </Button>
+              <Button onClick={handleBulkDelete} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete ({selectedLeads.size})
+              </Button>
+            </>
           )}
           {isAdminOrManager && (
             <>
@@ -664,6 +747,8 @@ export default function Leads() {
             onSelectLead={handleSelectLead}
             onSelectAll={handleSelectAll}
             properties={properties}
+            onDeleteLead={handleDeleteLead}
+            isAdminOrManager={isAdminOrManager}
           />
         )}
         {view === 'list' && <LeadsList leads={filteredLeads} />}
@@ -872,6 +957,60 @@ export default function Leads() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">Delete Lead{!deleteTarget ? 's' : ''}</h2>
+              <button
+                onClick={() => { setShowDeleteDialog(false); setDeleteTarget(null); }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <Trash2 className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-red-800 font-medium">
+                      {deleteTarget 
+                        ? `Are you sure you want to delete "${deleteTarget.name}"?`
+                        : `Are you sure you want to delete ${selectedLeads.size} lead(s)?`
+                      }
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      This action cannot be undone. The lead(s) will be removed from both the app and Zoho CRM.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => { setShowDeleteDialog(false); setDeleteTarget(null); }}
+                  className="flex-1"
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={confirmDelete} 
+                  className="flex-1 bg-red-600 hover:bg-red-700" 
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

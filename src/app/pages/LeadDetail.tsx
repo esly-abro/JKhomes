@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
-import { ArrowLeft, User, Phone, MapPin, FileText, Clock, Loader2, PhoneOff, Mic, MicOff, CheckCircle, Mail, Sparkles, MessageSquare } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, FileText, Clock, Loader2, PhoneOff, Mic, MicOff, CheckCircle, Mail, Sparkles, MessageSquare, PhoneCall } from 'lucide-react';
 import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
@@ -15,6 +15,7 @@ import ScheduleSiteVisitDialog from '../components/ScheduleSiteVisitDialog';
 import { useAIVoiceCall } from '../hooks/useAIVoiceCall';
 import { updateLeadStatus } from '../../services/leads';
 import { WhatsAppTemplate, getTemplates, sendTemplateMessage } from '../../services/whatsapp';
+import { makeHumanCall, getCallStatus } from '../../services/twilio';
 
 // Activity type for the lead
 interface LeadActivity {
@@ -54,6 +55,13 @@ export default function LeadDetail() {
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
 
+  // Human Phone Call State
+  const [isHumanCallConnecting, setIsHumanCallConnecting] = useState(false);
+  const [isHumanCallActive, setIsHumanCallActive] = useState(false);
+  const [humanCallSid, setHumanCallSid] = useState<string | null>(null);
+  const [humanCallStatus, setHumanCallStatus] = useState<string | null>(null);
+  const humanCallStatusPollRef = useRef<NodeJS.Timeout | null>(null);
+
   // Use ElevenLabs Hook
   const {
     makeCall,
@@ -84,13 +92,18 @@ export default function LeadDetail() {
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     try {
-      const response = await fetch(`http://localhost:3000/elevenlabs/summary/${encodeURIComponent(phoneNumber)}`);
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(phoneNumber)}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
       const data = await response.json();
 
-      if (data.success && data.summary) {
-        setAiCallSummary(data.summary);
+      if (data.success && data.data?.summary) {
+        setAiCallSummary(data.data.summary);
         // Save to localStorage for persistence
-        localStorage.setItem(`lead_ai_summary_${id}`, data.summary);
+        localStorage.setItem(`lead_ai_summary_${id}`, data.data.summary);
         addLeadActivity('note', 'AI Call Summary received', 'bg-purple-500');
       }
     } catch (error) {
@@ -205,6 +218,68 @@ export default function LeadDetail() {
     }
   };
 
+  // Handle Human Phone Call button click
+  const handleHumanCall = async () => {
+    if (!lead?.phone) return;
+
+    if (isHumanCallActive) {
+      // Call is active, user wants to end/close
+      setIsHumanCallActive(false);
+      setHumanCallSid(null);
+      setHumanCallStatus(null);
+      addLeadActivity('call', 'Human Call Closed', 'bg-gray-500');
+      // Clear polling
+      if (humanCallStatusPollRef.current) {
+        clearInterval(humanCallStatusPollRef.current);
+        humanCallStatusPollRef.current = null;
+      }
+    } else {
+      // Start new human call via ElevenLabs
+      setIsHumanCallConnecting(true);
+      setHumanCallStatus('📞 Initiating call via ElevenLabs...');
+      addLeadActivity('call', 'Human Call Initiated', 'bg-orange-500');
+
+      try {
+        const result = await makeHumanCall(lead.phone, lead.id, lead.name);
+        
+        if (result.success) {
+          const callId = result.callSid || result.conversationId || 'call';
+          setHumanCallSid(callId);
+          setIsHumanCallActive(true);
+          setHumanCallStatus(`🔊 Call ${result.status || 'initiated'} - Lead will receive a call`);
+          addLeadActivity('call', `Human Call Connected${callId !== 'call' ? ` (ID: ${callId.substring(0, 8)}...)` : ''}`, 'bg-green-500');
+          
+          // Auto-reset after 30 seconds since ElevenLabs webhooks handle the actual call lifecycle
+          setTimeout(() => {
+            if (isHumanCallActive) {
+              setHumanCallStatus('📞 Call in progress - close when done');
+            }
+          }, 5000);
+        } else {
+          setHumanCallStatus(`❌ Failed: ${result.error || 'Unknown error'}`);
+          addLeadActivity('call', `Human Call Failed: ${result.error}`, 'bg-red-500');
+          setTimeout(() => setHumanCallStatus(null), 5000);
+        }
+      } catch (error: any) {
+        console.error('Human call error:', error);
+        setHumanCallStatus(`❌ Error: ${error.message}`);
+        addLeadActivity('call', `Human Call Error: ${error.message}`, 'bg-red-500');
+        setTimeout(() => setHumanCallStatus(null), 5000);
+      } finally {
+        setIsHumanCallConnecting(false);
+      }
+    }
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (humanCallStatusPollRef.current) {
+        clearInterval(humanCallStatusPollRef.current);
+      }
+    };
+  }, []);
+
   // Load WhatsApp templates
   const loadWhatsAppTemplates = async () => {
     setIsLoadingTemplates(true);
@@ -252,12 +327,17 @@ export default function LeadDetail() {
       } else {
         // Try to fetch from API if not in local storage (e.g. existing conversation)
         // Don't show loading state on initial load to avoid flickering if nothing exists
-        fetch(`http://localhost:3000/elevenlabs/summary/${encodeURIComponent(lead.phone)}`)
+        const token = localStorage.getItem('accessToken');
+        fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(lead.phone)}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
           .then(res => res.json())
           .then(data => {
-            if (data.success && data.summary) {
-              setAiCallSummary(data.summary);
-              localStorage.setItem(`lead_ai_summary_${id}`, data.summary);
+            if (data.success && data.data?.summary) {
+              setAiCallSummary(data.data.summary);
+              localStorage.setItem(`lead_ai_summary_${id}`, data.data.summary);
             }
           })
           .catch(err => console.error('Error fetching initial AI summary:', err));
@@ -412,12 +492,20 @@ export default function LeadDetail() {
               </div>
             )}
 
+            {/* Human Call Status */}
+            {humanCallStatus && (
+              <div className={`p-3 rounded-lg mb-4 mt-4 ${humanCallStatus.includes('✅') || humanCallStatus.includes('🔊') ? 'bg-orange-100 text-orange-800' : humanCallStatus.includes('❌') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                {humanCallStatus}
+                {isHumanCallActive && <span className="ml-2 animate-pulse">●</span>}
+              </div>
+            )}
+
             {/* Action Buttons */}
-            <div className="grid grid-cols-4 gap-4 mt-6">
+            <div className="grid grid-cols-3 gap-4 mt-6">
               <Button
                 className={isOnCall ? "bg-red-600 hover:bg-red-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}
                 onClick={handleCall}
-                disabled={isConnecting}
+                disabled={isConnecting || isHumanCallConnecting || isHumanCallActive}
               >
                 {isConnecting ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -429,6 +517,20 @@ export default function LeadDetail() {
                 {isConnecting ? 'Connecting...' : isOnCall ? 'End' : 'AI Call Now'}
               </Button>
               <Button
+                className="bg-orange-600 hover:bg-orange-700 text-white"
+                onClick={() => {
+                  // Open phone dialer with lead's number (works on mobile & desktop with phone apps)
+                  const phoneNumber = lead.phone.replace(/[^0-9+]/g, '');
+                  const formattedNumber = phoneNumber.startsWith('+') ? phoneNumber : 
+                    (phoneNumber.length === 10 ? `+91${phoneNumber}` : `+${phoneNumber}`);
+                  window.open(`tel:${formattedNumber}`, '_self');
+                  addLeadActivity('call', `Human Call initiated to ${lead.phone}`, 'bg-orange-500');
+                }}
+              >
+                <PhoneCall className="h-4 w-4 mr-2" />
+                Human Call
+              </Button>
+              <Button
                 className="bg-[#25D366] hover:bg-[#128C7E] text-white"
                 onClick={() => {
                   setWhatsappDialogOpen(true);
@@ -438,6 +540,8 @@ export default function LeadDetail() {
                 <MessageSquare className="h-4 w-4 mr-2" />
                 WhatsApp
               </Button>
+            </div>
+            <div className="grid grid-cols-3 gap-4 mt-3">
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white"
                 onClick={() => {

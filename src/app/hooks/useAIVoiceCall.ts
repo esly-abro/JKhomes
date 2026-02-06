@@ -1,14 +1,11 @@
 import { useState, useCallback } from 'react';
-import axios from 'axios';
+import api from '../../services/api';
 
 interface UseAIVoiceCallOptions {
     onCallStarted?: () => void;
     onCallEnded?: () => void;
     onError?: (error: string) => void;
 }
-
-// API Base URL (hardcoded for now as per environment)
-const API_BASE_URL = 'http://localhost:3000';
 
 export function useAIVoiceCall(options: UseAIVoiceCallOptions = {}) {
     const [isConnecting, setIsConnecting] = useState(false);
@@ -23,7 +20,7 @@ export function useAIVoiceCall(options: UseAIVoiceCallOptions = {}) {
 
             console.log('Initiating AI call via ElevenLabs...', { phoneNumber, leadId });
 
-            const response = await axios.post(`${API_BASE_URL}/elevenlabs/call`, {
+            const response = await api.post('/api/elevenlabs/call', {
                 phoneNumber,
                 leadId,
                 leadName,

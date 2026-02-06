@@ -90,18 +90,27 @@ function getFieldValue(lead, field) {
 function evaluateOperator(fieldValue, operator, value) {
     switch (operator) {
         case 'equals':
+        case '===':
+        case '==':
+        case '=':
             return String(fieldValue).toLowerCase() === String(value).toLowerCase();
         case 'notEquals':
+        case '!==':
+        case '!=':
             return String(fieldValue).toLowerCase() !== String(value).toLowerCase();
         case 'contains':
             return String(fieldValue).toLowerCase().includes(String(value).toLowerCase());
         case 'greaterThan':
+        case '>':
             return Number(fieldValue) > Number(value);
         case 'lessThan':
+        case '<':
             return Number(fieldValue) < Number(value);
         case 'greaterThanOrEquals':
+        case '>=':
             return Number(fieldValue) >= Number(value);
         case 'lessThanOrEquals':
+        case '<=':
             return Number(fieldValue) <= Number(value);
         case 'isEmpty':
             return !fieldValue || fieldValue === '' || fieldValue === null || fieldValue === undefined;

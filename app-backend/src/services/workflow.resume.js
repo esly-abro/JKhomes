@@ -277,11 +277,13 @@ async function resumeFromCallTimeout(run, scheduleNodeFn) {
 
 /**
  * Resume automation when an agent completes a task
+ * Works with the new Task model structure
  */
 async function resumeFromTaskCompletion(task, scheduleNodeFn) {
     try {
-        const automationRunId = task.metadata?.automationRunId;
-        const nodeId = task.metadata?.nodeId;
+        // Support both new Task model and old Activity metadata
+        const automationRunId = task.automationRun || task.metadata?.automationRunId;
+        const nodeId = task.nodeId || task.metadata?.nodeId;
         
         if (!automationRunId) {
             console.log('⚠️ Task has no automation run ID, skipping resume');
@@ -297,7 +299,8 @@ async function resumeFromTaskCompletion(task, scheduleNodeFn) {
             return { success: false, reason: 'Run not found' };
         }
 
-        if (run.status !== 'waiting_for_response' && run.status !== 'running') {
+        // Accept waiting_for_task status as well
+        if (!['waiting_for_response', 'waiting_for_task', 'running'].includes(run.status)) {
             console.log(`⚠️ Run ${automationRunId} is in ${run.status} state, cannot resume`);
             return { success: false, reason: `Run is ${run.status}` };
         }
@@ -310,25 +313,45 @@ async function resumeFromTaskCompletion(task, scheduleNodeFn) {
         if (!run.context) run.context = {};
         run.context.taskCompleted = true;
         run.context.taskCompletedAt = new Date();
-        run.context.taskOutcome = task.outcome || 'completed';
-        run.context.taskNotes = task.description;
+        run.context.taskResult = task.completionResult || 'completed';
+        run.context.taskNotes = task.completionNotes;
+        run.context.taskType = task.type;
 
         updateExecutionPathCompleted(run, nodeId, {
             taskCompleted: true,
-            outcome: task.outcome,
-            completedBy: task.userId?.toString()
+            result: task.completionResult,
+            completedAt: task.completedAt,
+            taskType: task.type
         });
 
+        // Determine handle based on task result
         let nextHandle = 'completed';
-        if (task.outcome === 'positive') nextHandle = 'positive';
-        else if (task.outcome === 'negative') nextHandle = 'negative';
+        if (task.completionResult === 'success') nextHandle = 'success';
+        else if (task.completionResult === 'failed') nextHandle = 'failed';
+        else if (task.completionResult === 'rescheduled') nextHandle = 'rescheduled';
+        else if (task.completionResult === 'no_answer') nextHandle = 'no_answer';
         
+        // Clear all waiting states
         run.status = 'running';
         if (run.waitingForResponse) run.waitingForResponse.isWaiting = false;
         if (run.waitingForCall) run.waitingForCall.isWaiting = false;
+        if (run.waitingForTask) run.waitingForTask.isWaiting = false;
         await run.save();
 
+        // Get the scheduleNodeFn from workflow engine if not provided
+        if (!scheduleNodeFn) {
+            const workflowEngine = require('./workflow.engine');
+            scheduleNodeFn = workflowEngine.scheduleNode?.bind(workflowEngine);
+        }
+
         const scheduled = await scheduleNextNodes(run, automation, lead, nodeId, nextHandle, scheduleNodeFn);
+
+        if (scheduled === 0) {
+            run.status = 'completed';
+            run.completedAt = new Date();
+            await run.save();
+            console.log(`✅ Automation completed after task completion`);
+        }
 
         return {
             success: true,

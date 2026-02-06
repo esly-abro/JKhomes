@@ -19864,3 +19864,79 @@
 2026-02-05 11:23:01 [INFO]: No exact phone match, using most recent conversation
 2026-02-05 11:23:02 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
 2026-02-05 11:23:02 [INFO]: GET /elevenlabs/summary/8457423698 200 779ms
+2026-02-05 17:55:08 [INFO]: Twilio client initialized
+2026-02-05 17:55:08 [INFO]: WhatsApp service initialized via Twilio
+2026-02-05 17:55:08 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-05 17:55:08 [INFO]: Post-Call Orchestrator initialized
+2026-02-05 17:55:08 [INFO]: 🚀 Server started on port 3000
+2026-02-05 17:55:08 [INFO]: Environment: development
+2026-02-05 17:55:08 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-05 17:55:08 [INFO]: Twilio Configured: true
+2026-02-05 17:55:08 [INFO]: OpenAI Configured: false
+2026-02-05 17:55:08 [INFO]: WhatsApp Configured: true
+2026-02-05 17:55:08 [INFO]: 
+2026-02-05 17:55:08 [INFO]: Available endpoints:
+2026-02-05 17:55:08 [INFO]:   POST   http://localhost:3000/leads
+2026-02-05 17:55:08 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-05 17:55:08 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-05 17:55:08 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-05 17:55:08 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-05 17:55:08 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-05 17:55:08 [INFO]:   GET    http://localhost:3000/health
+2026-02-05 17:55:08 [INFO]: 
+2026-02-05 17:55:08 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-05 17:56:02 [INFO]: GET /elevenlabs/summary/9629649944 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 17:56:02 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91962***"}
+2026-02-05 17:56:03 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 17:56:03 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
+2026-02-05 17:56:03 [INFO]: GET /elevenlabs/summary/9629649944 200 1268ms
+2026-02-05 18:08:37 [INFO]: SIGINT received, shutting down gracefully...
+2026-02-05 18:09:42 [INFO]: Twilio client initialized
+2026-02-05 18:09:42 [INFO]: WhatsApp service initialized via Twilio
+2026-02-05 18:09:42 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-05 18:09:42 [INFO]: Post-Call Orchestrator initialized
+2026-02-05 18:09:42 [INFO]: 🚀 Server started on port 3000
+2026-02-05 18:09:42 [INFO]: Environment: development
+2026-02-05 18:09:42 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-05 18:09:42 [INFO]: Twilio Configured: true
+2026-02-05 18:09:42 [INFO]: OpenAI Configured: false
+2026-02-05 18:09:42 [INFO]: WhatsApp Configured: true
+2026-02-05 18:09:42 [INFO]: 
+2026-02-05 18:09:42 [INFO]: Available endpoints:
+2026-02-05 18:09:42 [INFO]:   POST   http://localhost:3000/leads
+2026-02-05 18:09:42 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-05 18:09:42 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-05 18:09:42 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-05 18:09:42 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-05 18:09:42 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-05 18:09:42 [INFO]:   GET    http://localhost:3000/health
+2026-02-05 18:09:42 [INFO]: 
+2026-02-05 18:09:42 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-05 18:25:17 [INFO]: SIGINT received, shutting down gracefully...
+2026-02-05 18:26:11 [INFO]: Twilio client initialized
+2026-02-05 18:26:11 [INFO]: WhatsApp service initialized via Twilio
+2026-02-05 18:26:11 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-05 18:26:11 [INFO]: Post-Call Orchestrator initialized
+2026-02-05 18:26:11 [INFO]: 🚀 Server started on port 3000
+2026-02-05 18:26:11 [INFO]: Environment: development
+2026-02-05 18:26:11 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-05 18:26:11 [INFO]: Twilio Configured: true
+2026-02-05 18:26:11 [INFO]: OpenAI Configured: false
+2026-02-05 18:26:11 [INFO]: WhatsApp Configured: true
+2026-02-05 18:26:11 [INFO]: 
+2026-02-05 18:26:11 [INFO]: Available endpoints:
+2026-02-05 18:26:11 [INFO]:   POST   http://localhost:3000/leads
+2026-02-05 18:26:11 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-05 18:26:11 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-05 18:26:11 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-05 18:26:11 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-05 18:26:11 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-05 18:26:11 [INFO]:   GET    http://localhost:3000/health
+2026-02-05 18:26:11 [INFO]: 
+2026-02-05 18:26:11 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-05 19:07:55 [INFO]: GET /elevenlabs/summary/9629649944 {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"}
+2026-02-05 19:07:55 [INFO]: Fetching ElevenLabs conversations for phone {"phone":"+91962***"}
+2026-02-05 19:07:56 [INFO]: No exact phone match, using most recent conversation
+2026-02-05 19:07:56 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
+2026-02-05 19:07:56 [INFO]: GET /elevenlabs/summary/9629649944 304 955ms
+2026-02-05 19:52:54 [INFO]: SIGINT received, shutting down gracefully...

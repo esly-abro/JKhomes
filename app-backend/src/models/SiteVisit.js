@@ -137,7 +137,7 @@ siteVisitSchema.index({ agentId: 1, scheduledDate: 1, 'timeSlot.startTime': 1, s
 /**
  * Pre-save hook to set scheduledDate from scheduledAt
  */
-siteVisitSchema.pre('save', function(next) {
+siteVisitSchema.pre('save', async function() {
     if (this.scheduledAt) {
         const date = new Date(this.scheduledAt);
         this.scheduledDate = date.toISOString().split('T')[0];
@@ -157,7 +157,6 @@ siteVisitSchema.pre('save', function(next) {
             this.timeSlot = { startTime, endTime };
         }
     }
-    next();
 });
 
 /**

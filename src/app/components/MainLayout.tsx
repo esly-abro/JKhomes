@@ -23,7 +23,8 @@ import {
   Check,
   UserCheck,
   Zap,
-  Megaphone
+  Megaphone,
+  ClipboardList
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -57,6 +58,7 @@ export default function MainLayout() {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, showFor: 'all' },
     { name: isAgent ? 'My Leads' : 'Leads', href: '/leads', icon: Users, showFor: 'all' },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, showFor: 'all' },
     { name: 'Agents', href: '/agents', icon: UserCheck, showFor: 'admin' },
     { name: 'Properties', href: '/properties', icon: Home, showFor: 'admin' },
     { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin' },

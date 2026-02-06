@@ -55,6 +55,31 @@ async function updateLead(request, reply) {
 }
 
 /**
+ * DELETE /api/leads/:id
+ * Delete a single lead
+ */
+async function deleteLead(request, reply) {
+    const { id } = request.params;
+    const result = await leadsService.deleteLead(request.user, id);
+    return reply.code(200).send(result);
+}
+
+/**
+ * POST /api/leads/bulk-delete
+ * Delete multiple leads at once
+ */
+async function bulkDeleteLeads(request, reply) {
+    const { leadIds } = request.body;
+    
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+        return reply.code(400).send({ success: false, error: 'Please provide leadIds array' });
+    }
+    
+    const result = await leadsService.deleteLeads(request.user, leadIds);
+    return reply.code(200).send(result);
+}
+
+/**
  * PATCH /api/leads/:id/status
  * Update lead status only
  */
@@ -236,6 +261,8 @@ module.exports = {
     getLead,
     createLead,
     updateLead,
+    deleteLead,
+    bulkDeleteLeads,
     updateLeadStatus,
     postSiteVisit,
     getTodaySiteVisits,

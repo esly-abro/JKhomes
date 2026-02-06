@@ -491,7 +491,15 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                 <h4 className="text-xs font-semibold text-yellow-800 uppercase mb-2">Condition Preview</h4>
                 <p className="text-sm text-yellow-900">
                   If <span className="font-semibold">{conditionField}</span>{' '}
-                  <span className="font-medium">{conditionOperator.replace(/([A-Z])/g, ' $1').toLowerCase()}</span>{' '}
+                  <span className="font-medium">{{
+                    'equals': '===',
+                    'notEquals': '!==',
+                    'contains': 'contains',
+                    'greaterThan': '>',
+                    'lessThan': '<',
+                    'isEmpty': 'is empty',
+                    'isNotEmpty': 'is not empty'
+                  }[conditionOperator] || conditionOperator}</span>{' '}
                   {!['isEmpty', 'isNotEmpty'].includes(conditionOperator) && (
                     <span className="font-semibold">"{conditionValue || '...'}"</span>
                   )}

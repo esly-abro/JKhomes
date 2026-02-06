@@ -384,6 +384,19 @@ async function createLead(leadData, organizationId = null) {
 }
 
 /**
+ * Delete a lead from Zoho CRM
+ */
+async function deleteLead(leadId, organizationId = null) {
+    try {
+        const result = await makeRequest('DELETE', `/Leads/${leadId}`, null, null, organizationId);
+        return { success: true, data: result.data };
+    } catch (error) {
+        console.error('Error deleting lead:', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Get organization info from Zoho
  */
 async function getZohoOrganization(organizationId = null) {
@@ -413,6 +426,7 @@ module.exports = {
     createLeadCall,
     createTask,
     updateLead,
+    deleteLead,
     getZohoOrganization,
     clearTokenCache
 };

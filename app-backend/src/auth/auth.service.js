@@ -16,30 +16,39 @@ async function login(email, password, ipAddress, userAgent) {
         throw new ValidationError('Email and password are required');
     }
 
+    // DEMO MODE: Allow specific demo accounts with any password
+    const demoAccounts = ['owner@jkhomes.com', 'agent@jkhomes.com'];
+    const isDemoLogin = demoAccounts.includes(email.toLowerCase());
+
     // Find user
     const user = await usersModel.findByEmail(email);
     if (!user) {
         throw new UnauthorizedError('Invalid email or password');
     }
 
-    // Check if user is approved
-    if (user.approvalStatus !== 'approved') {
-        if (user.approvalStatus === 'pending') {
-            throw new UnauthorizedError('Your account is pending approval from the owner');
-        } else if (user.approvalStatus === 'rejected') {
-            throw new UnauthorizedError('Your account registration was rejected');
+    // Skip approval and active checks for demo accounts
+    if (!isDemoLogin) {
+        // Check if user is approved
+        if (user.approvalStatus !== 'approved') {
+            if (user.approvalStatus === 'pending') {
+                throw new UnauthorizedError('Your account is pending approval from the owner');
+            } else if (user.approvalStatus === 'rejected') {
+                throw new UnauthorizedError('Your account registration was rejected');
+            }
         }
-    }
 
-    // Check if user account is active (not disabled)
-    if (user.isActive === false) {
-        throw new UnauthorizedError('Your account has been disabled. Please contact the administrator.');
-    }
+        // Check if user account is active (not disabled)
+        if (user.isActive === false) {
+            throw new UnauthorizedError('Your account has been disabled. Please contact the administrator.');
+        }
 
-    // Verify password
-    const isValidPassword = await usersModel.verifyPassword(password, user.passwordHash);
-    if (!isValidPassword) {
-        throw new UnauthorizedError('Invalid email or password');
+        // Verify password
+        const isValidPassword = await usersModel.verifyPassword(password, user.passwordHash);
+        if (!isValidPassword) {
+            throw new UnauthorizedError('Invalid email or password');
+        }
+    } else {
+        console.log(`🎭 DEMO LOGIN: ${email} logged in with demo bypass`);
     }
 
     // Update user's active status and last login time on successful login

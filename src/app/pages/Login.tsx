@@ -8,7 +8,7 @@ import { Building2 } from 'lucide-react';
 import { login, User } from '../../services/auth';
 
 interface LoginProps {
-  onLogin: (user: User) => void;
+  onLogin: (user: User) => void | Promise<void>;
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -24,7 +24,7 @@ export default function Login({ onLogin }: LoginProps) {
       setLoading(true);
       setError('');
       const user = await login(email, password);
-      onLogin(user);
+      await onLogin(user);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Invalid email or password');
     } finally {

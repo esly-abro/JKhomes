@@ -139,6 +139,51 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
         };
     }
 
+    // ALWAYS use MongoDB as primary source for leads
+    // This ensures local-only leads (created when Zoho is unavailable) are always visible
+    if (useDatabase()) {
+        try {
+            const query = {};
+            if (status) query.status = status;
+            if (source) query.source = source;
+            if (owner) query.assignedTo = owner;
+            
+            const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+            const mongoLeads = await Lead.find(query)
+                .sort({ updatedAt: -1 })
+                .skip(skip)
+                .limit(parseInt(limit, 10))
+                .lean();
+            
+            const total = await Lead.countDocuments(query);
+            
+            // Map MongoDB leads to frontend format
+            const leads = mongoLeads.map(lead => ({
+                id: lead.zohoId || lead._id.toString(),
+                ...lead,
+                _id: undefined
+            }));
+            
+            // Apply permission filtering
+            const filteredLeads = filterLeadsByPermission(user, leads);
+            
+            return {
+                data: filteredLeads,
+                pagination: {
+                    page: parseInt(page, 10),
+                    limit: parseInt(limit, 10),
+                    total,
+                    totalPages: Math.ceil(total / parseInt(limit, 10))
+                },
+                source: 'mongodb'
+            };
+        } catch (dbError) {
+            console.error('MongoDB query failed:', dbError);
+            // Fall through to Zoho
+        }
+    }
+
+    // Fallback to Zoho if MongoDB fails
     // Build search criteria
     const criteria = [];
 
@@ -155,10 +200,8 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
         criteria.push(`(Owner:equals:${owner})`);
     }
 
-    // Try to fetch from Zoho, fallback to MongoDB if it fails
     let leads = [];
     let zohoResponse = null;
-    let useZohoData = false;
 
     try {
         // Fetch from Zoho
@@ -171,63 +214,13 @@ async function getLeads(user, { page = 1, limit = 20, status, source, owner }) {
         
         // Map leads from Zoho
         leads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
-        useZohoData = true;
     } catch (zohoError) {
-        console.warn('Zoho API unavailable, falling back to MongoDB:', zohoError.message);
-        
-        // Fallback to MongoDB
-        if (useDatabase()) {
-            try {
-                const query = {};
-                if (status) query.status = status;
-                if (source) query.source = source;
-                if (owner) query.assignedTo = owner;
-                
-                const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
-                const mongoLeads = await Lead.find(query)
-                    .sort({ updatedAt: -1 })
-                    .skip(skip)
-                    .limit(parseInt(limit, 10))
-                    .lean();
-                
-                const total = await Lead.countDocuments(query);
-                
-                // Map MongoDB leads to frontend format
-                leads = mongoLeads.map(lead => ({
-                    id: lead.zohoLeadId || lead._id.toString(),
-                    ...lead,
-                    _id: undefined
-                }));
-                
-                // Return MongoDB data with pagination
-                const filteredLeads = filterLeadsByPermission(user, leads);
-                return {
-                    data: filteredLeads,
-                    pagination: {
-                        page: parseInt(page, 10),
-                        limit: parseInt(limit, 10),
-                        total,
-                        totalPages: Math.ceil(total / parseInt(limit, 10))
-                    },
-                    source: 'mongodb-fallback'
-                };
-            } catch (dbError) {
-                console.error('MongoDB fallback also failed:', dbError);
-                throw zohoError; // Re-throw original Zoho error
-            }
-        } else {
-            throw zohoError;
-        }
-    }
-
-    // Merge local-only fields from MongoDB (propertyId, assignedTo, notes)
-    // NOTE: Status is NOT merged - Zoho is source of truth for status
-    if (useDatabase() && leads.length > 0 && useZohoData) {
-        try {
-            leads = await dataLayer.batchMergeWithLocalData(leads);
-        } catch (dbError) {
-            console.error('Failed to merge local data from MongoDB:', dbError);
-        }
+        console.warn('Zoho API also unavailable:', zohoError.message);
+        return {
+            data: [],
+            pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+            error: 'Unable to fetch leads from any source'
+        };
     }
 
     // Apply permission filtering
@@ -429,15 +422,20 @@ async function createLead(leadData) {
             }
 
             // Trigger automation workflows for new lead
+            console.log(`🤖 Attempting to trigger automations for lead: ${zohoResult.leadId}`);
             try {
                 const savedLead = await Lead.findOne({ zohoId: zohoResult.leadId });
+                console.log(`🤖 Found saved lead:`, savedLead ? savedLead._id : 'NOT FOUND');
                 if (savedLead) {
-                    workflowEngine.triggerNewLead(savedLead).catch(err => {
-                        console.error('Error triggering new lead automations:', err);
+                    console.log(`🤖 Calling workflowEngine.triggerNewLead...`);
+                    workflowEngine.triggerNewLead(savedLead).then(result => {
+                        console.log(`🤖 Automation trigger result:`, result);
+                    }).catch(err => {
+                        console.error('❌ Error triggering new lead automations:', err);
                     });
                 }
             } catch (automationError) {
-                console.error('Failed to trigger automations:', automationError);
+                console.error('❌ Failed to trigger automations:', automationError);
             }
 
             // Send AWS email notification for new lead (non-blocking)
@@ -508,6 +506,18 @@ async function updateLead(user, leadId, updateData) {
                 workflowEngine.triggerLeadUpdated(mongoLead, updateData).catch(err => {
                     console.error('Error triggering lead updated automations:', err);
                 });
+                
+                // Check for task auto-completion on status change
+                if (updateData.status) {
+                    const { taskService } = require('../tasks');
+                    taskService.checkAutoCompleteForStatusChange(mongoLead._id, updateData.status)
+                        .then(count => {
+                            if (count > 0) {
+                                console.log(`✅ Auto-completed ${count} task(s) from status change: ${updateData.status}`);
+                            }
+                        })
+                        .catch(err => console.error('Task auto-complete failed:', err.message));
+                }
             }
         }
     } catch (automationError) {
@@ -515,6 +525,80 @@ async function updateLead(user, leadId, updateData) {
     }
 
     return updatedLead;
+}
+
+/**
+ * Delete lead - removes from both Zoho and MongoDB
+ */
+async function deleteLead(user, leadId) {
+    // Demo mode - remove from memory
+    if (isDemoMode) {
+        const index = mockLeads.findIndex(l => l.id === leadId);
+        if (index === -1) {
+            throw new NotFoundError('Lead not found');
+        }
+        mockLeads.splice(index, 1);
+        return { success: true, message: 'Lead deleted successfully' };
+    }
+
+    // First, try to delete from Zoho CRM
+    let zohoDeleted = false;
+    try {
+        const result = await zohoClient.deleteLead(leadId);
+        zohoDeleted = result.success;
+        if (!result.success) {
+            console.warn('Zoho delete failed:', result.error);
+        }
+    } catch (zohoError) {
+        console.warn('Zoho API unavailable for delete, will remove from MongoDB:', zohoError.message);
+    }
+
+    // Also delete from MongoDB
+    if (useDatabase()) {
+        try {
+            // Delete lead record
+            await Lead.deleteOne({ $or: [{ zohoId: leadId }, { _id: leadId }, { zohoLeadId: leadId }] });
+            
+            // Also delete related site visits
+            const SiteVisit = require('../models/SiteVisit');
+            await SiteVisit.deleteMany({ leadId: leadId });
+            
+            // Delete related activities
+            const Activity = require('../models/Activity');
+            await Activity.deleteMany({ leadId: leadId });
+            
+            console.log(`Lead ${leadId} and related data deleted from MongoDB`);
+        } catch (dbError) {
+            console.error('Failed to delete lead from MongoDB:', dbError);
+        }
+    }
+
+    return { 
+        success: true, 
+        message: zohoDeleted ? 'Lead deleted from Zoho and MongoDB' : 'Lead deleted from MongoDB (Zoho unavailable)',
+        zohoDeleted 
+    };
+}
+
+/**
+ * Bulk delete leads - removes multiple leads from both Zoho and MongoDB
+ */
+async function deleteLeads(user, leadIds) {
+    const results = [];
+    for (const leadId of leadIds) {
+        try {
+            const result = await deleteLead(user, leadId);
+            results.push({ leadId, ...result });
+        } catch (error) {
+            results.push({ leadId, success: false, error: error.message });
+        }
+    }
+    return {
+        success: results.every(r => r.success),
+        results,
+        deletedCount: results.filter(r => r.success).length,
+        failedCount: results.filter(r => !r.success).length
+    };
 }
 
 /**
@@ -605,6 +689,8 @@ module.exports = {
     getLeadsByOwner,
     createLead,
     updateLead,
+    deleteLead,
+    deleteLeads,
     assignLeadToAgent,
     
     // Activity operations (re-exported from activity.service.js)

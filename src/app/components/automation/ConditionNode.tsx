@@ -79,8 +79,16 @@ function ConditionNode({ data, selected }: NodeProps) {
             <>
               <div className="text-xs text-yellow-700 bg-yellow-50 px-2 py-1 rounded flex items-center gap-1">
                 <span className="font-medium">If:</span>
-                <span>{nodeData.config.field || 'budget'}</span>
-                <span>{nodeData.config.operator || '>'}</span>
+                <span>{nodeData.config.field || 'field'}</span>
+                <span>{{
+                  'equals': '===',
+                  'notEquals': '!==',
+                  'contains': 'contains',
+                  'greaterThan': '>',
+                  'lessThan': '<',
+                  'isEmpty': 'is empty',
+                  'isNotEmpty': 'is not empty'
+                }[nodeData.config.operator] || nodeData.config.operator || '==='}</span>
                 <span>{nodeData.config.value || '...'}</span>
               </div>
               {isConditionTimeout && nodeData.config.timeout && (

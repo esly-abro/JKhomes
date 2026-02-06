@@ -110,6 +110,11 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) 
         leadName: zohoLead?.Full_Name || zohoLead?.Last_Name || 'Unknown',
         leadPhone: zohoLead?.Phone || zohoLead?.Mobile || '',
         scheduledAt,
+        scheduledDate: dateStr,
+        timeSlot: {
+            startTime: startTime,
+            endTime: null  // Will be calculated based on duration
+        },
         agentId: userId,
         propertyId: propertyId,
         status: 'scheduled',

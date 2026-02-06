@@ -395,6 +395,80 @@ async function sendInteractiveMessage(phoneNumber, bodyText, buttons, userId = n
   }
 }
 
+/**
+ * Check if WhatsApp credentials are configured
+ * Used by automation to skip nodes gracefully if not set up
+ * @param {string} userId - User ID for dynamic credential lookup
+ * @returns {Object} - { configured: boolean, source: string, needsSetup: boolean }
+ */
+async function checkCredentialsConfigured(userId = null) {
+  try {
+    const creds = await getCredentials(userId);
+    
+    if (creds.accessToken && creds.phoneNumberId) {
+      return {
+        configured: true,
+        source: userId ? 'database' : 'environment',
+        needsSetup: false
+      };
+    }
+    
+    return {
+      configured: false,
+      source: null,
+      needsSetup: true,
+      message: 'WhatsApp credentials not configured. Go to Settings > API Settings to add your Meta WhatsApp API credentials.'
+    };
+  } catch (error) {
+    return {
+      configured: false,
+      source: null,
+      needsSetup: true,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Validate WhatsApp credentials by making a test API call
+ * @param {string} userId - User ID for dynamic credential lookup
+ * @returns {Object} - { valid: boolean, error?: string, phoneNumber?: string }
+ */
+async function validateCredentials(userId = null) {
+  try {
+    const creds = await getCredentials(userId);
+    
+    if (!creds.accessToken || !creds.phoneNumberId) {
+      return {
+        valid: false,
+        error: 'Missing access token or phone number ID'
+      };
+    }
+
+    // Make a test call to verify credentials
+    const response = await axios.get(
+      `${WHATSAPP_API_BASE}/${creds.phoneNumberId}`,
+      {
+        headers: { Authorization: `Bearer ${creds.accessToken}` },
+        params: { fields: 'id,display_phone_number,verified_name,quality_rating' }
+      }
+    );
+
+    return {
+      valid: true,
+      phoneNumber: response.data.display_phone_number,
+      verifiedName: response.data.verified_name,
+      qualityRating: response.data.quality_rating
+    };
+  } catch (error) {
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    return {
+      valid: false,
+      error: errorMessage
+    };
+  }
+}
+
 module.exports = {
   getTemplates,
   sendTemplateMessage,
@@ -402,5 +476,7 @@ module.exports = {
   sendInteractiveMessage,
   extractButtons,
   getCredentials,
-  getUserWhatsappSettings
+  getUserWhatsappSettings,
+  checkCredentialsConfigured,
+  validateCredentials
 };

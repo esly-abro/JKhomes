@@ -46,17 +46,35 @@ class WorkflowEngine {
         this.isRunning = true;
         
         this.jobInterval = setInterval(
-            () => this.processJobs(), 
+            () => {
+                try {
+                    this.processJobs().catch(e => console.error('processJobs error:', e));
+                } catch (e) {
+                    console.error('processJobs exception:', e);
+                }
+            }, 
             this.processIntervalMs
         );
         
         this.timeoutInterval = setInterval(
-            () => this.processWaitingTimeouts(), 
+            () => {
+                try {
+                    this.processWaitingTimeouts().catch(e => console.error('timeouts error:', e));
+                } catch (e) {
+                    console.error('timeouts exception:', e);
+                }
+            }, 
             this.timeoutCheckIntervalMs
         );
         
         this.callTimeoutInterval = setInterval(
-            () => this.processCallTimeouts(), 
+            () => {
+                try {
+                    this.processCallTimeouts().catch(e => console.error('call timeouts error:', e));
+                } catch (e) {
+                    console.error('call timeouts exception:', e);
+                }
+            }, 
             this.timeoutCheckIntervalMs
         );
         
@@ -261,16 +279,25 @@ class WorkflowEngine {
             .sort({ scheduledFor: 1 })
             .limit(10);
             
+            if (jobs.length > 0) {
+                console.log(`✅ Found ${jobs.length} job(s) ready for execution`);
+                for (const job of jobs) {
+                    console.log(`   - Job ${job._id} type=${job.nodeType}`);
+                }
+            }
+            
             for (const job of jobs) {
                 await this.executeJob(job);
             }
         } catch (error) {
-            console.error('Error processing jobs:', error);
+            console.error('❌ processJobs error:', error.message);
         }
     }
     
     async executeJob(job) {
         try {
+            console.log(`⚙️ Executing: ${job.nodeData?.label || job.nodeId} (${job.nodeType})`);
+            
             job.status = 'processing';
             job.attempts += 1;
             job.lastAttemptAt = new Date();

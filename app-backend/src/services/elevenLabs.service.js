@@ -293,6 +293,87 @@ class ElevenLabsService {
             console.error(`Failed to update lead ${lead._id}:`, error);
         }
     }
+
+    /**
+     * Get conversation summary for a phone number
+     * @param {string} phoneNumber - Phone number to search for
+     */
+    async getConversationSummary(phoneNumber) {
+        try {
+            const credentials = await this.getCredentials();
+            const { apiKey } = credentials;
+            
+            if (!apiKey) {
+                return { summary: 'ElevenLabs not configured', conversations: [] };
+            }
+            
+            // Normalize phone number
+            let normalizedPhone = phoneNumber.replace(/\D/g, '');
+            if (!normalizedPhone.startsWith('+')) {
+                normalizedPhone = '+' + normalizedPhone;
+            }
+            
+            // Fetch recent conversations
+            const response = await axios.get(this.baseUrl, {
+                headers: { 'xi-api-key': apiKey },
+                params: { page_size: 50 }
+            });
+            
+            const conversations = response.data.conversations || [];
+            
+            // Filter by phone number (check metadata or to_number)
+            const relevantConvs = conversations.filter(conv => {
+                const toNumber = conv.to_number || conv.metadata?.to_number || '';
+                return toNumber.includes(normalizedPhone.slice(-10)) || 
+                       normalizedPhone.includes(toNumber.slice(-10));
+            });
+            
+            if (relevantConvs.length === 0) {
+                return { 
+                    summary: 'No AI calls found for this number yet',
+                    conversations: [] 
+                };
+            }
+            
+            // Get the most recent conversation details
+            const latestConv = relevantConvs[0];
+            
+            try {
+                const detailsResponse = await axios.get(
+                    `${this.baseUrl}/${latestConv.conversation_id}`,
+                    { headers: { 'xi-api-key': apiKey } }
+                );
+                
+                const details = detailsResponse.data;
+                const analysis = details.analysis || {};
+                
+                return {
+                    summary: analysis.transcript_summary || 'Call completed - no summary available',
+                    transcript: details.transcript || [],
+                    duration: latestConv.call_duration_secs,
+                    status: latestConv.status,
+                    conversationId: latestConv.conversation_id,
+                    timestamp: latestConv.start_time_unix_secs 
+                        ? new Date(latestConv.start_time_unix_secs * 1000).toISOString() 
+                        : null,
+                    evaluation: analysis.evaluation_criteria_results || {},
+                    totalCalls: relevantConvs.length
+                };
+            } catch (detailError) {
+                console.error('Error fetching conversation details:', detailError.message);
+                return {
+                    summary: `Last call: ${latestConv.status}`,
+                    duration: latestConv.call_duration_secs,
+                    status: latestConv.status,
+                    conversationId: latestConv.conversation_id,
+                    totalCalls: relevantConvs.length
+                };
+            }
+        } catch (error) {
+            console.error('Error fetching conversation summary:', error);
+            throw new Error('Failed to fetch AI call summary');
+        }
+    }
 }
 
 module.exports = new ElevenLabsService();

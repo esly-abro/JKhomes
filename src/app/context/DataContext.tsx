@@ -84,6 +84,7 @@ interface DataContextType {
   addActivity: (activity: Omit<Activity, 'id'>) => void;
   siteVisits: SiteVisit[];
   confirmSiteVisit: (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string) => Promise<void>;
+  initializeData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -181,6 +182,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await refreshLeads();
   };
 
+  // Initialize all data - call this after login
+  const initializeData = async () => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      await Promise.all([
+        refreshLeads(),
+        fetchActivities(),
+        fetchSiteVisits()
+      ]);
+    }
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (token) {
@@ -208,6 +221,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addActivity,
       siteVisits,
       confirmSiteVisit,
+      initializeData,
     }}>
       {children}
     </DataContext.Provider>

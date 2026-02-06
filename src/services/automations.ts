@@ -199,6 +199,60 @@ export async function cancelAutomationRun(runId: string): Promise<void> {
   await api.post(`/api/automations/runs/${runId}/cancel`);
 }
 
+// ==========================================
+// TEMPLATE FUNCTIONS
+// ==========================================
+
+export interface AutomationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  nodeCount: number;
+  isDefault: boolean;
+  category: string;
+}
+
+export interface FullAutomationTemplate {
+  id: string;
+  name: string;
+  description: string;
+  nodes: AutomationNode[];
+  edges: AutomationEdge[];
+  isDefault?: boolean;
+}
+
+/**
+ * Get available automation templates
+ */
+export async function getTemplates(): Promise<AutomationTemplate[]> {
+  const response = await api.get<ApiResponse<AutomationTemplate[]>>('/api/automations/templates');
+  return response.data.data;
+}
+
+/**
+ * Get a specific template's full data
+ */
+export async function getTemplate(templateId: string): Promise<FullAutomationTemplate> {
+  const response = await api.get<ApiResponse<FullAutomationTemplate>>(`/api/automations/templates/${templateId}`);
+  return response.data.data;
+}
+
+/**
+ * Load a template as a new automation
+ */
+export async function loadTemplate(templateId: string, name?: string): Promise<Automation> {
+  const response = await api.post<ApiResponse<Automation>>(`/api/automations/templates/${templateId}/load`, { name });
+  return response.data.data;
+}
+
+/**
+ * Duplicate an existing automation
+ */
+export async function duplicateAutomation(id: string, name?: string): Promise<Automation> {
+  const response = await api.post<ApiResponse<Automation>>(`/api/automations/${id}/duplicate`, { name });
+  return response.data.data;
+}
+
 export default {
   getAutomations,
   getAutomation,
@@ -210,4 +264,9 @@ export default {
   getAutomationRuns,
   getAutomationRun,
   cancelAutomationRun,
+  // Template functions
+  getTemplates,
+  getTemplate,
+  loadTemplate,
+  duplicateAutomation,
 };

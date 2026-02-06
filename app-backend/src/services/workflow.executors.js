@@ -1,16 +1,31 @@
 /**
  * Workflow Executors
  * Node type execution handlers for workflow engine
+ * 
+ * Supported node types:
+ * - whatsapp, whatsappWithResponse, waitForResponse
+ * - aiCall, aiCallWithResponse
+ * - humanCall (creates task for agent)
+ * - email
+ * - updateStatus, assignAgent, createTask
+ * - condition, conditionTimeout
+ * - delay, wait
+ * - analytics
  */
 
 const twilioService = require('../twilio/twilio.service');
 const emailService = require('./email.service');
 const elevenLabsService = require('./elevenLabs.service');
 const Automation = require('../models/Automation');
+const Lead = require('../models/Lead');
+const Activity = require('../models/Activity');
+const User = require('../models/User');
+const { taskService } = require('../tasks');
 const { evaluateCondition, interpolateTemplate, calculateDelay, normalizePhoneNumber } = require('./workflow.conditions');
 
 /**
  * Execute WhatsApp action
+ * Gracefully handles missing credentials
  */
 async function executeWhatsApp(lead, config, context = {}) {
     try {
@@ -23,6 +38,18 @@ async function executeWhatsApp(lead, config, context = {}) {
         
         const userId = context.userId || lead.assignedTo || lead.assignedAgent;
         const whatsappService = require('./whatsapp.service');
+        
+        // Check if WhatsApp is configured before attempting to send
+        const credCheck = await whatsappService.checkCredentialsConfigured(userId);
+        if (!credCheck.configured) {
+            console.warn(`⚠️ WhatsApp not configured: ${credCheck.message}`);
+            return { 
+                success: false, 
+                error: credCheck.message,
+                needsSetup: true,
+                skipped: true
+            };
+        }
         
         if (config.template) {
             const result = await whatsappService.sendTemplateMessage(
@@ -48,6 +75,10 @@ async function executeWhatsApp(lead, config, context = {}) {
         }
     } catch (error) {
         console.error('WhatsApp execution error:', error);
+        // Check if it's a credentials error
+        if (error.message?.includes('credentials') || error.message?.includes('not configured')) {
+            return { success: false, error: error.message, needsSetup: true, skipped: true };
+        }
         return { success: false, error: error.message };
     }
 }
@@ -168,8 +199,10 @@ function parseExpectedResponses(config) {
  * Execute AI Call action
  */
 async function executeAICall(lead, config, run = null) {
+    console.log(`📞 AI Call: lead=${lead.name} phone=${lead.phone}`);
     try {
         if (!lead.phone) {
+            console.log(`⚠️ AI Call: No phone for ${lead.name}`);
             return { success: false, error: 'Lead has no phone number' };
         }
 
@@ -178,7 +211,8 @@ async function executeAICall(lead, config, run = null) {
             const automation = await Automation.findById(run.automation);
             userId = automation?.createdBy;
         }
-
+        
+        console.log(`📞 Calling ElevenLabs for ${lead.name}...`);
         const result = await elevenLabsService.makeCall(lead.phone, {
             script: config?.script,
             voiceId: config?.voiceId,
@@ -199,7 +233,8 @@ async function executeAICall(lead, config, run = null) {
             run.context.lastCallStatus = result.status;
             await run.save();
         }
-
+        
+        console.log(`✅ AI Call success: callId=${result?.callId} status=${result?.status}`);
         return {
             success: true,
             callId: result?.callId,
@@ -207,7 +242,7 @@ async function executeAICall(lead, config, run = null) {
             automationRunId: run?._id
         };
     } catch (error) {
-        console.error('AI Call execution error:', error);
+        console.error('❌ AI Call error:', error.message);
         return { success: false, error: error.message };
     }
 }
@@ -320,40 +355,62 @@ function buildExpectedOutcomes(config) {
 
 /**
  * Execute Human Call action (creates a task for agent)
+ * Uses the new Task system with automation sync
  */
 async function executeHumanCall(lead, config, run = null) {
     try {
-        const Activity = require('../models/Activity');
+        // Determine task type from config
+        const taskType = config?.taskType || 'call_lead';
+        const priority = config?.priority || 'high';
         
-        const activity = new Activity({
-            lead: lead._id,
-            type: 'call_scheduled',
-            title: `Call lead: ${lead.name}`,
-            description: config?.notes || 'Automated call task from workflow',
-            assignedTo: lead.assignedAgent || lead.assignedTo,
-            dueDate: new Date(),
-            priority: config?.priority || 'high',
-            status: 'pending',
-            metadata: {
-                automationRunId: run?._id?.toString(),
-                automationTriggered: true,
-                nodeId: run?.currentNodeId
+        // Calculate due date
+        let dueDate = new Date();
+        if (config?.dueIn) {
+            const dueMs = calculateDelay(config.dueIn);
+            dueDate = new Date(Date.now() + dueMs);
+        }
+
+        // Create task using task service
+        const task = await taskService.createTask({
+            leadId: lead._id,
+            automationRunId: run?._id,
+            automationId: run?.automation,
+            nodeId: run?.currentNodeId,
+            assignedTo: lead.assignedTo || lead.assignedAgent,
+            type: taskType,
+            title: config?.title || `Call lead: ${lead.name}`,
+            description: config?.notes || config?.description || 'Automated call task from workflow',
+            priority,
+            dueDate,
+            context: {
+                leadPhone: lead.phone,
+                leadName: lead.name,
+                automationName: run?.automationName
             }
         });
-        await activity.save();
 
+        // Update run context
         if (run) {
             if (!run.context) run.context = {};
-            run.context.lastTaskId = activity._id;
-            run.context.lastTaskType = 'human_call';
+            run.context.lastTaskId = task._id;
+            run.context.lastTaskType = taskType;
+            
+            // Pause automation until task is completed
+            run.status = 'waiting_for_task';
+            run.waitingForTask = {
+                isWaiting: true,
+                taskId: task._id,
+                nodeId: run.currentNodeId,
+                startedAt: new Date()
+            };
             await run.save();
         }
 
         return {
             success: true,
-            activityId: activity._id,
-            message: 'Call task created for agent',
-            automationRunId: run?._id
+            taskId: task._id,
+            waiting: true,
+            message: 'Task created for agent'
         };
     } catch (error) {
         console.error('Human Call execution error:', error);
@@ -391,6 +448,238 @@ async function executeEmail(lead, config) {
 }
 
 /**
+ * Execute Update Status action
+ * Updates lead status in database and triggers auto-complete for related tasks
+ */
+async function executeUpdateStatus(lead, config, run = null) {
+    try {
+        const newStatus = config?.status || config?.value;
+        if (!newStatus) {
+            return { success: false, error: 'No status specified' };
+        }
+
+        const oldStatus = lead.status;
+        lead.status = newStatus;
+        lead.statusUpdatedAt = new Date();
+        
+        // Add to status history if exists
+        if (lead.statusHistory) {
+            lead.statusHistory.push({
+                status: newStatus,
+                changedAt: new Date(),
+                changedBy: 'automation',
+                automationRunId: run?._id
+            });
+        }
+        
+        await lead.save();
+
+        console.log(`📊 Lead status updated: ${oldStatus} → ${newStatus}`);
+
+        // Log activity
+        await new Activity({
+            lead: lead._id,
+            type: 'status_change',
+            title: `Status changed to ${newStatus}`,
+            description: `Automation updated status from ${oldStatus} to ${newStatus}`,
+            metadata: {
+                oldStatus,
+                newStatus,
+                automationRunId: run?._id?.toString(),
+                automated: true
+            }
+        }).save();
+
+        // Check for task auto-completion based on status change
+        await taskService.checkAutoCompleteForStatusChange(lead._id, newStatus);
+
+        return {
+            success: true,
+            oldStatus,
+            newStatus
+        };
+    } catch (error) {
+        console.error('Update Status execution error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute Assign Agent action
+ * Assigns lead to a specific agent or uses round-robin
+ */
+async function executeAssignAgent(lead, config, run = null) {
+    try {
+        let assigneeId = config?.agentId;
+
+        // Round-robin assignment if no specific agent
+        if (!assigneeId && config?.roundRobin) {
+            const agents = await User.find({ 
+                role: { $in: ['agent', 'manager'] },
+                isActive: true,
+                approvalStatus: 'approved'
+            }).select('_id name');
+
+            if (agents.length > 0) {
+                // Simple round-robin based on lead count
+                const leadCounts = await Lead.aggregate([
+                    { $match: { assignedTo: { $in: agents.map(a => a._id) } } },
+                    { $group: { _id: '$assignedTo', count: { $sum: 1 } } }
+                ]);
+
+                const countMap = new Map(leadCounts.map(lc => [lc._id.toString(), lc.count]));
+                
+                // Find agent with least leads
+                let minCount = Infinity;
+                let selectedAgent = agents[0];
+                
+                for (const agent of agents) {
+                    const count = countMap.get(agent._id.toString()) || 0;
+                    if (count < minCount) {
+                        minCount = count;
+                        selectedAgent = agent;
+                    }
+                }
+                
+                assigneeId = selectedAgent._id;
+                console.log(`🔄 Round-robin assigned to ${selectedAgent.name}`);
+            }
+        }
+
+        if (!assigneeId) {
+            return { success: false, error: 'No agent to assign' };
+        }
+
+        const oldAssignee = lead.assignedTo;
+        lead.assignedTo = assigneeId;
+        lead.assignedAt = new Date();
+        await lead.save();
+
+        // Get agent name for logging
+        const agent = await User.findById(assigneeId).select('name');
+
+        console.log(`👤 Lead assigned to ${agent?.name || assigneeId}`);
+
+        // Log activity
+        await new Activity({
+            lead: lead._id,
+            type: 'assignment',
+            title: `Assigned to ${agent?.name || 'agent'}`,
+            description: config?.reason || 'Automation assigned lead',
+            assignedTo: assigneeId,
+            metadata: {
+                oldAssignee: oldAssignee?.toString(),
+                newAssignee: assigneeId.toString(),
+                automationRunId: run?._id?.toString(),
+                automated: true
+            }
+        }).save();
+
+        return {
+            success: true,
+            assignedTo: assigneeId,
+            agentName: agent?.name
+        };
+    } catch (error) {
+        console.error('Assign Agent execution error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute Create Task action
+ * Creates a manual task for agent and pauses automation until complete
+ */
+async function executeCreateTask(lead, config, run = null) {
+    try {
+        const task = await taskService.createTask({
+            leadId: lead._id,
+            automationRunId: run?._id,
+            automationId: run?.automation,
+            nodeId: run?.currentNodeId,
+            assignedTo: config?.assignedTo || lead.assignedTo || lead.assignedAgent,
+            type: config?.taskType || 'manual_action',
+            title: config?.title || 'Task from automation',
+            description: config?.description,
+            priority: config?.priority || 'medium',
+            dueDate: config?.dueDate ? new Date(config.dueDate) : undefined,
+            context: {
+                leadName: lead.name,
+                leadPhone: lead.phone,
+                automationName: run?.automationName
+            }
+        });
+
+        // Pause automation if configured to wait
+        if (config?.waitForCompletion !== false && run) {
+            run.status = 'waiting_for_task';
+            run.waitingForTask = {
+                isWaiting: true,
+                taskId: task._id,
+                nodeId: run.currentNodeId,
+                startedAt: new Date()
+            };
+            await run.save();
+            
+            return {
+                success: true,
+                taskId: task._id,
+                waiting: true
+            };
+        }
+
+        return {
+            success: true,
+            taskId: task._id,
+            waiting: false
+        };
+    } catch (error) {
+        console.error('Create Task execution error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Execute Analytics action
+ * Logs metrics and performance data
+ */
+async function executeAnalytics(lead, config, run = null) {
+    try {
+        const eventType = config?.eventType || config?.type || 'automation_event';
+        const eventData = config?.data || {};
+
+        // Log activity for analytics
+        await new Activity({
+            lead: lead._id,
+            type: 'analytics',
+            title: config?.title || `Analytics: ${eventType}`,
+            description: config?.description,
+            metadata: {
+                eventType,
+                eventData,
+                automationRunId: run?._id?.toString(),
+                automationId: run?.automation?.toString(),
+                nodeId: run?.currentNodeId,
+                timestamp: new Date(),
+                leadStatus: lead.status,
+                leadSource: lead.source
+            }
+        }).save();
+
+        console.log(`📈 Analytics logged: ${eventType}`);
+
+        return {
+            success: true,
+            eventType,
+            logged: true
+        };
+    } catch (error) {
+        console.error('Analytics execution error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Execute a node based on its type
  */
 async function executeNode(nodeData, lead, run, automation, job) {
@@ -412,6 +701,14 @@ async function executeNode(nodeData, lead, run, automation, job) {
             return await executeHumanCall(lead, config, run);
         case 'email':
             return await executeEmail(lead, config);
+        case 'updateStatus':
+            return await executeUpdateStatus(lead, config, run);
+        case 'assignAgent':
+            return await executeAssignAgent(lead, config, run);
+        case 'createTask':
+            return await executeCreateTask(lead, config, run);
+        case 'analytics':
+            return await executeAnalytics(lead, config, run);
         case 'condition':
         case 'conditionTimeout':
             return await evaluateCondition(lead, config);
@@ -419,15 +716,16 @@ async function executeNode(nodeData, lead, run, automation, job) {
         case 'wait':
             return { delayed: true };
         default:
+            console.warn(`⚠️ Unknown node type: ${type}`);
             return { skipped: true, reason: `Unknown node type: ${type}` };
     }
 }
 
 /**
- * Check if node type waits for response
+ * Check if node type waits for response or task
  */
 function isWaitingNodeType(type) {
-    return ['whatsappWithResponse', 'waitForResponse', 'aiCallWithResponse'].includes(type);
+    return ['whatsappWithResponse', 'waitForResponse', 'aiCallWithResponse', 'humanCall', 'createTask'].includes(type);
 }
 
 /**
@@ -445,6 +743,10 @@ module.exports = {
     executeAICallWithResponse,
     executeHumanCall,
     executeEmail,
+    executeUpdateStatus,
+    executeAssignAgent,
+    executeCreateTask,
+    executeAnalytics,
     executeNode,
     isWaitingNodeType,
     isConditionNodeType,

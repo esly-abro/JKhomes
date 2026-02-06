@@ -293,6 +293,14 @@ async function buildApp() {
         protectedApp.post('/api/leads', leadsController.createLead);
         protectedApp.put('/api/leads/:id', leadsController.updateLead);
         protectedApp.patch('/api/leads/:id/status', leadsController.updateLeadStatus);
+        
+        // Lead delete routes (admin/manager only)
+        protectedApp.delete('/api/leads/:id', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, leadsController.deleteLead);
+        protectedApp.post('/api/leads/bulk-delete', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, leadsController.bulkDeleteLeads);
 
         // Metrics routes (manager and above only)
         protectedApp.get('/api/metrics/overview', {
@@ -400,11 +408,7 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, leadsController.getAllCallLogsHandler);
 
-        // Task routes
-        protectedApp.get('/api/tasks', leadsController.getTasks);
-        protectedApp.post('/api/tasks', leadsController.createTask);
-        protectedApp.patch('/api/tasks/:id', leadsController.updateTask);
-        protectedApp.delete('/api/tasks/:id', leadsController.deleteTask);
+        // Task routes moved to /api/tasks via taskRoutes module (see below)
 
         // User routes
         protectedApp.get('/api/users', leadsController.getUsers);
@@ -676,11 +680,104 @@ async function buildApp() {
         protectedApp.post('/api/sync/elevenlabs', {
             preHandler: requireRole(['owner', 'admin'])
         }, elevenLabsController.syncHistory);
+
+        // ElevenLabs AI Call - Make outbound call to lead
+        const elevenLabsService = require('./services/elevenLabs.service');
+        protectedApp.post('/api/elevenlabs/call', async (request, reply) => {
+            try {
+                const { phoneNumber, leadId, leadName, metadata } = request.body;
+                
+                if (!phoneNumber) {
+                    return reply.code(400).send({ success: false, error: 'Phone number is required' });
+                }
+                
+                console.log(`📞 Manual AI call request to ${phoneNumber} for lead ${leadId}`);
+                
+                const result = await elevenLabsService.makeCall(phoneNumber, {
+                    leadName: leadName || 'Customer',
+                    leadData: { _id: leadId },
+                    userId: request.user._id,
+                    metadata: {
+                        leadId,
+                        source: metadata?.source || 'manual',
+                        ...metadata
+                    }
+                });
+                
+                if (result.success) {
+                    // Log activity with correct schema fields
+                    try {
+                        const Activity = require('./models/Activity');
+                        await Activity.create({
+                            leadId: leadId,
+                            type: 'call',  // Use 'call' as ai_call not in enum
+                            title: 'AI Call Initiated',
+                            description: `AI call initiated to ${phoneNumber}`,
+                            userId: request.user._id,
+                            userName: request.user.name || request.user.email,
+                            metadata: {
+                                callId: result.callId,
+                                conversationId: result.conversationId,
+                                status: result.status,
+                                isAICall: true
+                            }
+                        });
+                    } catch (activityError) {
+                        console.warn('⚠️ Failed to log activity:', activityError.message);
+                        // Don't fail the call because of activity logging
+                    }
+                    
+                    return { 
+                        success: true, 
+                        callId: result.callId,
+                        conversationId: result.conversationId,
+                        status: result.status || 'initiated',
+                        message: 'Call initiated successfully'
+                    };
+                } else {
+                    return reply.code(500).send({ 
+                        success: false, 
+                        error: result.error || 'Failed to initiate call' 
+                    });
+                }
+            } catch (error) {
+                console.error('❌ ElevenLabs call error:', error);
+                return reply.code(500).send({ 
+                    success: false, 
+                    error: error.message || 'Failed to initiate call' 
+                });
+            }
+        });
+        
+        // ElevenLabs Summary - Get conversation summary for a lead
+        protectedApp.get('/api/elevenlabs/summary/:phoneNumber', async (request, reply) => {
+            try {
+                const { phoneNumber } = request.params;
+                const summary = await elevenLabsService.getConversationSummary(phoneNumber);
+                return { success: true, data: summary };
+            } catch (error) {
+                console.error('❌ ElevenLabs summary error:', error);
+                return reply.code(500).send({ 
+                    success: false, 
+                    error: error.message || 'Failed to fetch summary' 
+                });
+            }
+        });
     });
 
-    // Automation routes (outside protected for now - allows unauthenticated access in dev)
-    const automationRoutes = require('./routes/automation.routes');
-    await app.register(automationRoutes, { prefix: '/api/automations' });
+    // Automation routes (requires auth for most operations)
+    app.register(async function (automationProtectedApp) {
+        automationProtectedApp.addHook('onRequest', requireAuth);
+        const automationRoutes = require('./routes/automation.routes');
+        await automationProtectedApp.register(automationRoutes, { prefix: '/api/automations' });
+    });
+
+    // Task routes (requires auth) - Agent task management with automation sync
+    app.register(async function (taskProtectedApp) {
+        taskProtectedApp.addHook('onRequest', requireAuth);
+        const { taskRoutes } = require('./tasks');
+        await taskProtectedApp.register(taskRoutes, { prefix: '/api/tasks' });
+    });
 
     // WhatsApp routes (outside protected for now - allows unauthenticated access in dev)
     const whatsappRoutes = require('./routes/whatsapp.routes');
