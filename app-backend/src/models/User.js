@@ -42,6 +42,10 @@ const userSchema = new mongoose.Schema({
     avatar: {
         type: String
     },
+    timezone: {
+        type: String,
+        default: 'Asia/Kolkata'
+    },
     isActive: {
         type: Boolean,
         default: true

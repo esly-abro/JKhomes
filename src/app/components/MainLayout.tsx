@@ -1,41 +1,38 @@
-import { useState } from 'react';
-import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard,
-  Users,
-  Activity,
-  Calendar,
-  MessageSquare,
-  BarChart3,
-  Settings,
-  Search,
-  Bell,
-  HelpCircle,
-  ChevronDown,
-  Plus,
-  Upload,
-  CalendarPlus,
-  Building2,
-  Home,
-  Menu,
-  X,
-  LogOut,
-  Check,
-  UserCheck,
-  Zap,
-  Megaphone
+    Activity,
+    BarChart3,
+    Building2,
+    Calendar,
+    CalendarPlus,
+    ChevronDown,
+    HelpCircle,
+    Home,
+    LayoutDashboard,
+    LogOut,
+    Megaphone,
+    Menu,
+    Plus,
+    Search,
+    Settings,
+    Upload,
+    UserCheck,
+    Users,
+    X,
+    Zap
 } from 'lucide-react';
-import { Button } from './ui/button';
-import { Input } from './ui/input';
-import { Avatar, AvatarFallback } from './ui/avatar';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { logout, getStoredUser } from '../../services/auth';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { getStoredAvatar, getStoredUser, logout } from '../../services/auth';
 import NotificationMenu from './NotificationMenu';
+import { Avatar, AvatarFallback } from './ui/avatar';
+import { Button } from './ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from './ui/dropdown-menu';
+import { Input } from './ui/input';
 
 export default function MainLayout() {
   const location = useLocation();
@@ -47,6 +44,30 @@ export default function MainLayout() {
   const currentUser = getStoredUser();
   const isAdminOrManager = currentUser?.role === 'admin' || currentUser?.role === 'manager' || currentUser?.role === 'owner';
   const isAgent = currentUser?.role === 'agent' || currentUser?.role === 'bpo';
+
+  // Avatar state that updates when profile is changed
+  const [userAvatar, setUserAvatar] = useState<string | null>(getStoredAvatar());
+
+  // Get user initials for fallback
+  const getUserInitials = () => {
+    if (!currentUser?.name) return 'U';
+    const parts = currentUser.name.split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return parts[0].substring(0, 2).toUpperCase();
+  };
+
+  // Listen for avatar updates
+  useEffect(() => {
+    const handleAvatarUpdate = (event: CustomEvent<{ avatar: string }>) => {
+      setUserAvatar(event.detail.avatar);
+    };
+    window.addEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    return () => {
+      window.removeEventListener('avatarUpdated', handleAvatarUpdate as EventListener);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -143,7 +164,11 @@ export default function MainLayout() {
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-2 hover:bg-gray-100 rounded-md p-1">
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback>JD</AvatarFallback>
+                    {userAvatar ? (
+                      <img src={userAvatar} alt="Profile" className="h-full w-full object-cover rounded-full" />
+                    ) : (
+                      <AvatarFallback>{getUserInitials()}</AvatarFallback>
+                    )}
                   </Avatar>
                   <ChevronDown className="h-4 w-4 hidden sm:block" />
                 </button>

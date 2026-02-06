@@ -75,6 +75,61 @@ async function uploadRoutes(fastify, options) {
     });
 
     /**
+     * Upload avatar image
+     * POST /api/upload/avatar
+     */
+    fastify.post('/avatar', async (request, reply) => {
+        try {
+            const data = await request.file();
+
+            if (!data) {
+                return reply.code(400).send({
+                    success: false,
+                    error: 'No file uploaded'
+                });
+            }
+
+            // Validate file type
+            const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+            if (!allowedMimes.includes(data.mimetype)) {
+                return reply.code(400).send({
+                    success: false,
+                    error: 'Invalid file type. Only JPG, PNG, GIF, and WebP are allowed.'
+                });
+            }
+
+            // Generate unique filename
+            const timestamp = Date.now();
+            const ext = path.extname(data.filename);
+            const filename = `avatar-${timestamp}${ext}`;
+            const uploadPath = path.join(__dirname, '../../uploads/avatars', filename);
+
+            // Ensure directory exists
+            const dir = path.dirname(uploadPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+
+            // Save file
+            await pump(data.file, fs.createWriteStream(uploadPath));
+
+            // Return URL
+            const imageUrl = `/uploads/avatars/${filename}`;
+
+            return reply.send({
+                success: true,
+                url: imageUrl
+            });
+        } catch (error) {
+            request.log.error(error);
+            return reply.code(500).send({
+                success: false,
+                error: 'Failed to upload avatar'
+            });
+        }
+    });
+
+    /**
      * Delete property image
      * DELETE /api/upload/property-image/:filename
      */

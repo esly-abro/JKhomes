@@ -412,6 +412,10 @@ async function buildApp() {
         // User Management routes (owner/admin only)
         const usersController = require('./users/users.controller');
         
+        // Profile routes (current user)
+        protectedApp.get('/api/profile', usersController.getCurrentProfile);
+        protectedApp.patch('/api/profile', usersController.updateProfile);
+        
         // IMPORTANT: Static routes MUST come before parameterized routes
         protectedApp.get('/api/users/pending', {
             preHandler: requireRole(['owner', 'admin'])
@@ -419,6 +423,11 @@ async function buildApp() {
         
         // Add /api/users/agents route before :id route
         protectedApp.get('/api/users/agents', usersController.getAgents);
+
+        // Invite new user
+        protectedApp.post('/api/users/invite', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, usersController.inviteUser);
         
         protectedApp.get('/api/users/:id', usersController.getUserById);
         protectedApp.patch('/api/users/:id/approve', {

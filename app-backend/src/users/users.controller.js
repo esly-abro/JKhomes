@@ -4,26 +4,36 @@
  */
 
 const User = require('../models/User');
+const usersModel = require('./users.model');
 const { notifyOwnerOfNewAgent, notifyAgentApproval, notifyAgentRejection } = require('../services/email.service');
 
 /**
  * Get all users (with optional filtering)
+ * By default, excludes pending and rejected users (only shows approved/active team members)
  */
 async function getAllUsers(req, reply) {
   try {
-    const { status, role } = req.query;
+    const { status, role, includeAll } = req.query;
     const filter = {};
 
     if (status) {
       filter.approvalStatus = status;
+    } else if (!includeAll) {
+      // EXCLUDE pending and rejected users - use $nin to be explicit
+      filter.approvalStatus = { $nin: ['pending', 'rejected'] };
     }
+    
     if (role) {
       filter.role = role;
     }
 
+    console.log('[getAllUsers] Filter:', JSON.stringify(filter));
+
     const users = await User.find(filter)
       .select('-passwordHash')
       .sort({ createdAt: -1 });
+
+    console.log('[getAllUsers] Found users:', users.map(u => ({ email: u.email, approvalStatus: u.approvalStatus })));
 
     return reply.send({
       success: true,
@@ -124,7 +134,7 @@ async function approveUser(req, reply) {
 async function rejectUser(req, reply) {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const reason = req.body?.reason || 'No reason provided';
     const currentUser = req.user;
 
     const user = await User.findById(id);
@@ -288,6 +298,184 @@ async function getAgents(req, reply) {
     return reply.status(500).send({
       success: false,
       message: 'Failed to fetch agents'
+    });
+  }
+}
+
+/**
+ * Invite a new team member
+ * Creates a user with pending approval status
+ */
+async function inviteUser(req, reply) {
+  try {
+    const { email, name, role } = req.body;
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      return reply.status(400).send({
+        success: false,
+        message: 'Please provide a valid email address'
+      });
+    }
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return reply.status(400).send({
+        success: false,
+        message: 'A user with this email already exists'
+      });
+    }
+
+    // Generate a temporary password (user will need to reset it)
+    const tempPassword = Math.random().toString(36).slice(-8) + 'A1!';
+    const bcrypt = require('bcrypt');
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    // Create the user with pending status
+    const newUser = new User({
+      email: email.toLowerCase(),
+      passwordHash,
+      name: name || 'New Member',
+      role: role || 'agent',
+      isActive: false,
+      approvalStatus: 'pending'
+    });
+
+    await newUser.save();
+
+    return reply.status(201).send({
+      success: true,
+      message: 'User invited successfully',
+      data: {
+        id: newUser._id,
+        email: newUser.email,
+        name: newUser.name,
+        role: newUser.role,
+        approvalStatus: newUser.approvalStatus
+      }
+    });
+  } catch (error) {
+    console.error('Invite user error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Failed to invite user'
+    });
+  }
+}
+
+/**
+ * Get current user's profile
+ */
+async function getCurrentProfile(req, reply) {
+  try {
+    const userId = req.user.id || req.user._id;
+    console.log('[getCurrentProfile] userId:', userId, 'type:', typeof userId);
+    
+    // Use usersModel.findById which handles ID conversion properly
+    const user = await usersModel.findById(userId);
+    console.log('[getCurrentProfile] found user:', user ? user._id : 'null');
+    
+    if (!user) {
+      console.log('[getCurrentProfile] User not found for id:', userId);
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Parse name into firstName and lastName
+    const nameParts = (user.name || '').split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    return reply.send({
+      success: true,
+      data: {
+        id: user._id,
+        firstName,
+        lastName,
+        email: user.email,
+        phone: user.phone || '',
+        timezone: user.timezone || 'Asia/Kolkata',
+        avatar: user.avatar || '',
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Get current profile error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Failed to fetch profile'
+    });
+  }
+}
+
+/**
+ * Update current user's profile
+ */
+async function updateProfile(req, reply) {
+  try {
+    const userId = req.user.id || req.user._id;
+    console.log('[updateProfile] userId:', userId, 'type:', typeof userId, 'body:', req.body);
+    const { firstName, lastName, email, phone, timezone, avatar } = req.body;
+
+    // Use usersModel.findById for consistent ID handling
+    const user = await usersModel.findById(userId);
+    console.log('[updateProfile] found user:', user ? user._id : 'null');
+    if (!user) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check for duplicate email if updating
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+      if (existingUser) {
+        return reply.status(400).send({
+          success: false,
+          message: 'Email already in use by another account'
+        });
+      }
+      user.email = email;
+    }
+
+    // Update fields
+    if (firstName !== undefined || lastName !== undefined) {
+      const fName = firstName !== undefined ? firstName : (user.name || '').split(' ')[0];
+      const lName = lastName !== undefined ? lastName : (user.name || '').split(' ').slice(1).join(' ');
+      user.name = `${fName} ${lName}`.trim();
+    }
+    if (phone !== undefined) user.phone = phone;
+    if (timezone !== undefined) user.timezone = timezone;
+    if (avatar !== undefined) user.avatar = avatar;
+
+    await user.save();
+
+    // Return updated profile
+    const nameParts = (user.name || '').split(' ');
+    return reply.send({
+      success: true,
+      message: 'Profile updated successfully',
+      data: {
+        id: user._id,
+        firstName: nameParts[0] || '',
+        lastName: nameParts.slice(1).join(' ') || '',
+        email: user.email,
+        phone: user.phone || '',
+        timezone: user.timezone || 'Asia/Kolkata',
+        avatar: user.avatar || '',
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    return reply.status(500).send({
+      success: false,
+      message: 'Failed to update profile'
     });
   }
 }
@@ -525,5 +713,8 @@ module.exports = {
   deleteUser,
   getUserById,
   getAgents,
-  getAgentActivity
+  getAgentActivity,
+  getCurrentProfile,
+  updateProfile,
+  inviteUser
 };

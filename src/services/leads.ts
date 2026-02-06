@@ -3,8 +3,8 @@
  * API functions for lead management
  */
 
-import api from './api';
 import { Lead } from '../app/context/DataContext';
+import api from './api';
 
 export interface LeadsResponse {
     data: Lead[];
@@ -154,5 +154,6 @@ export async function deleteTask(taskId: string) {
  */
 export async function getUsers() {
   const { data } = await api.get('/api/users');
-  return data;
+  // Return the users array from the response
+  return data.data || data;
 }

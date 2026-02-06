@@ -11,6 +11,23 @@ export interface User {
     name: string;
     role: 'owner' | 'admin' | 'manager' | 'agent' | 'bpo';
     approvalStatus?: 'pending' | 'approved' | 'rejected';
+    avatar?: string;
+}
+
+/**
+ * Store user avatar in localStorage
+ */
+export function storeUserAvatar(avatar: string): void {
+    localStorage.setItem('userAvatar', avatar);
+    // Dispatch event to notify components of avatar change
+    window.dispatchEvent(new CustomEvent('avatarUpdated', { detail: { avatar } }));
+}
+
+/**
+ * Get stored user avatar from localStorage
+ */
+export function getStoredAvatar(): string | null {
+    return localStorage.getItem('userAvatar');
 }
 
 export interface LoginResponse {

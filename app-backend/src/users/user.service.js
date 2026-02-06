@@ -7,10 +7,12 @@ const User = require('../models/User');
 
 /**
  * Get all users from MongoDB
+ * By default, excludes pending and rejected users (only shows approved/active team members)
  */
 async function getUsers() {
-    return User.find()
-        .select('name email role createdAt')
+    // EXCLUDE pending and rejected users - only show approved users and legacy users
+    return User.find({ approvalStatus: { $nin: ['pending', 'rejected'] } })
+        .select('name email role createdAt approvalStatus isActive')
         .sort({ name: 1 });
 }
 

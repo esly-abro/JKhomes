@@ -1,14 +1,17 @@
-import { useState, useRef, ChangeEvent, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { AlertCircle, CheckCircle2, ExternalLink, Eye, EyeOff, Loader2, MessageSquare, Plus, RefreshCw, Save, Trash2, UserCheck, X } from 'lucide-react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import api, { API_BASE_URL } from '../../services/api';
+import { storeUserAvatar } from '../../services/auth';
+import { getUsers } from '../../services/leads';
+import { getProfile, updateProfile as updateProfileApi, uploadAvatar } from '../../services/profile';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
-import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink } from 'lucide-react';
-import { getUsers } from '../../services/leads';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 
 interface Profile {
   firstName: string;
@@ -65,13 +68,18 @@ interface Invoice {
 
 export default function Settings() {
   const [loadingTeam, setLoadingTeam] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  const [loadingPendingUsers, setLoadingPendingUsers] = useState(false);
 
   const [profile, setProfile] = useState<Profile>({
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john@example.com',
-    phone: '+1 (555) 123-4567',
-    timezone: 'Eastern Time (ET)',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    timezone: 'Asia/Kolkata',
     avatar: ''
   });
 
@@ -89,13 +97,60 @@ export default function Settings() {
 
   useEffect(() => {
     fetchTeamMembers();
+    fetchProfile();
+    fetchPendingUsers();
   }, []);
+
+  // Fetch pending users for User Approvals tab
+  const fetchPendingUsers = async () => {
+    try {
+      setLoadingPendingUsers(true);
+      const response = await api.get('/api/users/pending');
+      setPendingUsers(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch pending users:', error);
+    } finally {
+      setLoadingPendingUsers(false);
+    }
+  };
+
+  // Helper to get full avatar URL
+  const getFullAvatarUrl = (url: string | undefined): string => {
+    if (!url) return '';
+    if (url.startsWith('blob:') || url.startsWith('http')) return url;
+    return `${API_BASE_URL}${url}`;
+  };
+
+  const fetchProfile = async () => {
+    try {
+      setLoadingProfile(true);
+      const profileData = await getProfile();
+      const avatarUrl = getFullAvatarUrl(profileData.avatar);
+      setProfile({
+        firstName: profileData.firstName || '',
+        lastName: profileData.lastName || '',
+        email: profileData.email || '',
+        phone: profileData.phone || '',
+        timezone: profileData.timezone || 'Asia/Kolkata',
+        avatar: avatarUrl
+      });
+      // Store avatar for header display
+      if (avatarUrl) {
+        storeUserAvatar(avatarUrl);
+      }
+    } catch (error) {
+      console.error('Failed to fetch profile:', error);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
 
   const fetchTeamMembers = async () => {
     try {
       setLoadingTeam(true);
+      // Backend now filters to only return approved/active users
       const users = await getUsers();
-      setTeamMembers(users);
+      setTeamMembers(Array.isArray(users) ? users : []);
     } catch (error) {
       console.error('Failed to fetch team members:', error);
     } finally {
@@ -103,30 +158,77 @@ export default function Settings() {
     }
   };
 
-  const handleInviteMember = () => {
+  const handleInviteMember = async () => {
     const email = prompt('Enter email address of the new member:');
-    if (email) {
-      const newMember = {
-        id: Date.now(),
-        name: 'New Member',
+    if (!email) return;
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      alert('Please enter a valid email address (e.g., name@example.com)');
+      return;
+    }
+    
+    try {
+      const response = await api.post('/api/users/invite', { 
         email,
-        role: 'Member',
-        status: 'Pending'
-      };
-      setTeamMembers([...teamMembers, newMember]);
+        name: 'New Member',
+        role: 'agent'
+      });
+      
+      if (response.data.success) {
+        alert('Invitation sent successfully! The user will appear in pending approvals.');
+        // Refresh team members and pending users
+        fetchTeamMembers();
+        fetchPendingUsers();
+      }
+    } catch (error: any) {
+      const message = error.response?.data?.message || 'Failed to invite user';
+      alert(message);
     }
   };
 
-  const handleDeleteMember = (id: number) => {
-    if (confirm('Are you sure you want to remove this team member?')) {
-      setTeamMembers(teamMembers.filter(m => m.id !== id));
+  const handleApproveUser = async (userId: string) => {
+    try {
+      await api.patch(`/api/users/${userId}/approve`);
+      alert('User approved successfully!');
+      fetchPendingUsers();
+      fetchTeamMembers();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to approve user');
     }
   };
 
-  const handleRoleChange = (id: number, newRole: string) => {
-    setTeamMembers(teamMembers.map(m =>
-      m.id === id ? { ...m, role: newRole } : m
-    ));
+  const handleRejectUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to reject this user?')) return;
+    try {
+      await api.patch(`/api/users/${userId}/reject`);
+      alert('User rejected.');
+      fetchPendingUsers();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to reject user');
+    }
+  };
+
+  const handleDeleteMember = async (userId: string) => {
+    if (!confirm('Are you sure you want to remove this team member? This will deactivate their account.')) return;
+    try {
+      await api.delete(`/api/users/${userId}`);
+      alert('Team member removed successfully.');
+      fetchTeamMembers();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to remove team member');
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await api.patch(`/api/users/${userId}/role`, { role: newRole });
+      alert('Role updated successfully!');
+      fetchTeamMembers();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to update role');
+    }
   };
 
   const [crmSettings, setCrmSettings] = useState({
@@ -721,6 +823,7 @@ export default function Settings() {
   // Load WhatsApp settings on component mount - handled in main useEffect
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
 
   const handleProfileChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value } = e.target;
@@ -734,22 +837,77 @@ export default function Settings() {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
         alert('File size must be less than 2MB');
         return;
       }
+      // Show preview immediately
       const imageUrl = URL.createObjectURL(file);
       setProfile(prev => ({ ...prev, avatar: imageUrl }));
+      setPendingAvatarFile(file);
     }
   };
 
-  const handleSaveProfile = () => {
-    // In a real app, this would make an API call
-    console.log('Saving profile:', profile);
-    alert('Profile changes saved successfully!');
+  const handleSaveProfile = async () => {
+    try {
+      setSavingProfile(true);
+      
+      let avatarUrl = profile.avatar;
+      
+      // Don't save blob URLs - they're temporary
+      if (avatarUrl && avatarUrl.startsWith('blob:')) {
+        avatarUrl = '';
+      }
+      
+      // Upload avatar if there's a pending file
+      if (pendingAvatarFile) {
+        try {
+          setUploadingAvatar(true);
+          avatarUrl = await uploadAvatar(pendingAvatarFile);
+          setPendingAvatarFile(null);
+        } catch (uploadError) {
+          console.error('Failed to upload avatar:', uploadError);
+          alert('Failed to upload photo. Please try again.');
+          return; // Don't save if upload fails
+        } finally {
+          setUploadingAvatar(false);
+        }
+      }
+      
+      // Save profile to database
+      const updatedProfile = await updateProfileApi({
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        email: profile.email,
+        phone: profile.phone,
+        timezone: profile.timezone,
+        avatar: avatarUrl
+      });
+      
+      setProfile({
+        firstName: updatedProfile.firstName || '',
+        lastName: updatedProfile.lastName || '',
+        email: updatedProfile.email || '',
+        phone: updatedProfile.phone || '',
+        timezone: updatedProfile.timezone || 'Asia/Kolkata',
+        avatar: updatedProfile.avatar || ''
+      });
+      
+      // Update header avatar immediately
+      if (updatedProfile.avatar) {
+        storeUserAvatar(updatedProfile.avatar);
+      }
+      
+      alert('Profile changes saved successfully!');
+    } catch (error: any) {
+      console.error('Failed to save profile:', error);
+      alert(error.response?.data?.message || 'Failed to save profile. Please try again.');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -765,7 +923,6 @@ export default function Settings() {
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="approvals">User Approvals</TabsTrigger>
           <TabsTrigger value="crm">CRM</TabsTrigger>
-          <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
@@ -777,59 +934,97 @@ export default function Settings() {
               <CardTitle>Profile Settings</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center gap-6">
-                <Avatar className="h-20 w-20">
-                  <AvatarFallback>{profile.firstName[0]}{profile.lastName[0]}</AvatarFallback>
-                  {profile.avatar && <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover" />}
-                </Avatar>
-                <div>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    className="hidden"
-                    accept="image/png, image/jpeg, image/gif"
-                    onChange={handleFileChange}
-                  />
-                  <Button variant="outline" onClick={handlePhotoClick}>Change Photo</Button>
-                  <p className="text-sm text-gray-500 mt-2">JPG, PNG or GIF. Max size 2MB</p>
+              {loadingProfile ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-600">Loading profile...</span>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <Avatar className="h-20 w-20 border-2 border-gray-200">
+                        {profile.avatar ? (
+                          <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover rounded-full" />
+                        ) : (
+                          <AvatarFallback className="text-xl">
+                            {profile.firstName?.[0] || ''}{profile.lastName?.[0] || ''}
+                          </AvatarFallback>
+                        )}
+                      </Avatar>
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
+                          <Loader2 className="h-6 w-6 animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        accept="image/png, image/jpeg, image/gif"
+                        onChange={handleFileChange}
+                      />
+                      <Button variant="outline" onClick={handlePhotoClick} disabled={uploadingAvatar}>
+                        {uploadingAvatar ? 'Uploading...' : 'Change Photo'}
+                      </Button>
+                      <p className="text-sm text-gray-500 mt-2">JPG, PNG or GIF. Max size 2MB</p>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" value={profile.firstName} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" value={profile.lastName} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={profile.email} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" type="tel" value={profile.phone} onChange={handleProfileChange} />
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input id="firstName" value={profile.firstName} onChange={handleProfileChange} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input id="lastName" value={profile.lastName} onChange={handleProfileChange} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" type="email" value={profile.email} onChange={handleProfileChange} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input id="phone" type="tel" value={profile.phone} onChange={handleProfileChange} />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone</Label>
-                <select
-                  id="timezone"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  value={profile.timezone}
-                  onChange={handleProfileChange}
-                >
-                  <option>Eastern Time (ET)</option>
-                  <option>Central Time (CT)</option>
-                  <option>Mountain Time (MT)</option>
-                  <option>Pacific Time (PT)</option>
-                </select>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="timezone">Timezone</Label>
+                    <select
+                      id="timezone"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      value={profile.timezone}
+                      onChange={handleProfileChange}
+                    >
+                      <option value="Asia/Kolkata">India Standard Time (IST)</option>
+                      <option value="America/New_York">Eastern Time (ET)</option>
+                      <option value="America/Chicago">Central Time (CT)</option>
+                      <option value="America/Denver">Mountain Time (MT)</option>
+                      <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                      <option value="Europe/London">Greenwich Mean Time (GMT)</option>
+                      <option value="Europe/Paris">Central European Time (CET)</option>
+                      <option value="Asia/Dubai">Gulf Standard Time (GST)</option>
+                      <option value="Asia/Singapore">Singapore Time (SGT)</option>
+                      <option value="Australia/Sydney">Australian Eastern Time (AET)</option>
+                    </select>
+                  </div>
 
-              <Button onClick={handleSaveProfile}>Save Changes</Button>
+                  <Button onClick={handleSaveProfile} disabled={savingProfile}>
+                    {savingProfile ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -856,11 +1051,11 @@ export default function Settings() {
                   </div>
                 ) : (
                   teamMembers.map((member) => (
-                    <div key={member._id || member.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div key={member._id || member.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                       <div className="flex items-center gap-4">
                         <Avatar>
                           <AvatarFallback>
-                            {member.name ? member.name.split(' ').map(n => n[0]).join('').toUpperCase() : member.email[0].toUpperCase()}
+                            {member.name ? member.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : member.email[0].toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div>
@@ -868,14 +1063,29 @@ export default function Settings() {
                           <div className="text-sm text-gray-600">{member.email}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm capitalize">
-                          {member.role}
-                        </span>
-                        <span className="text-sm text-gray-600 w-16 text-center capitalize">{member.status || 'Active'}</span>
-                        <div className="text-xs text-gray-500">
+                      <div className="flex items-center gap-3">
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleRoleChange(member._id || member.id, e.target.value)}
+                          className="px-3 py-1 bg-gray-100 text-gray-700 rounded-md text-sm capitalize border-0 cursor-pointer hover:bg-gray-200 focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="agent">Agent</option>
+                          <option value="bpo">BPO</option>
+                          <option value="manager">Manager</option>
+                          <option value="admin">Admin</option>
+                          <option value="owner">Owner</option>
+                        </select>
+                        <span className="text-xs text-gray-500 w-24">
                           {member.createdAt && `Joined ${new Date(member.createdAt).toLocaleDateString()}`}
-                        </div>
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteMember(member._id || member.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   ))
@@ -897,12 +1107,51 @@ export default function Settings() {
               <p className="text-gray-600 mb-4">
                 Review and approve new agent registrations. Agents need approval before they can access the system.
               </p>
-              <Link to="/settings/users">
-                <Button className="w-full">
-                  <UserCheck className="h-4 w-4 mr-2" />
-                  Go to User Management
-                </Button>
-              </Link>
+              
+              {loadingPendingUsers ? (
+                <div className="text-center py-8 text-gray-500">Loading pending users...</div>
+              ) : pendingUsers.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <UserCheck className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>No pending approval requests</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {pendingUsers.map((user) => (
+                    <div key={user._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center gap-4">
+                        <Avatar>
+                          <AvatarFallback>
+                            {user.name ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : user.email[0].toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-semibold">{user.name || user.email.split('@')[0]}</div>
+                          <div className="text-sm text-gray-600">{user.email}</div>
+                          <div className="text-xs text-gray-500 capitalize">Role: {user.role}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="text-red-600 border-red-300 hover:bg-red-50"
+                          onClick={() => handleRejectUser(user._id)}
+                        >
+                          Reject
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={() => handleApproveUser(user._id)}
+                        >
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -988,148 +1237,6 @@ export default function Settings() {
               </div>
 
               <Button onClick={handleSaveCrmSettings}>Save Settings</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="automation">
-          {/* Lead Assignment Configuration */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Lead Assignment Configuration</CardTitle>
-              <p className="text-sm text-gray-600">Configure how leads are automatically assigned to agents</p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Master Toggle */}
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex-1">
-                  <div className="font-semibold text-gray-900">Enable Auto-Assignment</div>
-                  <div className="text-sm text-gray-600">Automatically assign new leads to agents based on rules below</div>
-                </div>
-                <Switch
-                  checked={assignmentSettings.autoAssignEnabled}
-                  onCheckedChange={(checked) => setAssignmentSettings({ ...assignmentSettings, autoAssignEnabled: checked })}
-                />
-              </div>
-
-              {/* Assignment Rules */}
-              {assignmentSettings.autoAssignEnabled && (
-                <div className="space-y-4 pl-4 border-l-2 border-blue-200">
-                  {/* Round Robin */}
-                  <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Round-Robin Distribution</div>
-                      <div className="text-sm text-gray-600">Distribute leads evenly among available agents</div>
-                    </div>
-                    <Switch
-                      checked={assignmentSettings.roundRobinEnabled}
-                      onCheckedChange={(checked) => setAssignmentSettings({ ...assignmentSettings, roundRobinEnabled: checked })}
-                    />
-                  </div>
-
-                  {/* Property Type Matching */}
-                  <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Property Type Matching</div>
-                      <div className="text-sm text-gray-600">Assign leads to agents with experience in the property type</div>
-                    </div>
-                    <Switch
-                      checked={assignmentSettings.propertyMatchingEnabled}
-                      onCheckedChange={(checked) => setAssignmentSettings({ ...assignmentSettings, propertyMatchingEnabled: checked })}
-                    />
-                  </div>
-
-                  {/* Location Matching */}
-                  <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Location Matching</div>
-                      <div className="text-sm text-gray-600">Assign leads to agents familiar with the location</div>
-                    </div>
-                    <Switch
-                      checked={assignmentSettings.locationMatchingEnabled}
-                      onCheckedChange={(checked) => setAssignmentSettings({ ...assignmentSettings, locationMatchingEnabled: checked })}
-                    />
-                  </div>
-
-                  {/* Workload Balancing */}
-                  <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Workload Balancing</div>
-                      <div className="text-sm text-gray-600">Prioritize agents with fewer active leads</div>
-                    </div>
-                    <Switch
-                      checked={assignmentSettings.workloadBalancingEnabled}
-                      onCheckedChange={(checked) => setAssignmentSettings({ ...assignmentSettings, workloadBalancingEnabled: checked })}
-                    />
-                  </div>
-
-                  {/* High Value Threshold */}
-                  <div className="p-3 border rounded-lg">
-                    <Label htmlFor="highValueThreshold" className="font-medium text-gray-900">High-Value Lead Threshold</Label>
-                    <div className="text-sm text-gray-600 mb-3">Leads above this value get priority assignment to least busy agents</div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-gray-700">₹</span>
-                      <Input
-                        id="highValueThreshold"
-                        type="number"
-                        min="0"
-                        value={assignmentSettings.highValueThreshold || ''}
-                        onChange={(e) => setAssignmentSettings({ ...assignmentSettings, highValueThreshold: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) })}
-                        className="max-w-xs"
-                        step="100000"
-                      />
-                      <span className="text-sm text-gray-500">
-                        (₹{(assignmentSettings.highValueThreshold / 100000).toFixed(1)}L / ₹{(assignmentSettings.highValueThreshold / 10000000).toFixed(2)}Cr)
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-end pt-4 border-t">
-                <Button onClick={() => alert('Assignment settings saved! These rules will apply to future lead assignments.')}>
-                  Save Assignment Settings
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Existing Automation Rules */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Automation Rules</CardTitle>
-              <Button onClick={() => handleCreateRule()}>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Rule
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {automationRules.map((rule) => (
-                  <div key={rule.id} className="p-4 border rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="font-semibold">{rule.name}</div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          When: {rule.trigger}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Then: {rule.action}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={rule.enabled}
-                          onCheckedChange={() => toggleAutomationRule(rule.id)}
-                        />
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteRule(rule.id)}>
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
