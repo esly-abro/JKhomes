@@ -73,13 +73,6 @@ class TenantConfigController {
                 await config.save();
                 return reply.code(200).send(config);
             }
-
-            // No org yet — this is a dev/no-auth scenario
-            return reply.code(200).send({
-                ...config,
-                categories,
-                categoryFieldLabel: categoryFieldLabel || config.categoryFieldLabel
-            });
         } catch (error) {
             console.error('[TenantConfig] updateCategories error:', error);
             return reply.code(500).send({ error: 'Failed to update categories' });
@@ -108,8 +101,6 @@ class TenantConfigController {
                 await config.save();
                 return reply.code(200).send(config);
             }
-
-            return reply.code(200).send(config);
         } catch (error) {
             console.error('[TenantConfig] updateModules error:', error);
             return reply.code(500).send({ error: 'Failed to update modules' });
@@ -146,8 +137,6 @@ class TenantConfigController {
                 await config.save();
                 return reply.code(200).send(config);
             }
-
-            return reply.code(200).send(config);
         } catch (error) {
             console.error('[TenantConfig] updateIndustry error:', error);
             return reply.code(500).send({ error: 'Failed to update industry' });
@@ -202,13 +191,6 @@ class TenantConfigController {
                 await config.save();
                 return reply.code(200).send(config);
             }
-
-            // No org yet — dev/no-auth scenario
-            return reply.code(200).send({
-                ...config,
-                appointmentTypes,
-                appointmentFieldLabel: appointmentFieldLabel || config.appointmentFieldLabel
-            });
         } catch (error) {
             console.error('[TenantConfig] updateAppointmentTypes error:', error);
             return reply.code(500).send({ error: 'Failed to update appointment types' });

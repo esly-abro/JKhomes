@@ -220,8 +220,7 @@ const tenantConfigSchema = new mongoose.Schema({
     organizationId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Organization',
-        required: true,
-        unique: true,
+        sparse: true,
         index: true
     },
 
@@ -295,29 +294,23 @@ const tenantConfigSchema = new mongoose.Schema({
  * This is the primary access pattern — never fails, always returns a config.
  */
 tenantConfigSchema.statics.getOrCreate = async function (organizationId, industry) {
-    if (!organizationId) {
-        // Return sensible defaults for backward compatibility (no org yet)
-        return {
-            categories: getDefaultCategories('real_estate'),
-            categoryFieldLabel: 'Property Type',
-            appointmentTypes: getDefaultAppointmentTypes('real_estate'),
-            appointmentFieldLabel: 'Site Visit',
-            enabledModules: { catalog: true, appointments: true, broadcasts: true, aiCalling: true, knowledgeBase: true },
-            industry: 'real_estate'
-        };
-    }
+    // Build query: use orgId if available, otherwise find the "default" config (no org)
+    const query = organizationId
+        ? { organizationId }
+        : { organizationId: { $exists: false } };
 
-    let config = await this.findOne({ organizationId });
+    let config = await this.findOne(query);
     if (!config) {
-        const effectiveIndustry = industry || 'generic';
-        config = await this.create({
-            organizationId,
+        const effectiveIndustry = industry || (organizationId ? 'generic' : 'real_estate');
+        const doc = {
             industry: effectiveIndustry,
             categories: getDefaultCategories(effectiveIndustry),
             categoryFieldLabel: getDefaultCategoryFieldLabel(effectiveIndustry),
             appointmentTypes: getDefaultAppointmentTypes(effectiveIndustry),
             appointmentFieldLabel: getDefaultAppointmentFieldLabel(effectiveIndustry)
-        });
+        };
+        if (organizationId) doc.organizationId = organizationId;
+        config = await this.create(doc);
     }
     return config;
 };
