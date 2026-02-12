@@ -1,6 +1,8 @@
 /**
- * SiteVisit Schema
- * Stores confirmed site visits for leads (leads stored in Zoho CRM)
+ * Appointment (formerly SiteVisit) Schema
+ * Generic appointment/meeting model for all industries.
+ * Real estate: "Site Visit", SaaS: "Demo", Healthcare: "Consultation", etc.
+ * MongoDB collection remains 'sitevisits' for backward compatibility.
  */
 
 const mongoose = require('mongoose');
@@ -18,6 +20,14 @@ const siteVisitSchema = new mongoose.Schema({
     },
     leadPhone: {
         type: String
+    },
+
+    // Appointment type — configurable per tenant ("site_visit", "demo", "consultation", etc.)
+    appointmentType: {
+        type: String,
+        default: 'site_visit',
+        trim: true,
+        lowercase: true
     },
     
     // Visit scheduling
@@ -244,4 +254,8 @@ siteVisitSchema.statics.countByPropertyAndDate = async function(propertyId, date
 
 const SiteVisit = mongoose.model('SiteVisit', siteVisitSchema);
 
+// Alias for generic usage — same model, just a clearer name
+const Appointment = SiteVisit;
+
 module.exports = SiteVisit;
+module.exports.Appointment = Appointment;

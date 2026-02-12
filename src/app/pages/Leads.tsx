@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData, Lead } from '../context/DataContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
@@ -206,7 +207,7 @@ const LeadsList = ({ leads }: { leads: Lead[] }) => (
 );
 
 const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
-  const statuses = ['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'];
+  const statuses = ['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'];
   // Include statuses that are in leads but not in the default list
   const allStatuses = Array.from(new Set([...statuses, ...leads.map(l => l.status)]));
 
@@ -264,6 +265,8 @@ const StatusBadge = ({ status }: { status: string }) => {
         return 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100';
       case 'Site Visit Scheduled':
       case 'Site Visit Booked':
+      case 'Appointment Scheduled':
+      case 'Appointment Booked':
         return 'bg-purple-100 text-purple-700 hover:bg-purple-100';
       case 'Interested':
         return 'bg-green-100 text-green-700 hover:bg-green-100';
@@ -285,6 +288,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 export default function Leads() {
   const { leads, loading, error, refreshLeads } = useData();
   const { addNotification } = useNotifications();
+  const { categoryFieldLabel, appointmentFieldLabel } = useTenantConfig();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [view, setView] = useState<'list' | 'kanban' | 'table'>('table');
@@ -681,9 +685,9 @@ export default function Leads() {
                 <SelectItem value="Call Attended">Call Attended</SelectItem>
                 <SelectItem value="No Response">No Response</SelectItem>
                 <SelectItem value="Not Interested">Not Interested</SelectItem>
-                <SelectItem value="Site Visit Booked">Site Visit Booked</SelectItem>
+                <SelectItem value="Appointment Booked">{appointmentFieldLabel} Booked</SelectItem>
                 {Array.from(new Set(leads.map(l => l.status)))
-                  .filter(s => !['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked'].includes(s))
+                  .filter(s => !['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Site Visit Booked'].includes(s))
                   .map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                 }
               </SelectContent>
@@ -789,7 +793,7 @@ export default function Leads() {
                 />
                 <Label htmlFor="autoAssign" className="cursor-pointer flex-1">
                   <div className="font-medium text-gray-900">Auto-Assign with Smart Rules</div>
-                  <div className="text-xs text-gray-600">Automatically assign based on workload, property type & location</div>
+                  <div className="text-xs text-gray-600">Automatically assign based on workload, {categoryFieldLabel.toLowerCase()} & location</div>
                 </Label>
               </div>
 

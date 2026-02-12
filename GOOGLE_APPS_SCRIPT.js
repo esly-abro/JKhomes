@@ -429,7 +429,7 @@ function applySiteVisitStatusFormatting(sheet, headers) {
 function testSync() {
   // Test Properties
   const testPropertyHeaders = [
-    'Property ID', 'Name', 'Property Type', 'Location', 'Status',
+    'Property ID', 'Name', 'Category', 'Location', 'Status',
     'Price Min (INR)', 'Price Max (INR)', 'Size (sqft)', 'Bedrooms', 'Bathrooms',
     'Description', 'Amenities', 'Assigned Agent', 'Agent Phone', 'Agent Email',
     'Interested Leads Count', 'Site Visits Enabled', 'Available Days', 'Time Slots',

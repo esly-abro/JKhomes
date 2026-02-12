@@ -51,12 +51,15 @@ export interface Task {
 export type TaskType = 
   | 'call_lead'
   | 'confirm_site_visit'
+  | 'confirm_appointment'
   | 'update_after_visit'
+  | 'update_after_appointment'
   | 'followup_call'
   | 'negotiate_deal'
   | 'prepare_docs'
   | 'manual_action'
   | 'schedule_visit'
+  | 'schedule_appointment'
   | 'send_quote'
   | 'other';
 
@@ -229,13 +232,16 @@ export async function deleteTask(taskId: string): Promise<void> {
 // Task type display labels
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   call_lead: 'Call Lead',
-  confirm_site_visit: 'Confirm Site Visit',
-  update_after_visit: 'Update After Visit',
+  confirm_site_visit: 'Confirm Appointment',
+  confirm_appointment: 'Confirm Appointment',
+  update_after_visit: 'Update After Appointment',
+  update_after_appointment: 'Update After Appointment',
   followup_call: 'Follow-up Call',
   negotiate_deal: 'Negotiate Deal',
   prepare_docs: 'Prepare Documents',
   manual_action: 'Manual Action',
-  schedule_visit: 'Schedule Visit',
+  schedule_visit: 'Schedule Appointment',
+  schedule_appointment: 'Schedule Appointment',
   send_quote: 'Send Quote',
   other: 'Other'
 };

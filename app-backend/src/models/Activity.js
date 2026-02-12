@@ -16,7 +16,7 @@ const activitySchema = new mongoose.Schema({
     // Activity type
     type: {
         type: String,
-        enum: ['call', 'email', 'meeting', 'note', 'status_change', 'task', 'sms', 'whatsapp', 'site_visit'],
+        enum: ['call', 'email', 'meeting', 'note', 'status_change', 'task', 'sms', 'whatsapp', 'site_visit', 'appointment'],
         required: true
     },
     

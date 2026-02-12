@@ -11,6 +11,10 @@ const Lead = require('./Lead');
 const Automation = require('./Automation');
 const AutomationRun = require('./AutomationRun');
 const AutomationJob = require('./AutomationJob');
+const TenantConfig = require('./tenantConfig.model');
+const SiteVisit = require('./SiteVisit');
+// Appointment is an alias for SiteVisit (generic naming)
+const Appointment = SiteVisit;
 
 module.exports = {
     User,
@@ -20,5 +24,8 @@ module.exports = {
     Lead,
     Automation,
     AutomationRun,
-    AutomationJob
+    AutomationJob,
+    TenantConfig,
+    SiteVisit,
+    Appointment
 };

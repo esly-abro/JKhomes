@@ -207,14 +207,14 @@ class PropertyRepository {
     }
 
     /**
-     * Find properties by type
-     * @param {string} propertyType - Property type
+     * Find properties by category (was: findByType)
+     * @param {string} category - Category key
      * @param {Object} options - Query options
      * @returns {Promise<Array>} Properties
      */
-    async findByType(propertyType, options = {}) {
+    async findByType(category, options = {}) {
         try {
-            return await this.findMany({ propertyType }, options);
+            return await this.findMany({ category }, options);
         } catch (error) {
             throw error;
         }
@@ -231,7 +231,7 @@ class PropertyRepository {
                 { $match: filter },
                 {
                     $group: {
-                        _id: { status: '$status', type: '$propertyType' },
+                        _id: { status: '$status', type: '$category' },
                         count: { $sum: 1 },
                         avgPrice: { $avg: '$price' },
                         minPrice: { $min: '$price' },

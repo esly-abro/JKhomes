@@ -38,8 +38,8 @@ async function knowledgeBaseRoutes(fastify, options) {
       const formattedProperties = properties.map(prop => {
         const agent = prop.assignedAgent || {};
         const siteVisit = prop.siteVisitAvailability || {};
-        
-        // Format price range
+        // Note: siteVisitAvailability is the property-level scheduling config (kept for backward compat)
+        // The label shown to users depends on tenant config appointmentFieldLabel
         let priceRange = 'Price not specified';
         if (prop.priceRange) {
           const min = prop.priceRange.min ? `₹${(prop.priceRange.min / 100000).toFixed(2)} Lakhs` : '';
@@ -79,6 +79,7 @@ async function knowledgeBaseRoutes(fastify, options) {
           agentPhone: agent.phone || 'Contact office',
           agentEmail: agent.email || 'info@jkhomes.com',
           siteVisitsAvailable: siteVisit.enabled ? 'Yes' : 'No',
+          appointmentsAvailable: siteVisit.enabled ? 'Yes' : 'No',
           visitDays: availableDays,
           visitTimeSlots: timeSlots,
           interestedCount: prop.interestedCount || 0
@@ -154,13 +155,13 @@ async function knowledgeBaseRoutes(fastify, options) {
         text += `- Email: ${agent.email || 'info@jkhomes.com'}\n`;
 
         if (siteVisit.enabled) {
-          text += `\n**Site Visit Availability:**\n`;
+          text += `\n**Appointment/Visit Availability:**\n`;
           text += `- Available Days: ${siteVisit.availableDays?.join(', ') || 'Contact for schedule'}\n`;
           if (siteVisit.timeSlots?.length > 0) {
             const slots = siteVisit.timeSlots.map(s => `${s.start}-${s.end}`).join(', ');
             text += `- Time Slots: ${slots}\n`;
           }
-          text += `- To book a site visit, call us or use our booking system.\n`;
+          text += `- To book an appointment, call us or use our booking system.\n`;
         }
 
         text += `\n---\n\n`;
@@ -169,7 +170,7 @@ async function knowledgeBaseRoutes(fastify, options) {
       text += `\n## About JK Homes\n\n`;
       text += `JK Homes is a trusted construction and real estate company. `;
       text += `We offer premium residential properties including villas, apartments, and plots. `;
-      text += `Contact us to schedule a site visit or learn more about our properties.\n\n`;
+      text += `Contact us to schedule an appointment or learn more about our properties.\n\n`;
       text += `**Office Contact:** info@jkhomes.com\n`;
 
       reply.type('text/plain; charset=utf-8').send(text);

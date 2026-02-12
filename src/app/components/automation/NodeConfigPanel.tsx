@@ -3,6 +3,7 @@ import { Node } from '@xyflow/react';
 import { X, MessageSquare, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { useTenantConfig } from '../../context/TenantConfigContext';
 import whatsappService, { WhatsAppTemplate, setMetaAccessToken, getMetaAccessToken } from '../../../services/whatsapp';
 
 interface NodeConfigPanelProps {
@@ -13,6 +14,7 @@ interface NodeConfigPanelProps {
 }
 
 export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddConditionNode }: NodeConfigPanelProps) {
+  const { categoryFieldLabel } = useTenantConfig();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
@@ -129,6 +131,12 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
         break;
       case 'aiCall':
         config.script = message;
+        break;
+      case 'humanCall':
+        // Auto-configured - use lead's assigned agent automatically
+        config.assignTo = 'auto';
+        config.priority = 'high';
+        config.autoConfigured = true;
         break;
       case 'condition':
         config.field = conditionField;
@@ -346,11 +354,77 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
             </div>
           )}
 
+          {/* Human Phone Call Config - Auto-configured */}
+          {nodeType === 'humanCall' && (
+            <div className="space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">📞</span>
+                  <span className="font-semibold text-orange-900">Auto-Configured Action</span>
+                </div>
+                <p className="text-sm text-orange-800 mb-3">
+                  This action works automatically — no manual configuration needed.
+                </p>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>The lead's <strong>assigned agent</strong> will receive a <strong>notification</strong></span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>A <strong>task</strong> will be created and assigned to the agent</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>All <strong>lead details</strong> (name, phone, budget, etc.) are automatically attached</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>The automation <strong>pauses</strong> until the agent completes the call task</span>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <h4 className="text-xs font-semibold text-gray-600 uppercase mb-2">What happens when a lead reaches this step:</h4>
+                <ol className="text-xs text-gray-600 space-y-1 list-decimal list-inside">
+                  <li>System looks up the agent assigned to this lead</li>
+                  <li>A "Call Lead" task is created with high priority</li>
+                  <li>Agent gets notified via email with lead details</li>
+                  <li>Task appears in agent's task dashboard</li>
+                  <li>Automation resumes after agent completes the task</li>
+                </ol>
+              </div>
+            </div>
+          )}
+
           {/* AI Call Config */}
           {nodeType === 'aiCall' && (
             <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">🤖</span>
+                  <span className="font-semibold text-blue-900">AI Phone Call</span>
+                </div>
+                <p className="text-sm text-blue-800 mb-3">
+                  The AI will automatically call the lead using their phone number from the lead record.
+                </p>
+                <div className="space-y-2 text-sm text-gray-700">
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>Lead's <strong>phone number</strong> is used automatically</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>Lead's <strong>name</strong> and details are passed to the AI</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-green-500 mt-0.5">✓</span>
+                    <span>Call outcome is <strong>recorded</strong> on the lead</span>
+                  </div>
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Call Script/Instructions</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Call Script/Instructions (Optional)</label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
@@ -358,6 +432,7 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                   rows={5}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="text-xs text-gray-500 mt-1">Leave blank to use the default AI script</p>
               </div>
             </div>
           )}
@@ -381,7 +456,7 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                   <option value="whatsappStatus">WhatsApp Response</option>
                   <option value="budget">Budget</option>
                   <option value="source">Lead Source</option>
-                  <option value="propertyType">Property Type</option>
+                  <option value="propertyType">{categoryFieldLabel}</option>
                   <option value="location">Location</option>
                 </select>
               </div>
@@ -421,8 +496,8 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                       <option value="Call Attended">Call Attended</option>
                       <option value="No Response">No Response</option>
                       <option value="Not Interested">Not Interested</option>
-                      <option value="Site Visit Booked">Site Visit Booked</option>
-                      <option value="Site Visit Scheduled">Site Visit Scheduled</option>
+                      <option value="Appointment Booked">Appointment Booked</option>
+                      <option value="Appointment Scheduled">Appointment Scheduled</option>
                       <option value="Interested">Interested</option>
                     </select>
                   )}
@@ -462,7 +537,6 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                   {/* Budget - Number Input */}
                   {conditionField === 'budget' && (
                     <div className="flex gap-2 items-center">
-                      <span className="text-gray-500">₹</span>
                       <Input
                         type="number"
                         value={conditionValue}
@@ -470,12 +544,11 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                         placeholder="e.g., 5000000"
                         className="flex-1"
                       />
-                      <span className="text-xs text-gray-500">Lakhs</span>
                     </div>
                   )}
 
                   {/* Text fields */}
-                  {['source', 'propertyType', 'location'].includes(conditionField) && (
+                  {['source', 'category', 'propertyType', 'location'].includes(conditionField) && (
                     <Input
                       type="text"
                       value={conditionValue}

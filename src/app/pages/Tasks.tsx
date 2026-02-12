@@ -52,8 +52,7 @@ import {
 // Task type icons
 const TASK_TYPE_ICONS: Record<TaskType, React.ReactNode> = {
   call_lead: <Phone className="w-4 h-4" />,
-  confirm_site_visit: <Calendar className="w-4 h-4" />,
-  update_after_visit: <ClipboardCheck className="w-4 h-4" />,
+  confirm_site_visit: <Calendar className="w-4 h-4" />,    confirm_appointment: <Calendar className="w-4 h-4" />,  update_after_visit: <ClipboardCheck className="w-4 h-4" />,
   followup_call: <Phone className="w-4 h-4" />,
   negotiate_deal: <Target className="w-4 h-4" />,
   prepare_docs: <FileText className="w-4 h-4" />,

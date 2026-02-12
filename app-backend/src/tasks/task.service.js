@@ -18,16 +18,30 @@ const TASK_TYPE_CONFIG = {
     autoCompleteOn: { activityType: 'call' },
     redirectType: 'lead'
   },
-  confirm_site_visit: {
-    title: 'Confirm Site Visit',
+  confirm_appointment: {
+    title: 'Confirm Appointment',
     priority: 'high',
     autoCompleteOn: { activityType: 'call' },
     redirectType: 'lead'
   },
-  update_after_visit: {
-    title: 'Update CRM After Site Visit',
+  // Backward compat alias
+  confirm_site_visit: {
+    title: 'Confirm Appointment',
+    priority: 'high',
+    autoCompleteOn: { activityType: 'call' },
+    redirectType: 'lead'
+  },
+  update_after_appointment: {
+    title: 'Update CRM After Appointment',
     priority: 'medium',
-    autoCompleteOn: { statusChange: 'site_visit_done' },
+    autoCompleteOn: { statusChange: 'appointment_done' },
+    redirectType: 'lead'
+  },
+  // Backward compat alias
+  update_after_visit: {
+    title: 'Update CRM After Appointment',
+    priority: 'medium',
+    autoCompleteOn: { statusChange: 'appointment_done' },
     redirectType: 'lead'
   },
   followup_call: {
@@ -48,10 +62,17 @@ const TASK_TYPE_CONFIG = {
     autoCompleteOn: null,
     redirectType: 'lead'
   },
-  schedule_visit: {
-    title: 'Schedule Site Visit',
+  schedule_appointment: {
+    title: 'Schedule Appointment',
     priority: 'high',
-    autoCompleteOn: { statusChange: 'site_visit_scheduled' },
+    autoCompleteOn: { statusChange: 'appointment_scheduled' },
+    redirectType: 'lead'
+  },
+  // Backward compat alias
+  schedule_visit: {
+    title: 'Schedule Appointment',
+    priority: 'high',
+    autoCompleteOn: { statusChange: 'appointment_scheduled' },
     redirectType: 'lead'
   },
   send_quote: {
@@ -152,7 +173,7 @@ async function getTasksForUser(userId, filters = {}) {
   }
 
   const tasks = await Task.find(query)
-    .populate('lead', 'name phone email status source budget propertyType')
+    .populate('lead', 'name phone email status source budget category')
     .populate('assignedTo', 'name email')
     .populate('automation', 'name')
     .sort({ 

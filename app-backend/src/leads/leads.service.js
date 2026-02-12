@@ -1,6 +1,6 @@
 /**
  * Leads Service (Refactored)
- * Core lead management only - activities, tasks, site visits, call logs
+ * Core lead management only - activities, tasks, appointments (site visits), call logs
  * are now in their own focused services.
  * 
  * This file re-exports from child services for backward compatibility.
@@ -67,7 +67,7 @@ const mockLeads = [
         phone: '+1 555-0103',
         company: 'Global Tech',
         source: 'Google Ads',
-        status: 'Site Visit Scheduled',
+        status: 'Appointment Scheduled',
         score: 91,
         assignedTo: 'user_003',
         createdAt: new Date(Date.now() - 172800000).toISOString(),
@@ -705,7 +705,14 @@ module.exports = {
     updateTask: taskService.updateTask,
     deleteTask: taskService.deleteTask,
     
-    // Site visit operations (re-exported from siteVisit.service.js)
+    // Appointment operations (re-exported from siteVisit.service.js)
+    // Generic names
+    confirmAppointment: siteVisitService.confirmSiteVisit,
+    getAppointmentsForToday: siteVisitService.getSiteVisitsForToday,
+    getAppointmentsByUser: siteVisitService.getSiteVisitsByUser,
+    getAllAppointments: siteVisitService.getAllSiteVisits,
+    syncAllAppointmentsToGoogleSheets: siteVisitService.syncAllSiteVisitsToGoogleSheets,
+    // Backward-compat aliases
     confirmSiteVisit: siteVisitService.confirmSiteVisit,
     getSiteVisitsForToday: siteVisitService.getSiteVisitsForToday,
     getSiteVisitsByUser: siteVisitService.getSiteVisitsByUser,

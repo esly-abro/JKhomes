@@ -43,15 +43,18 @@ const TaskSchema = new mongoose.Schema({
   type: {
     type: String,
     enum: [
-      'call_lead',           // Human Agent Manual Call
-      'confirm_site_visit',  // Agent Confirmation Call
-      'update_after_visit',  // Update CRM after site visit
-      'followup_call',       // Day 2, Day 7 follow-up calls
-      'negotiate_deal',      // Review deal terms
-      'prepare_docs',        // Prepare documentation
-      'manual_action',       // Generic manual action
-      'schedule_visit',      // Schedule site visit
-      'send_quote',          // Send pricing quote
+      'call_lead',               // Human Agent Manual Call
+      'confirm_appointment',     // Agent Confirmation Call (generic)
+      'confirm_site_visit',      // Backward compat alias
+      'update_after_appointment',// Update CRM after appointment
+      'update_after_visit',      // Backward compat alias
+      'followup_call',           // Day 2, Day 7 follow-up calls
+      'negotiate_deal',          // Review deal terms
+      'prepare_docs',            // Prepare documentation
+      'manual_action',           // Generic manual action
+      'schedule_appointment',    // Schedule appointment (generic)
+      'schedule_visit',          // Backward compat alias
+      'send_quote',              // Send pricing quote
       'other'
     ],
     default: 'manual_action'
@@ -98,7 +101,7 @@ const TaskSchema = new mongoose.Schema({
   autoCompleteOn: {
     activityType: {
       type: String,
-      enum: ['call', 'whatsapp', 'email', 'meeting', 'note', 'status_change', 'site_visit', null],
+      enum: ['call', 'whatsapp', 'email', 'meeting', 'note', 'status_change', 'site_visit', 'appointment', null],
       description: 'Activity type that auto-completes this task'
     },
     statusChange: {

@@ -19940,3 +19940,25 @@
 2026-02-05 19:07:56 [INFO]: Returning conversation summary {"conversationId":"conv_6801kgp1f9bsfhcv9zrb812a15fg","hasSummary":true,"summaryTitle":"Property Inquiry (Tamil)","matchType":"fallback","callStatus":"success"}
 2026-02-05 19:07:56 [INFO]: GET /elevenlabs/summary/9629649944 304 955ms
 2026-02-05 19:52:54 [INFO]: SIGINT received, shutting down gracefully...
+2026-02-11 14:06:09 [INFO]: Twilio client initialized
+2026-02-11 14:06:09 [INFO]: WhatsApp service initialized via Twilio
+2026-02-11 14:06:09 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-11 14:06:09 [INFO]: Post-Call Orchestrator initialized
+2026-02-11 14:06:09 [INFO]: 🚀 Server started on port 3000
+2026-02-11 14:06:09 [INFO]: Environment: development
+2026-02-11 14:06:09 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-11 14:06:09 [INFO]: Twilio Configured: true
+2026-02-11 14:06:09 [INFO]: OpenAI Configured: false
+2026-02-11 14:06:09 [INFO]: WhatsApp Configured: true
+2026-02-11 14:06:09 [INFO]: 
+2026-02-11 14:06:09 [INFO]: Available endpoints:
+2026-02-11 14:06:09 [INFO]:   POST   http://localhost:3000/leads
+2026-02-11 14:06:09 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-11 14:06:09 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-11 14:06:09 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-11 14:06:09 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-11 14:06:09 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-11 14:06:09 [INFO]:   GET    http://localhost:3000/health
+2026-02-11 14:06:09 [INFO]: 
+2026-02-11 14:06:09 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-12 14:33:32 [INFO]: GET /health {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.7462"}

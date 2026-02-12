@@ -50,7 +50,7 @@ async function syncActivity(request, reply) {
 }
 
 /**
- * Sync a specific SiteVisit to Zoho
+ * Sync a specific appointment (SiteVisit) to Zoho
  */
 async function syncSiteVisit(request, reply) {
   const { siteVisitId } = request.params;
@@ -60,7 +60,7 @@ async function syncSiteVisit(request, reply) {
   if (result.success) {
     return reply.send({
       success: true,
-      message: 'Site visit synced successfully',
+      message: 'Appointment synced successfully',
       data: result
     });
   } else {

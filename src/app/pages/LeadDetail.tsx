@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import { Button } from '../components/ui/button';
 import { Card } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -28,6 +29,7 @@ interface LeadActivity {
 
 export default function LeadDetail() {
   const { id } = useParams();
+  const { categoryFieldLabel, appointmentFieldLabel } = useTenantConfig();
   const { leads, activities, updateLead, addActivity } = useData();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [callStatus, setCallStatus] = useState<string | null>(null);
@@ -376,7 +378,7 @@ export default function LeadDetail() {
     if (status.includes('Attended')) return 'bg-green-100 text-green-700';
     if (status.includes('No Response')) return 'bg-yellow-100 text-yellow-700';
     if (status.includes('Not Interested')) return 'bg-red-100 text-red-700';
-    if (status.includes('Site Visit')) return 'bg-purple-100 text-purple-700';
+    if (status.includes('Site Visit') || status.includes('Appointment')) return 'bg-purple-100 text-purple-700';
     return 'bg-gray-100 text-gray-700';
   };
 
@@ -444,7 +446,7 @@ export default function LeadDetail() {
                   <MapPin className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <div className="text-xs text-gray-600">Property Interested</div>
+                  <div className="text-xs text-gray-600">{categoryFieldLabel}</div>
                   <div className="font-semibold text-gray-900">{lead.company}</div>
                 </div>
               </div>
@@ -566,7 +568,7 @@ export default function LeadDetail() {
                 }}
               >
                 <FileText className="h-4 w-4 mr-2" />
-                Schedule Site Visit
+                Schedule {appointmentFieldLabel}
               </Button>
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -649,7 +651,7 @@ export default function LeadDetail() {
                   <SelectItem value="Call Attended">Call Attended</SelectItem>
                   <SelectItem value="No Response">No Response</SelectItem>
                   <SelectItem value="Not Interested">Not Interested</SelectItem>
-                  <SelectItem value="Site Visit Booked">Site Visit Booked</SelectItem>
+                  <SelectItem value="Appointment Booked">{appointmentFieldLabel} Booked</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -682,6 +684,7 @@ export default function LeadDetail() {
                     'Call Attended': 'bg-green-500',
                     'No Response': 'bg-yellow-500',
                     'Not Interested': 'bg-red-500',
+                    'Appointment Booked': 'bg-purple-500',
                     'Site Visit Booked': 'bg-purple-500'
                   };
                   addLeadActivity('status', `Status Updated: ${newStatus}`, colorMap[newStatus] || 'bg-gray-500');
@@ -742,7 +745,7 @@ export default function LeadDetail() {
         </div>
       </div >
 
-      {/* Schedule Site Visit Dialog */}
+      {/* Schedule Appointment Dialog */}
       {
         lead && (
           <ScheduleSiteVisitDialog
@@ -750,7 +753,7 @@ export default function LeadDetail() {
             onOpenChange={setDialogOpen}
             lead={lead}
             onConfirm={(details) => {
-              addLeadActivity(`Site Visit Scheduled for ${details.visitDate} at ${details.timeSlot}`, 'site_visit', 'bg-purple-500');
+              addLeadActivity(`${appointmentFieldLabel} Scheduled for ${details.visitDate} at ${details.timeSlot}`, 'appointment', 'bg-purple-500');
             }}
           />
         )

@@ -111,7 +111,11 @@ class WorkflowEngine {
     }
     
     async triggerSiteVisitScheduled(lead, siteVisit) {
-        return triggers.triggerSiteVisitScheduled(lead, siteVisit, this.startAutomation.bind(this));
+        return triggers.triggerAppointmentScheduled(lead, siteVisit, this.startAutomation.bind(this));
+    }
+
+    async triggerAppointmentScheduled(lead, appointment) {
+        return triggers.triggerAppointmentScheduled(lead, appointment, this.startAutomation.bind(this));
     }
     
     async triggerStatusChange(lead, oldStatus, newStatus) {

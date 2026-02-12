@@ -108,7 +108,7 @@ interface SavedAutomation {
 const triggerItems = [
   { type: 'newLead', label: 'New Lead Added', icon: User, color: 'bg-green-500' },
   { type: 'leadUpdated', label: 'Lead Updated', icon: User, color: 'bg-blue-500' },
-  { type: 'siteVisitScheduled', label: 'Site Visit Scheduled', icon: User, color: 'bg-purple-500' },
+  { type: 'siteVisitScheduled', label: 'Appointment Scheduled', icon: User, color: 'bg-purple-500' },
 ];
 
 const actionItems = [
@@ -606,7 +606,7 @@ function AutomationFlow() {
       case 'aiCall':
         return { script: 'default', maxDuration: 300 };
       case 'humanCall':
-        return { assignTo: 'auto', priority: 'normal' };
+        return { assignTo: 'auto', priority: 'high', autoConfigured: true };
       case 'email':
         return { subject: '', body: '', template: 'default' };
       case 'condition':

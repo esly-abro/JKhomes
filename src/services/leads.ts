@@ -72,25 +72,34 @@ export async function updateLeadStatus(id: string, status: string): Promise<Lead
 }
 
 /**
- * Confirm site visit for a lead
+ * Confirm appointment/site visit for a lead
  */
-export async function confirmSiteVisit(leadId: string, scheduledAt: string, propertyId?: string) {
-    return api.post(`/api/leads/${leadId}/site-visit`, { scheduledAt, propertyId });
+export async function confirmSiteVisit(leadId: string, scheduledAt: string, propertyId?: string, appointmentType?: string) {
+    return api.post(`/api/leads/${leadId}/site-visit`, { scheduledAt, propertyId, appointmentType });
 }
 
+/** Generic alias for confirmSiteVisit */
+export const confirmAppointment = confirmSiteVisit;
+
 /**
- * Get today's site visits
+ * Get today's appointments/site visits
  */
 export async function getTodaySiteVisits() {
     return api.get('/api/site-visits/today');
 }
 
+/** Generic alias */
+export const getTodayAppointments = getTodaySiteVisits;
+
 /**
- * Get all site visits (for calendar view)
+ * Get all appointments/site visits (for calendar view)
  */
 export async function getAllSiteVisits(limit: number = 100) {
     return api.get('/api/site-visits/all', { params: { limit } });
 }
+
+/** Generic alias */
+export const getAllAppointments = getAllSiteVisits;
 
 /**
  * Create new activity

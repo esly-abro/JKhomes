@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useCallback } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
+import { TenantConfigProvider } from './context/TenantConfigContext';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
@@ -91,16 +92,18 @@ export default function App() {
 
   return (
     <DataProvider>
-      <NotificationProvider>
-        <BrowserRouter>
-          <AppRoutes 
-            user={user} 
-            setUser={setUser} 
-            hasCompletedOnboarding={hasCompletedOnboarding}
-            setHasCompletedOnboarding={setHasCompletedOnboarding}
-          />
-        </BrowserRouter>
-      </NotificationProvider>
+      <TenantConfigProvider>
+        <NotificationProvider>
+          <BrowserRouter>
+            <AppRoutes 
+              user={user} 
+              setUser={setUser} 
+              hasCompletedOnboarding={hasCompletedOnboarding}
+              setHasCompletedOnboarding={setHasCompletedOnboarding}
+            />
+          </BrowserRouter>
+        </NotificationProvider>
+      </TenantConfigProvider>
     </DataProvider>
   );
 }

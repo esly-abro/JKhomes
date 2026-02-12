@@ -1,5 +1,4 @@
-/**
- * Fastify Application Setup
+﻿/**
  * Main application configuration and routes
  * 
  * Production-Ready Architecture:
@@ -381,18 +380,27 @@ async function buildApp() {
             return reply.send({ token, identity });
         });
 
-        // Site Visit routes
+        // Site Visit / Appointment routes (both paths supported)
         protectedApp.post('/api/leads/:id/site-visit', leadsController.postSiteVisit);
+        protectedApp.post('/api/leads/:id/appointment', leadsController.postSiteVisit); // generic alias
         protectedApp.get('/api/site-visits/today', leadsController.getTodaySiteVisits);
+        protectedApp.get('/api/appointments/today', leadsController.getTodaySiteVisits); // generic alias
         protectedApp.get('/api/site-visits/me', leadsController.getMySiteVisits);
+        protectedApp.get('/api/appointments/me', leadsController.getMySiteVisits); // generic alias
         protectedApp.get('/api/site-visits/all', {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, leadsController.getAllSiteVisitsHandler);
+        protectedApp.get('/api/appointments/all', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, leadsController.getAllSiteVisitsHandler); // generic alias
         
-        // Google Sheets sync for site visits
+        // Google Sheets sync for appointments/site visits
         protectedApp.post('/api/site-visits/sync-google-sheets', {
             preHandler: requireRole(['owner', 'admin'])
         }, leadsController.syncSiteVisitsToGoogleSheets);
+        protectedApp.post('/api/appointments/sync-google-sheets', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, leadsController.syncSiteVisitsToGoogleSheets); // generic alias
 
         // Activity routes
         protectedApp.post('/api/activities', leadsController.postActivity);
@@ -618,7 +626,7 @@ async function buildApp() {
             }
         });
         
-        // Check for booking conflicts
+        // Check for booking conflicts (both paths supported)
         protectedApp.post('/api/site-visits/check-conflict', async (request, reply) => {
             try {
                 const { propertyId, date, startTime, excludeVisitId } = request.body;
@@ -639,6 +647,22 @@ async function buildApp() {
                     success: false, 
                     error: error.message 
                 });
+            }
+        });
+
+        // Appointment conflict check alias
+        protectedApp.post('/api/appointments/check-conflict', async (request, reply) => {
+            try {
+                const { propertyId, date, startTime, excludeVisitId } = request.body;
+                const agentId = request.user._id;
+                if (!propertyId || !date || !startTime) {
+                    return reply.code(400).send({ success: false, error: 'propertyId, date, and startTime are required' });
+                }
+                const result = await availabilityService.checkConflicts(propertyId, agentId, date, startTime, excludeVisitId);
+                return reply.send({ success: true, data: result });
+            } catch (error) {
+                request.log.error(error);
+                return reply.code(500).send({ success: false, error: error.message });
             }
         });
 
@@ -667,6 +691,11 @@ async function buildApp() {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncSiteVisit);
 
+        // Generic alias for appointment sync
+        protectedApp.post('/api/sync/appointment/:siteVisitId', {
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
+        }, syncController.syncSiteVisit);
+
         protectedApp.post('/api/sync/pending', {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncAllPending);
@@ -674,6 +703,10 @@ async function buildApp() {
         // Upload routes
         const uploadRoutes = require('./routes/upload');
         protectedApp.register(uploadRoutes, { prefix: '/api/upload' });
+
+        // Tenant Config routes (SaaS configurability)
+        const tenantConfigRoutes = require('./routes/tenantConfig.routes');
+        protectedApp.register(tenantConfigRoutes);
 
         // ElevenLabs Sync
         const elevenLabsController = require('./controllers/elevenLabs.controller');
@@ -691,7 +724,7 @@ async function buildApp() {
                     return reply.code(400).send({ success: false, error: 'Phone number is required' });
                 }
                 
-                console.log(`📞 Manual AI call request to ${phoneNumber} for lead ${leadId}`);
+                console.log(`ðŸ“ž Manual AI call request to ${phoneNumber} for lead ${leadId}`);
                 
                 const result = await elevenLabsService.makeCall(phoneNumber, {
                     leadName: leadName || 'Customer',
@@ -723,7 +756,7 @@ async function buildApp() {
                             }
                         });
                     } catch (activityError) {
-                        console.warn('⚠️ Failed to log activity:', activityError.message);
+                        console.warn('âš ï¸ Failed to log activity:', activityError.message);
                         // Don't fail the call because of activity logging
                     }
                     
@@ -741,7 +774,7 @@ async function buildApp() {
                     });
                 }
             } catch (error) {
-                console.error('❌ ElevenLabs call error:', error);
+                console.error('âŒ ElevenLabs call error:', error);
                 return reply.code(500).send({ 
                     success: false, 
                     error: error.message || 'Failed to initiate call' 
@@ -756,7 +789,7 @@ async function buildApp() {
                 const summary = await elevenLabsService.getConversationSummary(phoneNumber);
                 return { success: true, data: summary };
             } catch (error) {
-                console.error('❌ ElevenLabs summary error:', error);
+                console.error('âŒ ElevenLabs summary error:', error);
                 return reply.code(500).send({ 
                     success: false, 
                     error: error.message || 'Failed to fetch summary' 
@@ -854,7 +887,7 @@ async function buildApp() {
             // Always return 200 to acknowledge (prevents ElevenLabs from retrying)
             return reply.send({ status: 'received', ...result });
         } catch (error) {
-            console.error('❌ ElevenLabs webhook error:', error);
+            console.error('âŒ ElevenLabs webhook error:', error);
             return reply.send({ status: 'error', error: error.message });
         }
     });

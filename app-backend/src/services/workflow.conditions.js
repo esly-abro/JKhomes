@@ -56,7 +56,8 @@ function getFieldValue(lead, field) {
         case 'source':
             return lead.source;
         case 'propertyType':
-            return lead.propertyType;
+        case 'category':
+            return lead.category || lead.propertyType;
         case 'location':
             return lead.location || lead.preferredLocation;
         case 'callAttempts':
@@ -77,8 +78,9 @@ function getFieldValue(lead, field) {
             return Math.floor((Date.now() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60));
         case 'hasAgent':
             return !!(lead.assignedAgent || lead.assignedTo);
+        case 'hasAppointment':
         case 'hasSiteVisit':
-            return !!(lead.siteVisitScheduled || lead.siteVisitDate);
+            return !!(lead.appointmentScheduled || lead.siteVisitScheduled || lead.appointmentDate || lead.siteVisitDate);
         default:
             return getNestedValue(lead, field);
     }
@@ -159,8 +161,9 @@ function interpolateTemplate(template, lead, context = {}) {
         .replace(/\{\{lastName\}\}/g, (lead.name || '').split(' ').slice(1).join(' '))
         .replace(/\{\{email\}\}/g, lead.email || '')
         .replace(/\{\{phone\}\}/g, lead.phone || '')
-        .replace(/\{\{budget\}\}/g, lead.budget ? `₹${lead.budget.toLocaleString()}` : '')
-        .replace(/\{\{propertyType\}\}/g, lead.propertyType || '')
+        .replace(/\{\{budget\}\}/g, lead.budget ? `${lead.budget.toLocaleString()}` : '')
+        .replace(/\{\{propertyType\}\}/g, lead.category || lead.propertyType || '')
+        .replace(/\{\{category\}\}/g, lead.category || lead.propertyType || '')
         .replace(/\{\{location\}\}/g, lead.location || '')
         .replace(/\{\{source\}\}/g, lead.source || '')
         .replace(/\{\{status\}\}/g, lead.status || '')

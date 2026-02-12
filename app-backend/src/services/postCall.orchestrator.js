@@ -12,14 +12,17 @@ const Lead = require('../models/Lead');
 const zohoClient = require('../clients/zoho.client');
 const dataLayer = require('../leads/lead.dataLayer');
 
-// Lead status mappings for Zoho CRM
+// Lead status mappings for CRM
 const LEAD_STATUS = {
     NEW: 'New',
     CALL_ATTENDED: 'Call Attended',
     NO_RESPONSE: 'No Response',
     NOT_INTERESTED: 'Not Interested',
-    SITE_VISIT_BOOKED: 'Site Visit Booked',
-    SITE_VISIT_SCHEDULED: 'Site Visit Scheduled',
+    APPOINTMENT_BOOKED: 'Appointment Booked',
+    APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
+    // Backward compat aliases
+    SITE_VISIT_BOOKED: 'Appointment Booked',
+    SITE_VISIT_SCHEDULED: 'Appointment Scheduled',
     INTERESTED: 'Interested'
 };
 
@@ -28,7 +31,8 @@ const ACTION_TYPES = {
     SEND_WHATSAPP_DETAILS: 'send_whatsapp_details',
     SEND_BOOKING_LINK: 'send_booking_link',
     SCHEDULE_CALLBACK: 'schedule_callback',
-    SEND_SITE_VISIT_CONFIRMATION: 'send_site_visit_confirmation',
+    SEND_APPOINTMENT_CONFIRMATION: 'send_appointment_confirmation',
+    SEND_SITE_VISIT_CONFIRMATION: 'send_appointment_confirmation', // backward compat alias
     UPDATE_CRM_STATUS: 'update_crm_status',
     SEND_FOLLOW_UP: 'send_follow_up',
     FLAG_FOR_REVIEW: 'flag_for_review'
@@ -37,7 +41,8 @@ const ACTION_TYPES = {
 // Intent types (from intent analyzer)
 const INTENT_TYPES = {
     SEND_WHATSAPP: 'send_whatsapp',
-    BOOK_SITE_VISIT: 'book_site_visit',
+    BOOK_APPOINTMENT: 'book_appointment',
+    BOOK_SITE_VISIT: 'book_appointment', // backward compat alias
     REQUEST_CALLBACK: 'request_callback',
     INTERESTED: 'interested',
     NOT_INTERESTED: 'not_interested',
@@ -198,11 +203,11 @@ class PostCallOrchestrator {
             analysis.leadQualification = 'warm';
         }
 
-        if (criteria['site_visit_requested'] === 'success' || criteria['book_site_visit'] === true) {
+        if (criteria['site_visit_requested'] === 'success' || criteria['book_site_visit'] === true || criteria['book_appointment'] === true) {
             analysis.intents.push({
-                type: INTENT_TYPES.BOOK_SITE_VISIT,
+                type: INTENT_TYPES.BOOK_APPOINTMENT,
                 confidence: 0.95,
-                evidence: 'ElevenLabs evaluation: site visit requested'
+                evidence: 'ElevenLabs evaluation: appointment/site visit requested'
             });
             analysis.leadQualification = 'hot';
         }
@@ -260,8 +265,8 @@ class PostCallOrchestrator {
             });
         }
 
-        // Site visit requested
-        if (intentTypes.includes(INTENT_TYPES.BOOK_SITE_VISIT)) {
+        // Appointment/site visit requested
+        if (intentTypes.includes(INTENT_TYPES.BOOK_APPOINTMENT)) {
             actions.push({
                 type: ACTION_TYPES.SEND_BOOKING_LINK,
                 priority: 1
@@ -456,8 +461,8 @@ JK Construction Team`;
             let status = LEAD_STATUS.CALL_ATTENDED;
             const intentTypes = analysis.intents.map(i => i.type);
 
-            if (intentTypes.includes(INTENT_TYPES.BOOK_SITE_VISIT)) {
-                status = LEAD_STATUS.SITE_VISIT_BOOKED;
+            if (intentTypes.includes(INTENT_TYPES.BOOK_APPOINTMENT)) {
+                status = LEAD_STATUS.APPOINTMENT_BOOKED;
             } else if (intentTypes.includes(INTENT_TYPES.INTERESTED)) {
                 status = LEAD_STATUS.INTERESTED;
             } else if (intentTypes.includes(INTENT_TYPES.NOT_INTERESTED)) {

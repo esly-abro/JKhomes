@@ -85,22 +85,35 @@ class WorkflowEngine {
   }
 
   /**
-   * Trigger automations for site visit scheduled
+   * Trigger automations for appointment/site visit scheduled
    */
   async triggerSiteVisitScheduled(lead, siteVisit) {
+    return this.triggerAppointmentScheduled(lead, siteVisit);
+  }
+
+  async triggerAppointmentScheduled(lead, appointment) {
     try {
       const automations = await Automation.find({
-        triggerType: 'siteVisitScheduled',
+        triggerType: { $in: ['siteVisitScheduled', 'appointmentScheduled'] },
         isActive: true
       });
 
-      for (const automation of automations) {
+      // Deduplicate by _id
+      const seen = new Set();
+      const unique = automations.filter(a => {
+        const id = a._id.toString();
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+
+      for (const automation of unique) {
         if (this.matchesTriggerConditions(lead, automation.triggerConditions)) {
-          await this.startAutomation(automation, lead, { siteVisit });
+          await this.startAutomation(automation, lead, { appointment, siteVisit: appointment });
         }
       }
     } catch (error) {
-      console.error('Error triggering site visit automations:', error);
+      console.error('Error triggering appointment automations:', error);
     }
   }
 
@@ -125,9 +138,11 @@ class WorkflowEngine {
       return false;
     }
 
-    // Check property types
-    if (conditions.propertyTypes?.length > 0) {
-      if (!conditions.propertyTypes.includes(lead.propertyType)) {
+    // Check categories (supports both new 'categories' and legacy 'propertyTypes')
+    const categoryFilter = conditions.categories?.length > 0 ? conditions.categories : conditions.propertyTypes;
+    if (categoryFilter?.length > 0) {
+      const leadCategory = lead.category || lead.propertyType;
+      if (!categoryFilter.includes(leadCategory)) {
         return false;
       }
     }
@@ -1460,7 +1475,8 @@ class WorkflowEngine {
           fieldValue = lead.source;
           break;
         case 'propertyType':
-          fieldValue = lead.propertyType;
+        case 'category':
+          fieldValue = lead.category || lead.propertyType;
           break;
         case 'location':
           fieldValue = lead.location || lead.preferredLocation;
@@ -1490,7 +1506,8 @@ class WorkflowEngine {
           fieldValue = !!(lead.assignedAgent || lead.assignedTo);
           break;
         case 'hasSiteVisit':
-          fieldValue = !!(lead.siteVisitScheduled || lead.siteVisitDate);
+        case 'hasAppointment':
+          fieldValue = !!(lead.appointmentScheduled || lead.siteVisitScheduled || lead.appointmentDate || lead.siteVisitDate);
           break;
         default:
           fieldValue = this.getNestedValue(lead, field);
@@ -1562,8 +1579,9 @@ class WorkflowEngine {
       .replace(/\{\{firstName\}\}/g, (lead.name || '').split(' ')[0])
       .replace(/\{\{email\}\}/g, lead.email || '')
       .replace(/\{\{phone\}\}/g, lead.phone || '')
-      .replace(/\{\{budget\}\}/g, lead.budget ? `₹${lead.budget.toLocaleString()}` : '')
-      .replace(/\{\{propertyType\}\}/g, lead.propertyType || '')
+      .replace(/\{\{budget\}\}/g, lead.budget ? `${lead.budget.toLocaleString()}` : '')
+      .replace(/\{\{propertyType\}\}/g, lead.category || lead.propertyType || '')
+      .replace(/\{\{category\}\}/g, lead.category || lead.propertyType || '')
       .replace(/\{\{location\}\}/g, lead.location || '')
       .replace(/\{\{source\}\}/g, lead.source || '');
   }

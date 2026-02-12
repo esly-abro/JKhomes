@@ -53,7 +53,8 @@ const indexes = {
     properties: [
         // Status queries
         { status: 1 },
-        { propertyType: 1 },
+        { category: 1 },
+        { propertyType: 1 },  // Legacy index for backward compat
         
         // Location queries
         { 'location.city': 1 },
@@ -62,7 +63,7 @@ const indexes = {
         { price: 1 },
         
         // Compound indexes
-        { status: 1, propertyType: 1 },
+        { status: 1, category: 1 },
         { status: 1, price: 1 },
         { 'location.city': 1, status: 1 },
         
@@ -86,7 +87,10 @@ const indexes = {
         // Compound indexes
         { visitDate: 1, status: 1 },
         { agentId: 1, visitDate: 1 },
-        { propertyId: 1, visitDate: 1 }
+        { propertyId: 1, visitDate: 1 },
+        // Appointment type index
+        { appointmentType: 1 },
+        { appointmentType: 1, visitDate: 1 }
     ],
     
     activities: [

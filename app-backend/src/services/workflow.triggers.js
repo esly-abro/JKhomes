@@ -26,9 +26,11 @@ function matchesTriggerConditions(lead, conditions) {
         return false;
     }
 
-    // Check property types
-    if (conditions.propertyTypes?.length > 0) {
-        if (!conditions.propertyTypes.includes(lead.propertyType)) {
+    // Check categories (supports both new 'categories' and legacy 'propertyTypes')
+    const categoryFilter = conditions.categories?.length > 0 ? conditions.categories : conditions.propertyTypes;
+    if (categoryFilter?.length > 0) {
+        const leadCategory = lead.category || lead.propertyType;
+        if (!categoryFilter.includes(leadCategory)) {
             return false;
         }
     }
@@ -106,24 +108,39 @@ async function triggerLeadUpdated(lead, changes, startAutomationFn) {
 }
 
 /**
- * Trigger automations for site visit scheduled
+ * Trigger automations for appointment scheduled (was: site visit scheduled)
+ * Matches both 'appointmentScheduled' and legacy 'siteVisitScheduled' triggers.
  */
-async function triggerSiteVisitScheduled(lead, siteVisit, startAutomationFn) {
+async function triggerAppointmentScheduled(lead, appointment, startAutomationFn) {
     try {
-        const automations = await findMatchingAutomations('siteVisitScheduled', lead);
+        // Match both new and legacy trigger types
+        const automationsNew = await findMatchingAutomations('appointmentScheduled', lead);
+        const automationsLegacy = await findMatchingAutomations('siteVisitScheduled', lead);
+        const automations = [...automationsNew, ...automationsLegacy];
+        // Deduplicate by _id
+        const seen = new Set();
+        const unique = automations.filter(a => {
+            const id = a._id.toString();
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+        });
 
         const results = [];
-        for (const automation of automations) {
-            const result = await startAutomationFn(automation, lead, { siteVisit });
+        for (const automation of unique) {
+            const result = await startAutomationFn(automation, lead, { appointment, siteVisit: appointment });
             results.push({ automationId: automation._id, result });
         }
         
         return results;
     } catch (error) {
-        console.error('Error triggering site visit automations:', error);
+        console.error('Error triggering appointment automations:', error);
         throw error;
     }
 }
+
+// Backward compat alias
+const triggerSiteVisitScheduled = triggerAppointmentScheduled;
 
 /**
  * Trigger automations for status change
@@ -158,6 +175,7 @@ module.exports = {
     findMatchingAutomations,
     triggerNewLead,
     triggerLeadUpdated,
+    triggerAppointmentScheduled,
     triggerSiteVisitScheduled,
     triggerStatusChange
 };

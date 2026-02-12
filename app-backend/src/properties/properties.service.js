@@ -27,9 +27,9 @@ class PropertiesService {
     try {
       const query = {};
 
-      // Apply filters
-      if (filters.propertyType) {
-        query.propertyType = filters.propertyType;
+      // Apply filters — support both 'category' and legacy 'propertyType'
+      if (filters.category || filters.propertyType) {
+        query.category = filters.category || filters.propertyType;
       }
       if (filters.status) {
         query.status = filters.status;
@@ -75,6 +75,11 @@ class PropertiesService {
 
   async createProperty(propertyData, userId) {
     try {
+      // Normalize: if client sends 'propertyType', map it to 'category'
+      if (propertyData.propertyType && !propertyData.category) {
+        propertyData.category = propertyData.propertyType;
+      }
+
       const property = new Property({
         ...propertyData,
         createdBy: userId

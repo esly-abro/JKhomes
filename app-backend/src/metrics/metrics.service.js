@@ -18,7 +18,7 @@ async function getOverview() {
     const totalLeads = allLeads.length;
 
     // Active leads (New, Call Attended, Interested)
-    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Site Visit Booked', 'Site Visit Scheduled'];
+    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled'];
     const activeLeads = allLeads.filter(l => activeStatuses.includes(l.status)).length;
 
     // Conversion rate (simplified - closed won / total)

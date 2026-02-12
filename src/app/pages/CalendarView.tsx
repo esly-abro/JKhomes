@@ -3,6 +3,7 @@ import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { ChevronLeft, ChevronRight, Plus, MapPin, Phone, Mail, Calendar } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 
 interface CalendarEvent {
   id: string;
@@ -10,7 +11,7 @@ interface CalendarEvent {
   date: string;
   time: string;
   color: string;
-  type: 'site_visit' | 'call' | 'meeting' | 'email' | 'other';
+  type: 'site_visit' | 'appointment' | 'call' | 'meeting' | 'email' | 'other';
   leadName?: string;
 }
 
@@ -18,6 +19,7 @@ export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week' | 'month'>('month');
   const { siteVisits = [], activities = [] } = useData();
+  const { appointmentFieldLabel } = useTenantConfig();
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -33,11 +35,11 @@ export default function CalendarView() {
         const visitDate = new Date(visit.scheduledAt);
         allEvents.push({
           id: visit._id || String(Math.random()),
-          title: `Site Visit: ${visit.leadName || 'Client'}`,
+          title: `${appointmentFieldLabel}: ${visit.leadName || 'Client'}`,
           date: visitDate.toISOString().split('T')[0],
           time: visitDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
           color: 'bg-orange-500',
-          type: 'site_visit',
+          type: 'appointment',
           leadName: visit.leadName
         });
       });
@@ -49,10 +51,11 @@ export default function CalendarView() {
         // Use scheduledAt if available, otherwise createdAt, then timestamp
         const activityTime = activity?.scheduledAt || activity?.createdAt || activity?.timestamp;
         if (!activityTime) return;
-        if (activity.type === 'site_visit' || activity.type === 'meeting' || activity.type === 'call') {
+        if (activity.type === 'site_visit' || activity.type === 'appointment' || activity.type === 'meeting' || activity.type === 'call') {
           const activityDate = new Date(activityTime);
           const colorMap: Record<string, string> = {
             'site_visit': 'bg-orange-500',
+            'appointment': 'bg-orange-500',
             'meeting': 'bg-purple-500',
             'call': 'bg-green-500',
             'email': 'bg-blue-500'
@@ -108,7 +111,8 @@ export default function CalendarView() {
   // Get event icon based on type
   const getEventIcon = (type: string) => {
     switch (type) {
-      case 'site_visit': return <MapPin className="h-3 w-3" />;
+      case 'site_visit':
+      case 'appointment': return <MapPin className="h-3 w-3" />;
       case 'call': return <Phone className="h-3 w-3" />;
       case 'email': return <Mail className="h-3 w-3" />;
       case 'meeting': return <Calendar className="h-3 w-3" />;
@@ -232,7 +236,7 @@ export default function CalendarView() {
           <div className="text-center text-gray-500 py-8">
             <Calendar className="h-12 w-12 mx-auto mb-3 text-gray-400" />
             <p>No upcoming events</p>
-            <p className="text-sm">Site visits and activities will appear here</p>
+            <p className="text-sm">{appointmentFieldLabel}s and activities will appear here</p>
           </div>
         ) : (
           <div className="space-y-3">

@@ -49,7 +49,7 @@ const createLeadSchema = z.object({
         phone: phoneSchema,
         email: emailSchema.optional(),
         source: z.enum(['website', 'referral', 'social', 'advertisement', 'whatsapp', 'call', 'walk-in', 'other']).optional(),
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
         budget: z.number().positive().optional(),
         notes: z.string().max(2000, 'Notes must be less than 2000 characters').optional(),
         propertyInterest: z.string().optional(),
@@ -69,7 +69,7 @@ const updateLeadSchema = z.object({
         phone: phoneSchema.optional(),
         email: emailSchema.optional(),
         source: z.enum(['website', 'referral', 'social', 'advertisement', 'whatsapp', 'call', 'walk-in', 'other']).optional(),
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
         budget: z.number().positive().optional(),
         notes: z.string().max(2000).optional(),
         propertyInterest: z.string().optional(),
@@ -83,7 +83,7 @@ const updateLeadSchema = z.object({
 
 const getLeadsSchema = z.object({
     query: paginationSchema.extend({
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
         agentId: objectIdSchema.optional(),
         source: z.string().optional(),
         search: z.string().max(100).optional(),
@@ -150,7 +150,8 @@ const createPropertySchema = z.object({
     body: z.object({
         title: z.string().min(5, 'Title must be at least 5 characters').max(200),
         description: z.string().max(5000).optional(),
-        propertyType: z.enum(['apartment', 'villa', 'house', 'land', 'commercial', 'penthouse', 'townhouse']),
+        propertyType: z.string().min(1, 'Category is required'),  // Dynamic: validated against TenantConfig.categories at service layer
+        category: z.string().min(1).optional(),  // Alias for propertyType — accepts either field name
         status: z.enum(['available', 'sold', 'reserved', 'under-construction']).optional().default('available'),
         price: z.number().positive('Price must be positive'),
         currency: z.string().length(3).optional().default('INR'),
@@ -193,7 +194,8 @@ const updatePropertySchema = z.object({
 const getPropertiesSchema = z.object({
     query: paginationSchema.extend({
         status: z.enum(['available', 'sold', 'reserved', 'under-construction']).optional(),
-        propertyType: z.enum(['apartment', 'villa', 'house', 'land', 'commercial', 'penthouse', 'townhouse']).optional(),
+        propertyType: z.string().optional(),  // Dynamic: validated against TenantConfig.categories at service layer
+        category: z.string().optional(),  // Alias for propertyType
         city: z.string().optional(),
         minPrice: z.string().transform(val => parseFloat(val)).pipe(z.number().positive()).optional(),
         maxPrice: z.string().transform(val => parseFloat(val)).pipe(z.number().positive()).optional(),

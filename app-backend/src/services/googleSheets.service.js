@@ -26,7 +26,7 @@ class GoogleSheetsService {
         this.headers = [
             'Property ID',
             'Name',
-            'Property Type',
+            'Category',
             'Location',
             'Status',
             'Price Min (INR)',
@@ -118,7 +118,7 @@ class GoogleSheetsService {
         return [
             property._id?.toString() || '',
             property.name || '',
-            property.propertyType || '',
+            property.category || property.propertyType || '',
             property.location || '',
             property.status || 'Available',
             property.price?.min?.toString() || '',

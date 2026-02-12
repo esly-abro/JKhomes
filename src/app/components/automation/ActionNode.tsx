@@ -40,12 +40,14 @@ function ActionNode({ data, selected }: NodeProps) {
   const Icon = iconMap[nodeData.type] || Zap;
   const color = nodeData.color || 'bg-blue-500';
   const description = descriptionMap[nodeData.type] || 'Execute action';
-  const hasConfig = nodeData.config && (
+  // humanCall is always auto-configured, no manual config needed
+  const isAutoConfigured = nodeData.type === 'humanCall';
+  const hasConfig = isAutoConfigured || (nodeData.config && (
     nodeData.config.template || 
     nodeData.config.message || 
     nodeData.config.script ||
     nodeData.config.subject
-  );
+  ));
 
   return (
     <div
@@ -103,7 +105,7 @@ function ActionNode({ data, selected }: NodeProps) {
           )}
           {nodeData.type === 'humanCall' && (
             <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">
-              Priority: {nodeData.config.priority || 'normal'}
+              ✓ Auto: notify agent + create task
             </div>
           )}
           {nodeData.type === 'email' && nodeData.config.subject && (
@@ -115,7 +117,7 @@ function ActionNode({ data, selected }: NodeProps) {
       )}
 
       {/* Configure hint */}
-      {!hasConfig && (
+      {!hasConfig && !isAutoConfigured && (
         <div className="mt-2 pl-10">
           <div className="text-[10px] text-gray-400 flex items-center gap-1">
             <Settings className="h-3 w-3" />

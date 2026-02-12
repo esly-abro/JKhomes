@@ -12,21 +12,25 @@ const LEAD_STATUSES = {
     CALL_ATTENDED: 'Call Attended',
     NO_RESPONSE: 'No Response',
     NOT_INTERESTED: 'Not Interested',
-    SITE_VISIT_BOOKED: 'Site Visit Booked',
-    SITE_VISIT_SCHEDULED: 'Site Visit Scheduled',
+    // Generic appointment statuses (new)
+    APPOINTMENT_BOOKED: 'Appointment Booked',
+    APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
+    // Backward compatibility aliases (old names still work)
+    SITE_VISIT_BOOKED: 'Appointment Booked',
+    SITE_VISIT_SCHEDULED: 'Appointment Scheduled',
     INTERESTED: 'Interested'
 };
 
-const LEAD_STATUS_LIST = Object.values(LEAD_STATUSES);
+const LEAD_STATUS_LIST = [...new Set(Object.values(LEAD_STATUSES))];
 
 const LEAD_STATUS_TRANSITIONS = {
     [LEAD_STATUSES.NEW]: [LEAD_STATUSES.CALL_ATTENDED, LEAD_STATUSES.NO_RESPONSE, LEAD_STATUSES.NOT_INTERESTED],
-    [LEAD_STATUSES.CALL_ATTENDED]: [LEAD_STATUSES.INTERESTED, LEAD_STATUSES.NOT_INTERESTED, LEAD_STATUSES.SITE_VISIT_BOOKED],
+    [LEAD_STATUSES.CALL_ATTENDED]: [LEAD_STATUSES.INTERESTED, LEAD_STATUSES.NOT_INTERESTED, LEAD_STATUSES.APPOINTMENT_BOOKED],
     [LEAD_STATUSES.NO_RESPONSE]: [LEAD_STATUSES.CALL_ATTENDED, LEAD_STATUSES.NOT_INTERESTED],
     [LEAD_STATUSES.NOT_INTERESTED]: [LEAD_STATUSES.NEW],
-    [LEAD_STATUSES.SITE_VISIT_BOOKED]: [LEAD_STATUSES.SITE_VISIT_SCHEDULED, LEAD_STATUSES.NOT_INTERESTED],
-    [LEAD_STATUSES.SITE_VISIT_SCHEDULED]: [LEAD_STATUSES.INTERESTED, LEAD_STATUSES.NOT_INTERESTED],
-    [LEAD_STATUSES.INTERESTED]: [LEAD_STATUSES.SITE_VISIT_BOOKED, LEAD_STATUSES.NOT_INTERESTED]
+    [LEAD_STATUSES.APPOINTMENT_BOOKED]: [LEAD_STATUSES.APPOINTMENT_SCHEDULED, LEAD_STATUSES.NOT_INTERESTED],
+    [LEAD_STATUSES.APPOINTMENT_SCHEDULED]: [LEAD_STATUSES.INTERESTED, LEAD_STATUSES.NOT_INTERESTED],
+    [LEAD_STATUSES.INTERESTED]: [LEAD_STATUSES.APPOINTMENT_BOOKED, LEAD_STATUSES.NOT_INTERESTED]
 };
 
 // ================================
@@ -93,10 +97,12 @@ const PROPERTY_STATUSES = {
 const PROPERTY_STATUS_LIST = Object.values(PROPERTY_STATUSES);
 
 // ================================
-// PROPERTY TYPES
+// DEFAULT CATEGORIES (was PROPERTY_TYPES)
+// These serve as seed defaults for new tenants.
+// Runtime validation uses TenantConfig, NOT these constants.
 // ================================
 
-const PROPERTY_TYPES = {
+const DEFAULT_CATEGORIES = {
     APARTMENT: 'apartment',
     VILLA: 'villa',
     HOUSE: 'house',
@@ -106,7 +112,11 @@ const PROPERTY_TYPES = {
     TOWNHOUSE: 'townhouse'
 };
 
-const PROPERTY_TYPE_LIST = Object.values(PROPERTY_TYPES);
+const DEFAULT_CATEGORY_LIST = Object.values(DEFAULT_CATEGORIES);
+
+// Backward compatibility aliases — existing code that imports PROPERTY_TYPES still works
+const PROPERTY_TYPES = DEFAULT_CATEGORIES;
+const PROPERTY_TYPE_LIST = DEFAULT_CATEGORY_LIST;
 
 // ================================
 // AUTOMATION TRIGGERS
@@ -116,7 +126,9 @@ const AUTOMATION_TRIGGERS = {
     LEAD_CREATED: 'lead_created',
     LEAD_UPDATED: 'lead_updated',
     STATUS_CHANGED: 'status_changed',
-    SITE_VISIT_SCHEDULED: 'site_visit_scheduled',
+    APPOINTMENT_SCHEDULED: 'appointment_scheduled',
+    // Backward compat alias
+    SITE_VISIT_SCHEDULED: 'appointment_scheduled',
     SCHEDULED: 'scheduled',
     WEBHOOK: 'webhook'
 };
@@ -162,13 +174,15 @@ const TASK_STATUS_LIST = Object.values(TASK_STATUSES);
 const TASK_TYPES = {
     CALL: 'call',
     FOLLOW_UP: 'follow-up',
-    SITE_VISIT: 'site-visit',
+    APPOINTMENT: 'appointment',
+    // Backward compat alias
+    SITE_VISIT: 'appointment',
     MEETING: 'meeting',
     DOCUMENT: 'document',
     OTHER: 'other'
 };
 
-const TASK_TYPE_LIST = Object.values(TASK_TYPES);
+const TASK_TYPE_LIST = [...new Set(Object.values(TASK_TYPES))];
 
 // ================================
 // CALL STATUSES
@@ -298,11 +312,13 @@ module.exports = {
     USER_STATUSES,
     USER_STATUS_LIST,
     
-    // Property
+    // Property / Category (backward compat + new names)
     PROPERTY_STATUSES,
     PROPERTY_STATUS_LIST,
     PROPERTY_TYPES,
     PROPERTY_TYPE_LIST,
+    DEFAULT_CATEGORIES,
+    DEFAULT_CATEGORY_LIST,
     
     // Automation
     AUTOMATION_TRIGGERS,

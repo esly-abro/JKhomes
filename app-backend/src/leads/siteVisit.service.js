@@ -1,6 +1,7 @@
 /**
- * Site Visit Service
- * Manages site visit scheduling and tracking
+ * Appointment Service (formerly Site Visit Service)
+ * Manages appointment scheduling and tracking.
+ * Generic for all industries: site visits, demos, consultations, etc.
  */
 
 const SiteVisit = require('../models/SiteVisit');
@@ -16,9 +17,9 @@ const awsEmailService = require('../services/awsEmail.service');
 const useDatabase = () => !!process.env.MONGODB_URI;
 
 /**
- * Confirm/schedule a site visit
+ * Confirm/schedule an appointment (site visit, demo, consultation, etc.)
  */
-async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) {
+async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, appointmentType = 'site_visit') {
     // Parse scheduledAt to get date and time
     const scheduledDate = new Date(scheduledAt);
     const dateStr = scheduledDate.toISOString().split('T')[0];
@@ -79,10 +80,10 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) 
 
     // Update status via data layer - this syncs to Zoho FIRST, then MongoDB
     try {
-        await dataLayer.updateLeadStatus(leadId, 'Site Visit Scheduled', {
-            reason: 'site_visit_confirmed'
+        await dataLayer.updateLeadStatus(leadId, 'Appointment Scheduled', {
+            reason: 'appointment_confirmed'
         });
-        console.log(`[SiteVisit] Status synced to Zoho for lead ${leadId}`);
+        console.log(`[Appointment] Status synced for lead ${leadId}`);
     } catch (statusError) {
         console.error('[SiteVisit] Status sync failed:', statusError.message);
         // Continue with site visit creation - status sync can be retried
@@ -109,6 +110,7 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null) 
         leadId: leadId,
         leadName: zohoLead?.Full_Name || zohoLead?.Last_Name || 'Unknown',
         leadPhone: zohoLead?.Phone || zohoLead?.Mobile || '',
+        appointmentType: appointmentType,
         scheduledAt,
         scheduledDate: dateStr,
         timeSlot: {

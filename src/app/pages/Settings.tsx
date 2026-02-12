@@ -7,7 +7,9 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
-import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical } from 'lucide-react';
+import { useTenantConfig } from '../context/TenantConfigContext';
+import { updateCategories, updateAppointmentTypes, updateIndustry, CategoryItem, AppointmentType } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
 
 interface Profile {
@@ -64,7 +66,120 @@ interface Invoice {
 }
 
 export default function Settings() {
+  const { categoryFieldLabel, appointmentFieldLabel, categories, appointmentTypes, tenantConfig, refreshConfig } = useTenantConfig();
   const [loadingTeam, setLoadingTeam] = useState(true);
+
+  // Customization tab state
+  const [editCategories, setEditCategories] = useState<CategoryItem[]>([]);
+  const [editCategoryLabel, setEditCategoryLabel] = useState('');
+  const [editAppointmentTypes, setEditAppointmentTypes] = useState<AppointmentType[]>([]);
+  const [editAppointmentLabel, setEditAppointmentLabel] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState('');
+  const [customSaving, setCustomSaving] = useState(false);
+  const [customMessage, setCustomMessage] = useState<string | null>(null);
+  const [customizationInitialized, setCustomizationInitialized] = useState(false);
+
+  // Sync customization state when tenant config loads
+  useEffect(() => {
+    if (tenantConfig && !customizationInitialized) {
+      setEditCategories(tenantConfig.categories?.map((c, i) => ({ ...c, order: c.order ?? i })) || []);
+      setEditCategoryLabel(tenantConfig.categoryFieldLabel || 'Category');
+      setEditAppointmentTypes(tenantConfig.appointmentTypes?.map((a, i) => ({ ...a, order: a.order ?? i })) || []);
+      setEditAppointmentLabel(tenantConfig.appointmentFieldLabel || 'Appointment');
+      setSelectedIndustry(tenantConfig.industry || 'real_estate');
+      setCustomizationInitialized(true);
+    }
+  }, [tenantConfig, customizationInitialized]);
+
+  const INDUSTRIES = [
+    { value: 'real_estate', label: 'Real Estate' },
+    { value: 'healthcare', label: 'Healthcare' },
+    { value: 'education', label: 'Education' },
+    { value: 'automotive', label: 'Automotive' },
+    { value: 'finance', label: 'Finance / Insurance' },
+    { value: 'saas', label: 'SaaS / Technology' },
+    { value: 'generic', label: 'Generic / Other' }
+  ];
+
+  const handleIndustryChange = async (industry: string) => {
+    setSelectedIndustry(industry);
+    try {
+      setCustomSaving(true);
+      await updateIndustry(industry, true);
+      await refreshConfig();
+      setCustomizationInitialized(false); // force re-sync
+      setCustomMessage(`Industry changed to ${INDUSTRIES.find(i => i.value === industry)?.label}. Labels & categories reset to defaults.`);
+    } catch (err) {
+      setCustomMessage('Failed to update industry');
+    } finally {
+      setCustomSaving(false);
+      setTimeout(() => setCustomMessage(null), 4000);
+    }
+  };
+
+  const handleSaveCategories = async () => {
+    try {
+      setCustomSaving(true);
+      await updateCategories(editCategories, editCategoryLabel);
+      await refreshConfig();
+      setCustomMessage('Categories saved successfully!');
+    } catch (err) {
+      setCustomMessage('Failed to save categories');
+    } finally {
+      setCustomSaving(false);
+      setTimeout(() => setCustomMessage(null), 4000);
+    }
+  };
+
+  const handleSaveAppointmentTypes = async () => {
+    try {
+      setCustomSaving(true);
+      await updateAppointmentTypes(editAppointmentTypes, editAppointmentLabel);
+      await refreshConfig();
+      setCustomMessage('Appointment types saved successfully!');
+    } catch (err) {
+      setCustomMessage('Failed to save appointment types');
+    } finally {
+      setCustomSaving(false);
+      setTimeout(() => setCustomMessage(null), 4000);
+    }
+  };
+
+  const addCategory = () => {
+    const newOrder = editCategories.length;
+    setEditCategories([...editCategories, { key: '', label: '', isActive: true, order: newOrder }]);
+  };
+
+  const removeCategory = (index: number) => {
+    setEditCategories(editCategories.filter((_, i) => i !== index));
+  };
+
+  const updateCategoryItem = (index: number, field: keyof CategoryItem, value: string | boolean | number) => {
+    const updated = [...editCategories];
+    (updated[index] as any)[field] = value;
+    if (field === 'label' && typeof value === 'string') {
+      updated[index].key = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    }
+    setEditCategories(updated);
+  };
+
+  const addAppointmentType = () => {
+    const newOrder = editAppointmentTypes.length;
+    setEditAppointmentTypes([...editAppointmentTypes, { key: '', label: '', isActive: true, order: newOrder }]);
+  };
+
+  const removeAppointmentType = (index: number) => {
+    setEditAppointmentTypes(editAppointmentTypes.filter((_, i) => i !== index));
+  };
+
+  const updateAppointmentItem = (index: number, field: keyof AppointmentType, value: string | boolean | number) => {
+    const updated = [...editAppointmentTypes];
+    (updated[index] as any)[field] = value;
+    if (field === 'label' && typeof value === 'string') {
+      updated[index].key = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    }
+    setEditAppointmentTypes(updated);
+  };
 
   const [profile, setProfile] = useState<Profile>({
     firstName: 'John',
@@ -764,6 +879,7 @@ export default function Settings() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="team">Team</TabsTrigger>
           <TabsTrigger value="approvals">User Approvals</TabsTrigger>
+          <TabsTrigger value="customization">Customization</TabsTrigger>
           <TabsTrigger value="crm">CRM</TabsTrigger>
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
@@ -907,6 +1023,163 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="customization">
+          <div className="space-y-6">
+            {/* Status Message */}
+            {customMessage && (
+              <div className={`p-3 rounded-lg flex items-center gap-2 ${
+                customMessage.includes('Failed') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
+              }`}>
+                {customMessage.includes('Failed') ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                {customMessage}
+              </div>
+            )}
+
+            {/* Industry Selector */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Settings2 className="h-5 w-5" />
+                  Industry
+                </CardTitle>
+                <p className="text-sm text-gray-500">Choose your industry to get pre-configured labels and options. Changing this resets categories and appointment types to industry defaults.</p>
+              </CardHeader>
+              <CardContent>
+                <select
+                  value={selectedIndustry}
+                  onChange={(e) => handleIndustryChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={customSaving}
+                >
+                  {INDUSTRIES.map(ind => (
+                    <option key={ind.value} value={ind.value}>{ind.label}</option>
+                  ))}
+                </select>
+              </CardContent>
+            </Card>
+
+            {/* Category Configuration */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Categories</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">Configure the category dropdown shown on leads. Rename the field label to match your business (e.g. "Property Type", "Product", "Service Plan").</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={addCategory}>
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Field Label */}
+                <div>
+                  <Label htmlFor="categoryLabel" className="text-sm font-medium">Field Label</Label>
+                  <Input
+                    id="categoryLabel"
+                    value={editCategoryLabel}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditCategoryLabel(e.target.value)}
+                    placeholder="e.g. Property Type, Product, Plan"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">This label appears across the entire CRM wherever categories are shown.</p>
+                </div>
+
+                {/* Category Items */}
+                <div className="space-y-2">
+                  {editCategories.map((cat, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+                      <Input
+                        value={cat.label}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateCategoryItem(index, 'label', e.target.value)}
+                        placeholder="Category name"
+                        className="flex-1"
+                      />
+                      <span className="text-xs text-gray-400 font-mono min-w-[80px]">{cat.key || '...'}</span>
+                      <Switch
+                        checked={cat.isActive}
+                        onCheckedChange={(checked) => updateCategoryItem(index, 'isActive', checked)}
+                      />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => removeCategory(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {editCategories.length === 0 && (
+                    <div className="text-center py-6 text-gray-400">No categories configured. Click "Add" to create one.</div>
+                  )}
+                </div>
+
+                <Button onClick={handleSaveCategories} disabled={customSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {customSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  Save Categories
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Appointment Types Configuration */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Appointment Types</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">Configure the types of appointments/meetings your team schedules. Rename the field label (e.g. "Site Visit", "Meeting", "Consultation").</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={addAppointmentType}>
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Field Label */}
+                <div>
+                  <Label htmlFor="appointmentLabel" className="text-sm font-medium">Field Label</Label>
+                  <Input
+                    id="appointmentLabel"
+                    value={editAppointmentLabel}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditAppointmentLabel(e.target.value)}
+                    placeholder="e.g. Site Visit, Meeting, Appointment"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">This label appears across Dashboard, Calendar, Lead details, etc.</p>
+                </div>
+
+                {/* Appointment Type Items */}
+                <div className="space-y-2">
+                  {editAppointmentTypes.map((apt, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+                      <Input
+                        value={apt.label}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateAppointmentItem(index, 'label', e.target.value)}
+                        placeholder="Appointment type name"
+                        className="flex-1"
+                      />
+                      <span className="text-xs text-gray-400 font-mono min-w-[80px]">{apt.key || '...'}</span>
+                      <Switch
+                        checked={apt.isActive}
+                        onCheckedChange={(checked) => updateAppointmentItem(index, 'isActive', checked)}
+                      />
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => removeAppointmentType(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {editAppointmentTypes.length === 0 && (
+                    <div className="text-center py-6 text-gray-400">No appointment types configured. Click "Add" to create one.</div>
+                  )}
+                </div>
+
+                <Button onClick={handleSaveAppointmentTypes} disabled={customSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {customSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  Save Appointment Types
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         <TabsContent value="crm">
           <Card>
             <CardHeader>
@@ -1027,11 +1300,11 @@ export default function Settings() {
                     />
                   </div>
 
-                  {/* Property Type Matching */}
+                  {/* Category Matching */}
                   <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
                     <div className="flex-1">
-                      <div className="font-medium text-gray-900">Property Type Matching</div>
-                      <div className="text-sm text-gray-600">Assign leads to agents with experience in the property type</div>
+                      <div className="font-medium text-gray-900">{categoryFieldLabel} Matching</div>
+                      <div className="text-sm text-gray-600">Assign leads to agents with experience in the {categoryFieldLabel.toLowerCase()}</div>
                     </div>
                     <Switch
                       checked={assignmentSettings.propertyMatchingEnabled}

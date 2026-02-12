@@ -37,8 +37,8 @@ const faqs: FAQItem[] = [
     answer: 'Go to the Leads page, select one or more leads using the checkboxes, then click the "Assign" button. You can choose a specific agent or use auto-assign to distribute leads based on workload and property expertise.'
   },
   {
-    question: 'How do I schedule a site visit?',
-    answer: 'Open a lead\'s detail page and click "Schedule Site Visit", or go to the Calendar page and create a new event. Select the lead, property, date, and time for the visit.'
+    question: 'How do I schedule an appointment?',
+    answer: 'Open a lead\'s detail page and click "Schedule Appointment", or go to the Calendar page and create a new event. Select the lead, property, date, and time for the appointment.'
   },
   {
     question: 'How do I import leads from Excel?',
@@ -46,7 +46,7 @@ const faqs: FAQItem[] = [
   },
   {
     question: 'How do I track lead status and activities?',
-    answer: 'Each lead has a status (New, Call Attended, No Response, Not Interested, Site Visit Booked, Site Visit Scheduled, Interested) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.'
+    answer: 'Each lead has a status (New, Call Attended, No Response, Not Interested, Appointment Booked, Appointment Scheduled, Interested) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.'
   },
   {
     question: 'How do I view analytics and reports?',
@@ -74,8 +74,8 @@ const guides: GuideItem[] = [
     icon: <Home className="h-6 w-6 text-green-600" />
   },
   {
-    title: 'Site Visits & Calendar',
-    description: 'Schedule and manage site visits, follow-ups, and other calendar events.',
+    title: 'Appointments & Calendar',
+    description: 'Schedule and manage appointments, follow-ups, and other calendar events.',
     icon: <Calendar className="h-6 w-6 text-orange-600" />
   },
   {

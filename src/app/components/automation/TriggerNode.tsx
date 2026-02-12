@@ -13,6 +13,7 @@ const iconMap: Record<string, React.ElementType> = {
   newLead: User,
   leadUpdated: User,
   siteVisitScheduled: Calendar,
+  appointmentScheduled: Calendar,
 };
 
 function TriggerNode({ data, selected }: NodeProps) {
@@ -41,7 +42,7 @@ function TriggerNode({ data, selected }: NodeProps) {
       <div className="text-xs text-gray-500 pl-10">
         {nodeData.type === 'newLead' && 'When a new lead is created'}
         {nodeData.type === 'leadUpdated' && 'When lead details are updated'}
-        {nodeData.type === 'siteVisitScheduled' && 'When a site visit is booked'}
+        {(nodeData.type === 'siteVisitScheduled' || nodeData.type === 'appointmentScheduled') && 'When an appointment is booked'}
       </div>
 
       {/* Output Handle */}

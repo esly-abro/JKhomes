@@ -93,18 +93,19 @@ async function updateLeadStatus(request, reply) {
 }
 
 /**
- * POST /api/leads/:id/site-visit
+ * POST /api/leads/:id/site-visit (also /api/leads/:id/appointment)
+ * Schedule an appointment (backward-compat: site visit)
  */
 async function postSiteVisit(request, reply) {
     const leadId = request.params.id;
-    const { scheduledAt, propertyId } = request.body;
+    const { scheduledAt, propertyId, appointmentType } = request.body;
     const userId = request.user._id;
-    const visit = await leadsService.confirmSiteVisit(leadId, scheduledAt, userId, propertyId);
+    const visit = await leadsService.confirmSiteVisit(leadId, scheduledAt, userId, propertyId, appointmentType);
     return reply.code(201).send(visit);
 }
 
 /**
- * GET /api/site-visits/today
+ * GET /api/site-visits/today (also /api/appointments/today)
  */
 async function getTodaySiteVisits(request, reply) {
     const userId = request.user._id;
@@ -175,7 +176,7 @@ async function getAllCallLogsHandler(request, reply) {
 }
 
 /**
- * GET /api/site-visits/me - Get current user's site visits
+ * GET /api/site-visits/me (also /api/appointments/me)
  */
 async function getMySiteVisits(request, reply) {
     const userId = request.user._id;
@@ -185,7 +186,7 @@ async function getMySiteVisits(request, reply) {
 }
 
 /**
- * GET /api/site-visits/all - Get all site visits (owner/admin/manager only)
+ * GET /api/site-visits/all (also /api/appointments/all)
  */
 async function getAllSiteVisitsHandler(request, reply) {
     const limit = parseInt(request.query.limit) || 100;
@@ -244,7 +245,7 @@ async function getUsers(request, reply) {
 }
 
 /**
- * POST /api/site-visits/sync-google-sheets - Sync all site visits to Google Sheets
+ * POST /api/site-visits/sync-google-sheets (also /api/appointments/sync-google-sheets)
  */
 async function syncSiteVisitsToGoogleSheets(request, reply) {
     try {
@@ -252,7 +253,7 @@ async function syncSiteVisitsToGoogleSheets(request, reply) {
         return reply.send(result);
     } catch (error) {
         request.log.error(error);
-        return reply.code(500).send({ error: 'Failed to sync site visits to Google Sheets', details: error.message });
+        return reply.code(500).send({ error: 'Failed to sync appointments to Google Sheets', details: error.message });
     }
 }
 

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Users, TrendingUp, DollarSign, Target, ArrowUpRight, ArrowDownRight, Phone, Mail, Calendar, Clock, CheckCircle2, Filter } from 'lucide-react';
@@ -9,6 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 export default function Dashboard() {
   const { leads, activities, siteVisits } = useData();
+  const { appointmentFieldLabel } = useTenantConfig();
 
   const stats = [
     {
@@ -22,7 +24,7 @@ export default function Dashboard() {
     },
     {
       title: 'Active Leads',
-      value: leads.filter(l => ['New', 'Call Attended', 'Interested', 'Site Visit Scheduled'].includes(l.status)).length,
+      value: leads.filter(l => ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Site Visit Scheduled'].includes(l.status)).length,
       change: '+8%',
       trend: 'up',
       icon: TrendingUp,
@@ -57,8 +59,8 @@ export default function Dashboard() {
     { name: 'New', value: leads.filter(l => l.status === 'New').length, fill: '#3b82f6' },
     { name: 'Attended', value: leads.filter(l => l.status === 'Call Attended').length, fill: '#8b5cf6' },
     { name: 'Interested', value: leads.filter(l => l.status === 'Interested').length, fill: '#10b981' },
-    { name: 'Visit Scheduled', value: leads.filter(l => l.status === 'Site Visit Scheduled').length, fill: '#f59e0b' },
-    { name: 'Visit Booked', value: leads.filter(l => l.status === 'Site Visit Booked').length, fill: '#ec4899' },
+    { name: 'Appt Scheduled', value: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled').length, fill: '#f59e0b' },
+    { name: 'Appt Booked', value: leads.filter(l => l.status === 'Appointment Booked' || l.status === 'Site Visit Booked').length, fill: '#ec4899' },
     { name: 'No Response', value: leads.filter(l => l.status === 'No Response').length, fill: '#6b7280' },
     { name: 'Not Interested', value: leads.filter(l => l.status === 'Not Interested').length, fill: '#ef4444' },
   ];
@@ -141,7 +143,7 @@ export default function Dashboard() {
   // Calculate team performance from database agents
   const teamPerformance = useMemo(() => {
     const closedStatuses = ['Deal Closed', 'Closed', 'Won'];
-    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Site Visit Scheduled', 'Site Visit Booked'];
+    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Appointment Booked', 'Site Visit Scheduled', 'Site Visit Booked'];
 
     return agents.map(agent => {
       const agentLeads = leads.filter(lead => {
@@ -177,7 +179,7 @@ export default function Dashboard() {
       const activityDate = new Date(activityTime);
       const isToday = activityDate.toDateString() === todayStr;
       const isStatusUpdate = activity.description?.startsWith('Status Updated') || activity.type === 'note' || activity.type === 'status'; // generic/status types
-      const isRelevant = activity.type === 'meeting' || activity.description?.toLowerCase().includes('site visit');
+      const isRelevant = activity.type === 'meeting' || activity.type === 'appointment' || activity.description?.toLowerCase().includes('site visit') || activity.description?.toLowerCase().includes('appointment');
 
       return isToday && !isStatusUpdate && isRelevant;
     });
@@ -405,7 +407,7 @@ export default function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between pb-2 shrink-0">
               <div className="flex items-center gap-2">
                 <Clock className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-xl">Upcoming Meetings</CardTitle>
+                <CardTitle className="text-xl">Upcoming {appointmentFieldLabel}s</CardTitle>
               </div>
               <Link to="/calendar">
                 <Button variant="ghost" size="sm">View All</Button>
@@ -423,7 +425,7 @@ export default function Dashboard() {
                       <div className="flex justify-between items-start">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded uppercase tracking-wide">
-                            Site Visit
+                            {appointmentFieldLabel}
                           </span>
                         </div>
                         <span className="text-xs text-gray-500 font-medium">
@@ -449,9 +451,9 @@ export default function Dashboard() {
               ) : (
                 <div className="text-center py-12 text-gray-500 flex flex-col items-center justify-center h-full">
                   <Calendar className="h-12 w-12 mb-3 text-gray-300" />
-                  <p>No upcoming meetings in the next 7 days.</p>
+                  <p>No upcoming {appointmentFieldLabel.toLowerCase()}s in the next 7 days.</p>
                   <Link to="/calendar">
-                    <Button variant="link" className="mt-2 text-blue-600">Schedule a meeting</Button>
+                    <Button variant="link" className="mt-2 text-blue-600">Schedule {appointmentFieldLabel.toLowerCase().startsWith('a') ? 'an' : 'a'} {appointmentFieldLabel.toLowerCase()}</Button>
                   </Link>
                 </div>
               )}

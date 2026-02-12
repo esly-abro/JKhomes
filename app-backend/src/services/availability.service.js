@@ -23,7 +23,7 @@ async function getAvailableSlots(propertyId, date) {
     
     // Check if availability is enabled
     if (availability.enabled === false) {
-        return { available: false, reason: 'Site visits not available for this property', slots: [] };
+        return { available: false, reason: 'Appointments not available for this property', slots: [] };
     }
 
     // Parse the date
@@ -37,7 +37,7 @@ async function getAvailableSlots(propertyId, date) {
     };
 
     if (!weekdays[dayOfWeek]) {
-        return { available: false, reason: `Site visits not available on ${dayOfWeek}s`, slots: [] };
+        return { available: false, reason: `Appointments not available on ${dayOfWeek}s`, slots: [] };
     }
 
     // Check if this date is blocked
@@ -49,7 +49,7 @@ async function getAvailableSlots(propertyId, date) {
     });
 
     if (isBlocked) {
-        return { available: false, reason: 'This date is blocked for site visits', slots: [] };
+        return { available: false, reason: 'This date is blocked for appointments', slots: [] };
     }
 
     // Check special hours for this date

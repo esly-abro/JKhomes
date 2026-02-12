@@ -7,9 +7,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { getProperties, createProperty, updateProperty, deleteProperty, uploadPropertyImage, Property } from '../../services/properties';
 import { getAgents, Agent } from '../../services/agents';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import AvailabilitySettingsDialog from '../components/AvailabilitySettingsDialog';
 
 export default function Properties() {
+  const { categories, categoryFieldLabel } = useTenantConfig();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -26,7 +28,7 @@ export default function Properties() {
 
   const [formData, setFormData] = useState<Partial<Property>>({
     name: '',
-    propertyType: 'Apartment',
+    category: categories[0]?.label || '',
     location: '',
     price: { min: 0, max: 0, currency: 'INR' },
     size: { value: 0, unit: 'sqft' },
@@ -147,7 +149,7 @@ export default function Properties() {
     setEditingProperty(null);
     setFormData({
       name: '',
-      propertyType: 'Apartment',
+      category: categories[0]?.label || '',
       location: '',
       price: { min: 0, max: 0, currency: 'INR' },
       size: { value: 0, unit: 'sqft' },
@@ -204,7 +206,7 @@ export default function Properties() {
     const matchesSearch = property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       property.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || property.status === statusFilter;
-    const matchesType = typeFilter === 'all' || property.propertyType === typeFilter;
+    const matchesType = typeFilter === 'all' || (property.category || property.propertyType) === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
 
@@ -221,8 +223,8 @@ export default function Properties() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Properties Management</h1>
-        <p className="text-gray-600">Manage your real estate inventory</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Catalog Management</h1>
+        <p className="text-gray-600">Manage your inventory</p>
       </div>
 
       {/* Filters and Search */}
@@ -255,17 +257,13 @@ export default function Properties() {
 
           <Select value={typeFilter} onValueChange={setTypeFilter}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Type" />
+              <SelectValue placeholder={categoryFieldLabel} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Villa">Villa</SelectItem>
-              <SelectItem value="Apartment">Apartment</SelectItem>
-              <SelectItem value="Plot">Plot</SelectItem>
-              <SelectItem value="Commercial">Commercial</SelectItem>
-              <SelectItem value="Penthouse">Penthouse</SelectItem>
-              <SelectItem value="Studio">Studio</SelectItem>
-              <SelectItem value="Duplex">Duplex</SelectItem>
+              <SelectItem value="all">All {categoryFieldLabel}s</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat.key} value={cat.label}>{cat.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -335,8 +333,8 @@ export default function Properties() {
 
                 <div className="space-y-2 mb-4">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Type</span>
-                    <span className="font-medium text-gray-900">{property.propertyType}</span>
+                    <span className="text-gray-600">{categoryFieldLabel}</span>
+                    <span className="font-medium text-gray-900">{property.category || property.propertyType}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Price</span>
@@ -426,22 +424,18 @@ export default function Properties() {
               </div>
 
               <div>
-                <Label htmlFor="propertyType">Property Type *</Label>
+                <Label htmlFor="category">{categoryFieldLabel} *</Label>
                 <Select
-                  value={formData.propertyType}
-                  onValueChange={(value: any) => setFormData({ ...formData, propertyType: value })}
+                  value={formData.category || formData.propertyType || ''}
+                  onValueChange={(value: any) => setFormData({ ...formData, category: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Villa">Villa</SelectItem>
-                    <SelectItem value="Apartment">Apartment</SelectItem>
-                    <SelectItem value="Plot">Plot</SelectItem>
-                    <SelectItem value="Commercial">Commercial</SelectItem>
-                    <SelectItem value="Penthouse">Penthouse</SelectItem>
-                    <SelectItem value="Studio">Studio</SelectItem>
-                    <SelectItem value="Duplex">Duplex</SelectItem>
+                    {categories.map(cat => (
+                      <SelectItem key={cat.key} value={cat.label}>{cat.label}</SelectItem>
+                    ))}
                     <SelectItem value="Other">Other</SelectItem>
                   </SelectContent>
                 </Select>

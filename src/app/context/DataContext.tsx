@@ -29,7 +29,7 @@ export interface Lead {
 export interface Activity {
   id: string;
   _id?: string;
-  type: 'call' | 'email' | 'note' | 'meeting' | 'whatsapp' | 'status' | 'site_visit';
+  type: 'call' | 'email' | 'note' | 'meeting' | 'whatsapp' | 'status' | 'site_visit' | 'appointment';
   leadId?: string;
   description: string;
   title?: string;
@@ -63,6 +63,7 @@ export interface SiteVisit {
   scheduledAt: string;
   agentId: string;
   propertyId?: string;
+  appointmentType?: string;
   status: 'scheduled' | 'completed' | 'cancelled' | 'no_show';
   createdAt: string;
   confirmedBy?: string;
@@ -72,6 +73,9 @@ export interface SiteVisit {
     name?: string;
   };
 }
+
+/** Appointment is an alias for SiteVisit (generic naming) */
+export type Appointment = SiteVisit;
 
 interface DataContextType {
   leads: Lead[];
@@ -83,7 +87,10 @@ interface DataContextType {
   updateLead: (id: string, updates: Partial<Lead>) => void;
   addActivity: (activity: Omit<Activity, 'id'>) => void;
   siteVisits: SiteVisit[];
-  confirmSiteVisit: (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string) => Promise<void>;
+  /** @deprecated Use appointments instead */
+  confirmSiteVisit: (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string, appointmentType?: string) => Promise<void>;
+  /** Generic alias for confirmSiteVisit */
+  confirmAppointment: (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string, appointmentType?: string) => Promise<void>;
   initializeData: () => Promise<void>;
 }
 
@@ -165,14 +172,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const confirmSiteVisit = async (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string) => {
-    await confirmSiteVisitAPI(leadId, scheduledAt, propertyId);
-    // Also create an activity for this site visit
+  const confirmSiteVisit = async (leadId: string, scheduledAt: string, leadName?: string, propertyId?: string, appointmentType?: string) => {
+    await confirmSiteVisitAPI(leadId, scheduledAt, propertyId, appointmentType);
+    // Also create an activity for this appointment
     await createActivityAPI({
       leadId,
-      type: 'site_visit',
-      title: `Site visit scheduled with ${leadName || 'client'}`,
-      description: `Site visit confirmed for ${new Date(scheduledAt).toLocaleString()}`,
+      type: 'appointment',
+      title: `Appointment scheduled with ${leadName || 'client'}`,
+      description: `Appointment confirmed for ${new Date(scheduledAt).toLocaleString()}${appointmentType ? ` (${appointmentType})` : ''}`,
       userName: 'Current User',
       scheduledAt
     });
@@ -221,6 +228,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       addActivity,
       siteVisits,
       confirmSiteVisit,
+      confirmAppointment: confirmSiteVisit,
       initializeData,
     }}>
       {children}

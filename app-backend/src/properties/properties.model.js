@@ -93,10 +93,12 @@ const propertySchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  propertyType: {
+  // Category (generic — replaces hardcoded propertyType enum)
+  // Validated at service layer against TenantConfig.categories
+  category: {
     type: String,
     required: true,
-    enum: ['Villa', 'Apartment', 'Plot', 'Commercial', 'Penthouse', 'Studio', 'Duplex', 'Other']
+    trim: true
   },
   location: {
     type: String,
@@ -185,5 +187,20 @@ const propertySchema = new mongoose.Schema({
 propertySchema.pre('save', function () {
   this.updatedAt = Date.now();
 });
+
+// ================================
+// VIRTUAL: propertyType ↔ category (backward compat)
+// Old code reading property.propertyType still works.
+// ================================
+propertySchema.set('toJSON', { virtuals: true });
+propertySchema.set('toObject', { virtuals: true });
+
+propertySchema.virtual('propertyType')
+    .get(function () {
+        return this.category;
+    })
+    .set(function (value) {
+        this.category = value;
+    });
 
 module.exports = mongoose.model('Property', propertySchema);

@@ -53,7 +53,9 @@ const automationSchema = new mongoose.Schema({
     leadSource: [String],
     minBudget: Number,
     maxBudget: Number,
-    propertyTypes: [String],
+    // categories replaces propertyTypes — both are accepted for backward compat
+    categories: [String],
+    propertyTypes: [String],  // Deprecated alias — kept for existing automations
     locations: [String]
   },
   // Stats

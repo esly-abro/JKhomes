@@ -2,7 +2,7 @@
  * AWS Email Service - Integration with AWS Lambda Email Function
  * 
  * This service calls the AWS Lambda function via API Gateway
- * to send various types of emails (new lead, site visit, reminders)
+ * to send various types of emails (new lead, appointments, reminders)
  */
 
 const axios = require('axios');
@@ -66,7 +66,7 @@ async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL) {
             phone: lead.phone,
             company: lead.company,
             source: lead.source,
-            propertyInterest: lead.propertyType || lead.propertyInterest,
+            propertyInterest: lead.category || lead.propertyType || lead.propertyInterest,
             budget: lead.budget,
             location: lead.preferredLocation || lead.location,
             notes: lead.notes,
@@ -77,15 +77,15 @@ async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL) {
 }
 
 /**
- * Send site visit confirmation email
+ * Send appointment/site visit confirmation email
  * @param {Object} lead - Lead data
- * @param {Object} siteVisit - Site visit data
+ * @param {Object} appointment - Appointment/site visit data
  * @param {Object} property - Property data (optional)
  * @param {string} adminEmail - Admin email (optional)
  */
 async function sendSiteVisitEmail(lead, siteVisit, property = null, adminEmail = ADMIN_EMAIL) {
     return sendEmail({
-        type: 'SITE_VISIT_SCHEDULED',
+        type: 'APPOINTMENT_SCHEDULED',
         to: adminEmail,
         adminEmail: adminEmail,
         lead: {
@@ -179,6 +179,7 @@ module.exports = {
     sendEmail,
     sendNewLeadEmail,
     sendSiteVisitEmail,
+    sendAppointmentEmail: sendSiteVisitEmail, // Generic alias
     sendStatusUpdateEmail,
     sendTestEmail,
     sendReminderEmail

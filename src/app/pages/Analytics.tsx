@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Download, TrendingUp, Users, DollarSign, Target, Loader2, AlertCircle } from 'lucide-react';
@@ -9,6 +10,7 @@ import { getAllAnalytics, type AnalyticsData } from '../../services/analytics';
 
 export default function Analytics() {
   const { leads } = useData();
+  const { appointmentFieldLabel } = useTenantConfig();
   const [dateRange, setDateRange] = useState('30days');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,7 +233,7 @@ export default function Analytics() {
               { status: 'New', count: leads.filter(l => l.status === 'New').length, color: 'bg-blue-500' },
               { status: 'Call Attended', count: leads.filter(l => l.status === 'Call Attended').length, color: 'bg-purple-500' },
               { status: 'Interested', count: leads.filter(l => l.status === 'Interested').length, color: 'bg-green-500' },
-              { status: 'Site Visit Scheduled', count: leads.filter(l => l.status === 'Site Visit Scheduled').length, color: 'bg-orange-500' },
+              { status: `${appointmentFieldLabel} Scheduled`, count: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled').length, color: 'bg-orange-500' },
               { status: 'Not Interested', count: leads.filter(l => l.status === 'Not Interested').length, color: 'bg-red-500' },
             ].map(item => (
               <Card key={item.status}>
@@ -262,7 +264,7 @@ export default function Analytics() {
                         { name: 'New', value: leads.filter(l => l.status === 'New').length },
                         { name: 'Call Attended', value: leads.filter(l => l.status === 'Call Attended').length },
                         { name: 'Interested', value: leads.filter(l => l.status === 'Interested').length },
-                        { name: 'Site Visit', value: leads.filter(l => l.status === 'Site Visit Scheduled' || l.status === 'Site Visit Booked').length },
+                        { name: appointmentFieldLabel, value: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled' || l.status === 'Appointment Booked' || l.status === 'Site Visit Booked').length },
                         { name: 'No Response', value: leads.filter(l => l.status === 'No Response').length },
                         { name: 'Not Interested', value: leads.filter(l => l.status === 'Not Interested').length },
                       ].filter(d => d.value > 0)}

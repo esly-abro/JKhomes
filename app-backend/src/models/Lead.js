@@ -90,12 +90,17 @@ const leadSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed
     },
     
-    // Property preferences
+    // Category (generic — replaces hardcoded propertyType)
+    // The label for this field is configurable per tenant via TenantConfig.categoryFieldLabel
+    category: {
+        type: String
+    },
+    // Backward compat: old data may still have propertyType stored directly.
+    // The virtual below maps propertyType ↔ category seamlessly.
+    
+    // Monetary value (budget / deal size / contract value)
     budget: {
         type: Number
-    },
-    propertyType: {
-        type: String
     },
     location: {
         type: String
@@ -135,12 +140,12 @@ const leadSchema = new mongoose.Schema({
         type: Date
     },
     
-    // Site visit
-    siteVisitScheduled: {
+    // Appointment (formerly "Site visit")
+    appointmentScheduled: {
         type: Boolean,
         default: false
     },
-    siteVisitDate: {
+    appointmentDate: {
         type: Date
     },
     
@@ -161,7 +166,51 @@ const leadSchema = new mongoose.Schema({
         type: Date
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true }
+});
+
+// ================================
+// VIRTUAL: propertyType ↔ category
+// Old code that reads lead.propertyType still works.
+// Old code that writes lead.propertyType → writes to category.
+// ================================
+leadSchema.virtual('propertyType')
+    .get(function () {
+        return this.category;
+    })
+    .set(function (value) {
+        this.category = value;
+    });
+
+// ================================
+// VIRTUAL: siteVisitScheduled ↔ appointmentScheduled
+// VIRTUAL: siteVisitDate ↔ appointmentDate
+// Old code that reads lead.siteVisitScheduled still works.
+// ================================
+leadSchema.virtual('siteVisitScheduled')
+    .get(function () {
+        return this.appointmentScheduled;
+    })
+    .set(function (value) {
+        this.appointmentScheduled = value;
+    });
+
+leadSchema.virtual('siteVisitDate')
+    .get(function () {
+        return this.appointmentDate;
+    })
+    .set(function (value) {
+        this.appointmentDate = value;
+    });
+
+// When receiving data from API (e.g. create/update), migrate old field names
+leadSchema.pre('save', function () {
+    // If someone set propertyType directly via $set (not through virtual), copy it over
+    if (this.isModified('propertyType') && !this.isModified('category')) {
+        this.category = this.propertyType;
+    }
 });
 
 // Indexes
@@ -171,6 +220,7 @@ leadSchema.index({ status: 1 });
 leadSchema.index({ source: 1 });
 leadSchema.index({ assignedTo: 1 });
 leadSchema.index({ createdAt: -1 });
+leadSchema.index({ category: 1 });
 
 /**
  * Get leads with pagination and filters

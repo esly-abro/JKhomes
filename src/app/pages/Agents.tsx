@@ -241,6 +241,8 @@ export default function Agents() {
       'call attended': 'bg-purple-100 text-purple-800',
       'no response': 'bg-orange-100 text-orange-800',
       'not interested': 'bg-red-100 text-red-800',
+      'appointment booked': 'bg-yellow-100 text-yellow-800',
+      'appointment scheduled': 'bg-emerald-100 text-emerald-800',
       'site visit booked': 'bg-yellow-100 text-yellow-800',
       'site visit scheduled': 'bg-emerald-100 text-emerald-800',
       'interested': 'bg-green-100 text-green-800',

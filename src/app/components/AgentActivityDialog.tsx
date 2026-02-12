@@ -69,6 +69,16 @@ interface AgentActivityData {
         upcoming: number;
         today: number;
     };
+    /** Alias for siteVisitStats */
+    appointmentStats?: {
+        total: number;
+        scheduled: number;
+        completed: number;
+        cancelled: number;
+        noShow: number;
+        upcoming: number;
+        today: number;
+    };
     performance: {
         conversionRate: number;
         avgCallDuration: number;
@@ -98,6 +108,13 @@ interface AgentActivityData {
         createdAt: string;
     }>;
     upcomingSiteVisits: Array<{
+        _id: string;
+        leadName?: string;
+        scheduledAt: string;
+        propertyId?: string;
+    }>;
+    /** Alias for upcomingSiteVisits */
+    upcomingAppointments?: Array<{
         _id: string;
         leadName?: string;
         scheduledAt: string;
@@ -191,7 +208,8 @@ export default function AgentActivityDialog({
             case 'call': return <PhoneCall className="h-4 w-4 text-blue-500" />;
             case 'email': return <Mail className="h-4 w-4 text-purple-500" />;
             case 'meeting': return <Users className="h-4 w-4 text-green-500" />;
-            case 'site_visit': return <MapPin className="h-4 w-4 text-orange-500" />;
+            case 'site_visit':
+            case 'appointment': return <MapPin className="h-4 w-4 text-orange-500" />;
             case 'note': return <FileText className="h-4 w-4 text-gray-500" />;
             case 'status_change': return <Activity className="h-4 w-4 text-yellow-500" />;
             default: return <Activity className="h-4 w-4 text-gray-400" />;
@@ -212,7 +230,7 @@ export default function AgentActivityDialog({
         { id: 'overview', label: 'Overview', icon: BarChart3 },
         { id: 'activities', label: 'Activities', icon: Activity },
         { id: 'calls', label: 'Calls', icon: PhoneCall },
-        { id: 'visits', label: 'Site Visits', icon: MapPin },
+        { id: 'visits', label: 'Appointments', icon: MapPin },
         { id: 'logins', label: 'Login History', icon: LogIn }
     ];
 
@@ -385,11 +403,11 @@ export default function AgentActivityDialog({
                                             </div>
                                         </div>
 
-                                        {/* Site Visits Summary */}
+                                        {/* Appointments Summary */}
                                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                                             <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
                                                 <MapPin className="h-4 w-4 text-orange-600" />
-                                                Site Visits
+                                                Appointments
                                             </h4>
                                             <div className="space-y-2 text-sm">
                                                 <div className="flex justify-between">
@@ -501,10 +519,10 @@ export default function AgentActivityDialog({
                             {activeTab === 'visits' && (
                                 <div className="space-y-4">
                                     <div>
-                                        <h4 className="font-semibold text-gray-900 mb-3">Upcoming Site Visits</h4>
-                                        {data.upcomingSiteVisits.length > 0 ? (
+                                        <h4 className="font-semibold text-gray-900 mb-3">Upcoming Appointments</h4>
+                                        {(data.upcomingSiteVisits || data.upcomingAppointments || []).length > 0 ? (
                                             <div className="space-y-2">
-                                                {data.upcomingSiteVisits.map(visit => (
+                                                {(data.upcomingSiteVisits || data.upcomingAppointments || []).map(visit => (
                                                     <div key={visit._id} className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
                                                         <Calendar className="h-5 w-5 text-blue-500" />
                                                         <div className="flex-1">

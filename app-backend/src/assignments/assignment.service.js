@@ -100,29 +100,29 @@ class AssignmentService {
         console.log(`ℹ️ High-Value Rule: SKIPPED (value=${lead.value || 'not set'})`);
       }
 
-      // Priority 2: Property type matching (if lead has property)
+      // Priority 2: Category matching (if lead has property)
       if (lead.propertyId) {
-        console.log(`ℹ️ Checking Property Expertise (propertyId: ${lead.propertyId})`);
+        console.log(`ℹ️ Checking Category Expertise (propertyId: ${lead.propertyId})`);
         const property = await propertiesService.getPropertyById(lead.propertyId);
-        console.log(`   Property Type: ${property?.propertyType || 'NOT SET'}`);
+        console.log(`   Category: ${property?.category || property?.propertyType || 'NOT SET'}`);
 
-        // Find agent with experience in this property type (based on past leads)
+        // Find agent with experience in this category (based on past leads)
         for (const agentData of agentWorkload) {
           const agentLeads = await leadsService.getLeadsByOwner(agentData.agentId);
-          const propertyTypeMatch = agentLeads.some(
-            l => l.propertyId && l.propertyType === property?.propertyType
+          const categoryMatch = agentLeads.some(
+            l => l.propertyId && (l.category || l.propertyType) === (property?.category || property?.propertyType)
           );
 
-          console.log(`   ${agentData.agentName}: propertyMatch=${propertyTypeMatch}, activeLeads=${agentData.activeLeads}`);
+          console.log(`   ${agentData.agentName}: categoryMatch=${categoryMatch}, activeLeads=${agentData.activeLeads}`);
 
-          if (propertyTypeMatch && agentData.activeLeads < 10) {
-            console.log(`✅ RULE TRIGGERED: Property Expertise Match`);
+          if (categoryMatch && agentData.activeLeads < 10) {
+            console.log(`✅ RULE TRIGGERED: Category Expertise Match`);
             console.log(`   → Assigning to: ${agentData.agentName}`);
             console.log('========================================\n');
             return agentData.agentId;
           }
         }
-        console.log('   No property expertise match found');
+        console.log('   No category expertise match found');
       } else {
         console.log(`ℹ️ Property Expertise Rule: SKIPPED (no propertyId on lead)`);
       }

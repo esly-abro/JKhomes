@@ -402,7 +402,7 @@ async function getAgentActivity(req, reply) {
       callStats.byStatus[status] = (callStats.byStatus[status] || 0) + 1;
     });
 
-    // Fetch site visits by this agent
+    // Fetch appointments by this agent
     const siteVisits = await SiteVisit.find({ agentId: id })
       .sort({ scheduledAt: -1 })
       .limit(100);
@@ -420,6 +420,8 @@ async function getAgentActivity(req, reply) {
         return visitDate.getTime() === today.getTime();
       }).length
     };
+    // Generic alias
+    const appointmentStats = siteVisitStats;
 
     // Fetch login history if available
     let loginHistory = [];
@@ -458,7 +460,7 @@ async function getAgentActivity(req, reply) {
       createdAt: c.createdAt
     }));
 
-    // Upcoming site visits
+    // Upcoming appointments
     const upcomingSiteVisits = siteVisits
       .filter(v => v.status === 'scheduled' && new Date(v.scheduledAt) >= today)
       .slice(0, 5)
@@ -487,6 +489,7 @@ async function getAgentActivity(req, reply) {
         activityStats,
         callStats,
         siteVisitStats,
+        appointmentStats,
         performance: {
           conversionRate: parseFloat(conversionRate),
           avgCallDuration: callStats.total > 0 
@@ -504,7 +507,8 @@ async function getAgentActivity(req, reply) {
         })),
         recentActivities,
         recentCalls,
-        upcomingSiteVisits
+        upcomingSiteVisits,
+        upcomingAppointments: upcomingSiteVisits
       }
     });
   } catch (error) {

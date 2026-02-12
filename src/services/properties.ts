@@ -3,7 +3,9 @@ import api from './api';
 export interface Property {
   _id?: string;
   name: string;
-  propertyType: 'Villa' | 'Apartment' | 'Plot' | 'Commercial' | 'Penthouse' | 'Studio' | 'Duplex' | 'Other';
+  // 'category' is the canonical field; 'propertyType' is a backward-compat alias (virtual)
+  category: string;
+  propertyType?: string;  // Virtual alias — always equals category
   location: string;
   price: {
     min: number;
@@ -36,7 +38,8 @@ export interface Property {
 }
 
 export interface PropertyFilters {
-  propertyType?: string;
+  category?: string;
+  propertyType?: string;  // Backward compat alias
   status?: string;
   location?: string;
   minPrice?: number;

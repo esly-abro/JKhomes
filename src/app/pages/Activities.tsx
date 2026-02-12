@@ -1,4 +1,5 @@
 import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Phone, Mail, FileText, Calendar as CalendarIcon, MessageSquare, MapPin } from 'lucide-react';
@@ -6,6 +7,7 @@ import { useMemo } from 'react';
 
 export default function Activities() {
   const { activities, leads, siteVisits } = useData();
+  const { appointmentFieldLabel } = useTenantConfig();
 
   // Combine activities and site visits for feed
   const allActivities = [
@@ -17,9 +19,9 @@ export default function Activities() {
     })),
     ...siteVisits.map(visit => ({
       id: visit._id,
-      type: 'site_visit',
+      type: 'appointment',
       leadId: visit.lead?._id || visit.lead?.id,
-      description: `Site visit scheduled with ${visit.lead?.name || 'client'} on ${new Date(visit.scheduledAt).toLocaleDateString()} at ${new Date(visit.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+      description: `${appointmentFieldLabel} scheduled with ${visit.lead?.name || 'client'} on ${new Date(visit.scheduledAt).toLocaleDateString()} at ${new Date(visit.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
       timestamp: visit.createdAt || visit.scheduledAt,
       user: visit.confirmedBy || 'System'
     }))
@@ -32,7 +34,8 @@ export default function Activities() {
       case 'note': return FileText;
       case 'meeting': return CalendarIcon;
       case 'whatsapp': return MessageSquare;
-      case 'site_visit': return MapPin;
+      case 'site_visit':
+      case 'appointment': return MapPin;
       default: return FileText;
     }
   };
@@ -41,7 +44,8 @@ export default function Activities() {
     switch (type) {
       case 'call': return 'bg-green-100 text-green-600';
       case 'email': return 'bg-blue-100 text-blue-600';
-      case 'site_visit': return 'bg-purple-100 text-purple-600';
+      case 'site_visit':
+      case 'appointment': return 'bg-purple-100 text-purple-600';
       case 'meeting': return 'bg-orange-100 text-orange-600';
       default: return 'bg-gray-100 text-gray-600';
     }
@@ -79,7 +83,7 @@ export default function Activities() {
 
         return {
           id: visit._id,
-          title: `Site visit with ${visit.leadName || visit.lead?.name || 'Client'}`,
+          title: `${appointmentFieldLabel} with ${visit.leadName || visit.lead?.name || 'Client'}`,
           dueDate: new Date(visit.scheduledAt).toLocaleDateString(),
           dueCategory,
           priority,
@@ -115,7 +119,7 @@ export default function Activities() {
                   <div className="text-center py-8 text-gray-500">
                     <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p>No activities yet</p>
-                    <p className="text-sm">Schedule a site visit or add an activity to get started</p>
+                    <p className="text-sm">Schedule {appointmentFieldLabel.toLowerCase().startsWith('a') ? 'an' : 'a'} {appointmentFieldLabel.toLowerCase()} or add an activity to get started</p>
                   </div>
                 ) : (
                   allActivities.map((activity) => {
@@ -129,7 +133,7 @@ export default function Activities() {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <Badge className={activity.type === 'site_visit' ? 'bg-purple-600' : ''}>{activity.type.toUpperCase().replace('_', ' ')}</Badge>
+                            <Badge className={(activity.type === 'site_visit' || activity.type === 'appointment') ? 'bg-purple-600' : ''}>{activity.type.toUpperCase().replace('_', ' ')}</Badge>
                             {lead && <span className="font-semibold">{lead.name}</span>}
                           </div>
                           <p className="text-gray-700">{activity.description}</p>

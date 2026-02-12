@@ -10,6 +10,7 @@ import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { User, Phone, MapPin, Calendar as CalendarIcon, Clock, CheckCircle2, FileText, Home, AlertCircle, Loader2 } from 'lucide-react';
+import { useTenantConfig } from '../context/TenantConfigContext';
 import type { Lead } from '../context/DataContext';
 import { useData } from '../context/DataContext';
 import { getUsers } from '../../services/leads';
@@ -25,12 +26,14 @@ interface ScheduleSiteVisitDialogProps {
 
 export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onConfirm }: ScheduleSiteVisitDialogProps) {
     const { confirmSiteVisit } = useData();
+    const { appointmentTypes, appointmentFieldLabel } = useTenantConfig();
     const [selectedDate, setSelectedDate] = useState<number | null>(null);
     const [visitDate, setVisitDate] = useState('');
     const [timeSlot, setTimeSlot] = useState('');
     const [agent, setAgent] = useState('');
     const [instructions, setInstructions] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedAppointmentType, setSelectedAppointmentType] = useState<string>(appointmentTypes[0]?.key || 'site_visit');
     const [users, setUsers] = useState<any[]>([]);
     const [properties, setProperties] = useState<Property[]>([]);
     const [selectedProperty, setSelectedProperty] = useState<string>('');
@@ -181,7 +184,7 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
         }
         
         if (!selectedProperty) {
-            alert('Please select a property for the site visit');
+            alert(`Please select a property for the ${appointmentFieldLabel.toLowerCase()}`);
             return;
         }
         
@@ -195,8 +198,8 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
             // Combine date and time into a single timestamp
             const scheduledAt = new Date(`${visitDate}T${timeSlot}:00`).toISOString();
             
-            // Save to database and create activity - pass propertyId to update lead
-            await confirmSiteVisit(lead.id, scheduledAt, lead.name, selectedProperty);
+            // Save to database and create activity - pass propertyId and appointmentType
+            await confirmSiteVisit(lead.id, scheduledAt, lead.name, selectedProperty, selectedAppointmentType);
             
             // Call optional callback
             if (onConfirm) {
@@ -205,8 +208,8 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
             
             onOpenChange(false);
         } catch (error: any) {
-            console.error('Failed to confirm site visit:', error);
-            const message = error.response?.data?.error || error.message || 'Failed to confirm site visit. Please try again.';
+            console.error(`Failed to confirm ${appointmentFieldLabel.toLowerCase()}:`, error);
+            const message = error.response?.data?.error || error.message || `Failed to confirm ${appointmentFieldLabel.toLowerCase()}. Please try again.`;
             alert(message);
         } finally {
             setIsSubmitting(false);
@@ -218,9 +221,9 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
             <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="text-2xl font-bold text-blue-900 text-center">
-                        Schedule Site Visit
+                        Schedule {appointmentFieldLabel}
                     </DialogTitle>
-                    <p className="text-center text-gray-600 text-sm">Coordinate property viewing with client</p>
+                    <p className="text-center text-gray-600 text-sm">Coordinate {appointmentFieldLabel.toLowerCase()} with client</p>
                 </DialogHeader>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
@@ -253,7 +256,7 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                                 <SelectTrigger className="w-full">
                                     <div className="flex items-center gap-2">
                                         <Home className="h-4 w-4 text-purple-600" />
-                                        <SelectValue placeholder="Select property for site visit" />
+                                        <SelectValue placeholder={`Select property for ${appointmentFieldLabel.toLowerCase()}`} />
                                     </div>
                                 </SelectTrigger>
                                 <SelectContent>
@@ -261,7 +264,7 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                                         <SelectItem key={property._id} value={property._id!}>
                                             <div className="flex flex-col">
                                                 <span className="font-medium">{property.name}</span>
-                                                <span className="text-xs text-gray-500">{property.location} • {property.propertyType}</span>
+                                                <span className="text-xs text-gray-500">{property.location} • {property.category || property.propertyType}</span>
                                             </div>
                                         </SelectItem>
                                     ))}
@@ -271,6 +274,26 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        {/* Appointment Type */}
+                        {appointmentTypes.length > 1 && (
+                            <div>
+                                <label className="text-sm font-medium text-gray-700 mb-2 block">{appointmentFieldLabel} Type</label>
+                                <Select value={selectedAppointmentType} onValueChange={setSelectedAppointmentType}>
+                                    <SelectTrigger className="w-full">
+                                        <div className="flex items-center gap-2">
+                                            <CalendarIcon className="h-4 w-4 text-green-600" />
+                                            <SelectValue placeholder={`Select ${appointmentFieldLabel.toLowerCase()} type`} />
+                                        </div>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {appointmentTypes.map(apt => (
+                                            <SelectItem key={apt.key} value={apt.key}>{apt.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
 
                         {/* Visit Date */}
                         <div>
@@ -398,7 +421,7 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                             className="w-full bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400"
                         >
                             <CheckCircle2 className="h-4 w-4 mr-2" />
-                            {isSubmitting ? 'Confirming...' : conflictWarning ? 'Cannot Book - Conflict' : 'Confirm Site Visit'}
+                            {isSubmitting ? 'Confirming...' : conflictWarning ? 'Cannot Book - Conflict' : `Confirm ${appointmentFieldLabel}`}
                         </Button>
                     </div>
 
@@ -459,9 +482,9 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                             )}
                         </div>
 
-                        {/* Site Visit Information */}
+                        {/* {appointmentFieldLabel} Information */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Site Visit Information</h3>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">{appointmentFieldLabel} Information</h3>
 
                             {selectedPropertyData ? (
                                 <div className="space-y-3">
@@ -476,8 +499,8 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                                     </div>
 
                                     <div className="bg-blue-50 p-3 rounded-lg">
-                                        <div className="text-xs font-medium text-blue-900 mb-1">Property Type</div>
-                                        <div className="text-sm text-gray-800">{selectedPropertyData.propertyType}</div>
+                                        <div className="text-xs font-medium text-blue-900 mb-1">Category</div>
+                                        <div className="text-sm text-gray-800">{selectedPropertyData.category || selectedPropertyData.propertyType}</div>
                                     </div>
 
                                     <div className="bg-blue-50 p-3 rounded-lg">

@@ -239,8 +239,8 @@ export default function AvailabilitySettingsDialog({
                         {/* Enable/Disable Toggle */}
                         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                             <div>
-                                <h4 className="font-medium text-gray-900">Site Visits Enabled</h4>
-                                <p className="text-sm text-gray-500">Allow scheduling site visits for this property</p>
+                                <h4 className="font-medium text-gray-900">Appointments Enabled</h4>
+                                <p className="text-sm text-gray-500">Allow scheduling appointments for this property</p>
                             </div>
                             <button
                                 onClick={() => setSettings(prev => ({ ...prev, enabled: !prev.enabled }))}
