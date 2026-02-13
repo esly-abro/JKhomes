@@ -19962,3 +19962,45 @@
 2026-02-11 14:06:09 [INFO]: 
 2026-02-11 14:06:09 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
 2026-02-12 14:33:32 [INFO]: GET /health {"ip":"::1","userAgent":"Mozilla/5.0 (Windows NT; Windows NT 10.0; en-IN) WindowsPowerShell/5.1.26100.7462"}
+2026-02-13 16:42:55 [INFO]: Twilio client initialized
+2026-02-13 16:42:55 [INFO]: WhatsApp service initialized via Twilio
+2026-02-13 16:42:55 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-13 16:42:55 [INFO]: Post-Call Orchestrator initialized
+2026-02-13 16:42:55 [INFO]: 🚀 Server started on port 3000
+2026-02-13 16:42:55 [INFO]: Environment: development
+2026-02-13 16:42:55 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-13 16:42:55 [INFO]: Twilio Configured: true
+2026-02-13 16:42:55 [INFO]: OpenAI Configured: false
+2026-02-13 16:42:55 [INFO]: WhatsApp Configured: true
+2026-02-13 16:42:55 [INFO]: 
+2026-02-13 16:42:55 [INFO]: Available endpoints:
+2026-02-13 16:42:55 [INFO]:   POST   http://localhost:3000/leads
+2026-02-13 16:42:55 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-13 16:42:55 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-13 16:42:55 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-13 16:42:55 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-13 16:42:55 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-13 16:42:55 [INFO]:   GET    http://localhost:3000/health
+2026-02-13 16:42:55 [INFO]: 
+2026-02-13 16:42:55 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉
+2026-02-13 17:55:38 [INFO]: Twilio client initialized
+2026-02-13 17:55:38 [INFO]: WhatsApp service initialized via Twilio
+2026-02-13 17:55:38 [WARN]: OpenAI API key not configured - AI intent analysis disabled
+2026-02-13 17:55:38 [INFO]: Post-Call Orchestrator initialized
+2026-02-13 17:55:38 [INFO]: 🚀 Server started on port 3000
+2026-02-13 17:55:38 [INFO]: Environment: development
+2026-02-13 17:55:38 [INFO]: Zoho API Domain: https://www.zohoapis.in
+2026-02-13 17:55:38 [INFO]: Twilio Configured: true
+2026-02-13 17:55:38 [INFO]: OpenAI Configured: false
+2026-02-13 17:55:38 [INFO]: WhatsApp Configured: true
+2026-02-13 17:55:38 [INFO]: 
+2026-02-13 17:55:38 [INFO]: Available endpoints:
+2026-02-13 17:55:38 [INFO]:   POST   http://localhost:3000/leads
+2026-02-13 17:55:38 [INFO]:   GET    http://localhost:3000/leads/sources
+2026-02-13 17:55:38 [INFO]:   POST   http://localhost:3000/elevenlabs/call
+2026-02-13 17:55:38 [INFO]:   POST   http://localhost:3000/webhook/elevenlabs  [Post-call automation]
+2026-02-13 17:55:38 [INFO]:   POST   http://localhost:3000/webhook/test        [Test webhook]
+2026-02-13 17:55:38 [INFO]:   GET    http://localhost:3000/webhook/health      [Webhook health]
+2026-02-13 17:55:38 [INFO]:   GET    http://localhost:3000/health
+2026-02-13 17:55:38 [INFO]: 
+2026-02-13 17:55:38 [INFO]: Ready to accept lead ingestion and ElevenLabs/Twilio calls! 🎉

@@ -66,7 +66,7 @@ async function knowledgeBaseRoutes(fastify, options) {
 
         return {
           name: prop.name,
-          type: prop.propertyType || 'Property',
+          type: prop.propertyType || 'Item',
           location: prop.location,
           status: prop.status,
           price: priceRange,
@@ -75,9 +75,9 @@ async function knowledgeBaseRoutes(fastify, options) {
           bathrooms: prop.bathrooms || 'Not specified',
           description: prop.description || 'Contact for more details',
           amenities: amenities,
-          assignedAgent: agent.name || 'JK Homes Team',
+          assignedAgent: agent.name || 'Our Team',
           agentPhone: agent.phone || 'Contact office',
-          agentEmail: agent.email || 'info@jkhomes.com',
+          agentEmail: agent.email || 'Contact office',
           siteVisitsAvailable: siteVisit.enabled ? 'Yes' : 'No',
           appointmentsAvailable: siteVisit.enabled ? 'Yes' : 'No',
           visitDays: availableDays,
@@ -87,8 +87,8 @@ async function knowledgeBaseRoutes(fastify, options) {
       });
 
       return {
-        title: 'JK Homes - Available Properties',
-        company: 'JK Homes Construction',
+        title: 'Available Catalog Items',
+        company: 'Organization',
         lastUpdated: new Date().toISOString(),
         totalProperties: formattedProperties.length,
         properties: formattedProperties
@@ -110,9 +110,9 @@ async function knowledgeBaseRoutes(fastify, options) {
         .populate('assignedAgent', 'name email phone')
         .lean();
 
-      let text = `# JK Homes - Property Listings\n`;
+      let text = `# Catalog Listings\n`;
       text += `Last Updated: ${new Date().toLocaleDateString('en-IN', { dateStyle: 'full' })}\n`;
-      text += `Total Available Properties: ${properties.length}\n\n`;
+      text += `Total Available Items: ${properties.length}\n\n`;
       text += `---\n\n`;
 
       properties.forEach((prop, index) => {
@@ -128,8 +128,8 @@ async function knowledgeBaseRoutes(fastify, options) {
           else priceRange = min || max;
         }
 
-        text += `## Property ${index + 1}: ${prop.name}\n\n`;
-        text += `**Type:** ${prop.propertyType || 'Property'}\n`;
+        text += `## Item ${index + 1}: ${prop.name}\n\n`;
+        text += `**Type:** ${prop.propertyType || 'Item'}\n`;
         text += `**Location:** ${prop.location}\n`;
         text += `**Status:** ${prop.status}\n`;
         text += `**Price Range:** ${priceRange}\n`;
@@ -150,9 +150,9 @@ async function knowledgeBaseRoutes(fastify, options) {
         }
 
         text += `\n**Contact Information:**\n`;
-        text += `- Agent: ${agent.name || 'JK Homes Team'}\n`;
+        text += `- Agent: ${agent.name || 'Our Team'}\n`;
         text += `- Phone: ${agent.phone || 'Contact office'}\n`;
-        text += `- Email: ${agent.email || 'info@jkhomes.com'}\n`;
+        text += `- Email: ${agent.email || 'Contact office'}\n`;
 
         if (siteVisit.enabled) {
           text += `\n**Appointment/Visit Availability:**\n`;
@@ -167,11 +167,9 @@ async function knowledgeBaseRoutes(fastify, options) {
         text += `\n---\n\n`;
       });
 
-      text += `\n## About JK Homes\n\n`;
-      text += `JK Homes is a trusted construction and real estate company. `;
-      text += `We offer premium residential properties including villas, apartments, and plots. `;
-      text += `Contact us to schedule an appointment or learn more about our properties.\n\n`;
-      text += `**Office Contact:** info@jkhomes.com\n`;
+      text += `\n## About Us\n\n`;
+      text += `Contact us to schedule an appointment or learn more about our offerings.\n\n`;
+      text += `**Contact:** Use our in-app booking system\n`;
 
       reply.type('text/plain; charset=utf-8').send(text);
     } catch (error) {
@@ -200,7 +198,7 @@ async function knowledgeBaseRoutes(fastify, options) {
       });
 
       return {
-        company: 'JK Homes Construction',
+        company: 'Organization',
         totalProperties: properties.length,
         byStatus,
         byType,

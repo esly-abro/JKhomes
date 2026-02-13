@@ -23,6 +23,12 @@ const edgeSchema = new mongoose.Schema({
 }, { _id: false });
 
 const automationSchema = new mongoose.Schema({
+  // Organization (Multi-tenancy)
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    index: true
+  },
   name: {
     type: String,
     required: true,

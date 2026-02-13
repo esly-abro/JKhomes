@@ -189,6 +189,13 @@ export default function Settings() {
     timezone: 'Eastern Time (ET)',
     avatar: ''
   });
+  const [organization, setOrganization] = useState<any>({
+    name: 'Your Organization',
+    logoUrl: '',
+    logoDataUrl: ''
+  });
+  const [orgLoading, setOrgLoading] = useState(true);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
@@ -201,6 +208,47 @@ export default function Settings() {
     workloadBalancingEnabled: true,
     highValueThreshold: 5000000 // ₹50L default
   });
+
+  useEffect(() => {
+    fetchTeamMembers();
+    loadData();
+  }, []);
+
+  // Load organization and user profile on mount
+  const loadData = async () => {
+    try {
+      // Load organization
+      const response = await fetch('/api/organization/me', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setOrganization(data.organization || organization);
+      }
+
+      // Load user profile from /auth/me
+      const userResponse = await fetch('/auth/me', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('accessToken')}` }
+      });
+      if (userResponse.ok) {
+        const userData = await userResponse.json();
+        if (userData.user) {
+          setProfile({
+            firstName: userData.user.name?.split(' ')[0] || 'User',
+            lastName: userData.user.name?.split(' ').slice(1).join(' ') || '',
+            email: userData.user.email || '',
+            phone: userData.user.phone || '',
+            timezone: userData.organization?.settings?.timezone || 'Eastern Time (ET)',
+            avatar: userData.organization?.logoDataUrl || ''
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load profile data:', error);
+    } finally {
+      setOrgLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchTeamMembers();
@@ -836,6 +884,7 @@ export default function Settings() {
   // Load WhatsApp settings on component mount - handled in main useEffect
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const orgFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProfileChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { id, value } = e.target;
@@ -846,18 +895,48 @@ export default function Settings() {
   };
 
   const handlePhotoClick = () => {
-    fileInputRef.current?.click();
+    orgFileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('File size must be less than 2MB');
-        return;
+    if (!file) return;
+
+    setUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('/api/organization/update-profile', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.organization?.logoDataUrl) {
+          setOrganization(prev => ({
+            ...prev,
+            logoDataUrl: data.organization.logoDataUrl
+          }));
+          setProfile(prev => ({
+            ...prev,
+            avatar: data.organization.logoDataUrl
+          }));
+          alert('Logo updated successfully!');
+        }
+      } else {
+        const error = await response.json();
+        alert('Failed to upload logo: ' + (error.error || 'Unknown error'));
       }
-      const imageUrl = URL.createObjectURL(file);
-      setProfile(prev => ({ ...prev, avatar: imageUrl }));
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
     }
   };
 
@@ -895,53 +974,67 @@ export default function Settings() {
             <CardContent className="space-y-6">
               <div className="flex items-center gap-6">
                 <Avatar className="h-20 w-20">
-                  <AvatarFallback>{profile.firstName[0]}{profile.lastName[0]}</AvatarFallback>
-                  {profile.avatar && <img src={profile.avatar} alt="Profile" className="h-full w-full object-cover" />}
+                  <AvatarFallback>{organization.name?.charAt(0) || 'O'}</AvatarFallback>
+                  {(organization.logoDataUrl || profile.avatar) && <img src={organization.logoDataUrl || profile.avatar} alt="Organization" className="h-full w-full object-cover" />}
                 </Avatar>
                 <div>
                   <input
                     type="file"
-                    ref={fileInputRef}
+                    ref={orgFileInputRef}
                     className="hidden"
-                    accept="image/png, image/jpeg, image/gif"
+                    accept="image/png, image/jpeg, image/gif, image/webp"
                     onChange={handleFileChange}
                   />
-                  <Button variant="outline" onClick={handlePhotoClick}>Change Photo</Button>
-                  <p className="text-sm text-gray-500 mt-2">JPG, PNG or GIF. Max size 2MB</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" value={profile.firstName} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" value={profile.lastName} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={profile.email} onChange={handleProfileChange} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" type="tel" value={profile.phone} onChange={handleProfileChange} />
+                  <Button variant="outline" onClick={handlePhotoClick} disabled={uploadingLogo}>
+                    {uploadingLogo ? 'Uploading...' : 'Change Organization Logo'}
+                  </Button>
+                  <p className="text-sm text-gray-500 mt-2">Organization Logo - JPG, PNG, GIF or WebP. Max size 2MB</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="timezone">Timezone</Label>
+                <Label htmlFor="orgName">Organization Name</Label>
+                <Input id="orgName" value={organization.name} disabled />
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                <p className="text-sm text-blue-800">ℹ️ To update your profile details, please contact your organization administrator.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="firstName">First Name (Read-only)</Label>
+                  <Input id="firstName" value={profile.firstName} onChange={handleProfileChange} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name (Read-only)</Label>
+                  <Input id="lastName" value={profile.lastName} onChange={handleProfileChange} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email (Read-only)</Label>
+                  <Input id="email" type="email" value={profile.email} onChange={handleProfileChange} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone (Read-only)</Label>
+                  <Input id="phone" type="tel" value={profile.phone} onChange={handleProfileChange} disabled />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="timezone">Timezone (Read-only)</Label>
                 <select
                   id="timezone"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md"
                   value={profile.timezone}
                   onChange={handleProfileChange}
+                  disabled
                 >
+                  <option>Asia/Kolkata</option>
                   <option>Eastern Time (ET)</option>
                   <option>Central Time (CT)</option>
                   <option>Mountain Time (MT)</option>
                   <option>Pacific Time (PT)</option>
+                  <option>UTC</option>
                 </select>
               </div>
 

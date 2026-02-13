@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useData, Lead } from '../context/DataContext';
 import { useNotifications } from '../context/NotificationContext';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { useOrganization } from '../hooks/useOrganization';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Card } from '../components/ui/card';
@@ -36,7 +37,8 @@ const LeadsTable = ({
   onSelectAll,
   properties,
   onDeleteLead,
-  isAdminOrManager
+  isAdminOrManager,
+  catalogModuleLabel
 }: {
   leads: Lead[];
   selectedLeads: Set<string>;
@@ -45,6 +47,7 @@ const LeadsTable = ({
   properties: any[];
   onDeleteLead?: (leadId: string, leadName: string) => void;
   isAdminOrManager?: boolean;
+  catalogModuleLabel?: string;
 }) => {
   const allSelected = leads.length > 0 && leads.every(lead => selectedLeads.has(lead.id));
 
@@ -64,7 +67,7 @@ const LeadsTable = ({
               </th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Name</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Phone</th>
-              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Property</th>
+              <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">{catalogModuleLabel || 'Property'}</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Assigned To</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Source</th>
               <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900">Status</th>
@@ -102,7 +105,7 @@ const LeadsTable = ({
                         </span>
                       </div>
                     ) : (
-                      <span className="text-gray-400 italic">No property</span>
+                      <span className="text-gray-400 italic">No {(catalogModuleLabel || 'property').toLowerCase()}</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-700">
@@ -289,6 +292,7 @@ export default function Leads() {
   const { leads, loading, error, refreshLeads } = useData();
   const { addNotification } = useNotifications();
   const { categoryFieldLabel, appointmentFieldLabel } = useTenantConfig();
+  const { catalogModuleLabel } = useOrganization();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [view, setView] = useState<'list' | 'kanban' | 'table'>('table');
@@ -753,6 +757,7 @@ export default function Leads() {
             properties={properties}
             onDeleteLead={handleDeleteLead}
             isAdminOrManager={isAdminOrManager}
+            catalogModuleLabel={catalogModuleLabel}
           />
         )}
         {view === 'list' && <LeadsList leads={filteredLeads} />}
@@ -894,13 +899,13 @@ export default function Leads() {
               </div>
 
               <div>
-                <Label htmlFor="property">Interested Property</Label>
+                <Label htmlFor="property">Interested {catalogModuleLabel}</Label>
                 <Select
                   value={formData.propertyId || "none"}
                   onValueChange={(value) => setFormData({ ...formData, propertyId: value === "none" ? "" : value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select a property" />
+                    <SelectValue placeholder={`Select a ${catalogModuleLabel.toLowerCase()}`} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">None</SelectItem>

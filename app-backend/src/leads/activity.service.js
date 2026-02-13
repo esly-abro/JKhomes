@@ -9,7 +9,11 @@ const Activity = require('../models/Activity');
 /**
  * Create activity and check for task auto-completion
  */
-async function createActivity(activityData) {
+async function createActivity(activityData, organizationId) {
+    // Ensure organizationId is set
+    if (organizationId) {
+        activityData.organizationId = organizationId;
+    }
     const activity = await Activity.create(activityData);
     
     // Check for task auto-completion based on activity type
@@ -33,27 +37,42 @@ async function createActivity(activityData) {
 }
 
 /**
- * Get recent activities (all users)
+ * Get recent activities (scoped to organization)
  */
-async function getRecentActivities(limit = 50) {
-    return Activity.getRecent(limit);
-}
-
-/**
- * Get activities by user ID (for agent's own activities)
- */
-async function getActivitiesByUser(userId, limit = 50) {
-    return Activity.find({ userId })
+async function getRecentActivities(organizationId, limit = 50) {
+    const query = {};
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return Activity.find(query)
         .sort({ createdAt: -1 })
         .limit(parseInt(limit))
         .populate('userId', 'name email');
 }
 
 /**
- * Get all activities (for owner/admin/manager)
+ * Get activities by user ID (for agent's own activities)
  */
-async function getAllActivities(limit = 100) {
-    return Activity.find()
+async function getActivitiesByUser(organizationId, userId, limit = 50) {
+    const query = { userId };
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return Activity.find(query)
+        .sort({ createdAt: -1 })
+        .limit(parseInt(limit))
+        .populate('userId', 'name email');
+}
+
+/**
+ * Get all activities (for owner/admin/manager, scoped to organization)
+ */
+async function getAllActivities(organizationId, limit = 100) {
+    const query = {};
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return Activity.find(query)
         .sort({ createdAt: -1 })
         .limit(parseInt(limit))
         .populate('userId', 'name email');

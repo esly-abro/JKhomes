@@ -6,6 +6,14 @@
 const mongoose = require('mongoose');
 
 const activitySchema = new mongoose.Schema({
+    // Organization ID (Multi-tenancy) - REQUIRED
+    organizationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        required: true,
+        index: true
+    },
+    
     // Lead reference
     leadId: {
         type: String,

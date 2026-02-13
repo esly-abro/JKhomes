@@ -6,20 +6,28 @@
 const CallLog = require('../models/CallLog');
 
 /**
- * Get call logs by user ID (for agent's own calls)
+ * Get call logs by user ID (for agent's own calls, scoped to org)
  */
-async function getCallLogsByUser(userId, limit = 50) {
-    return CallLog.find({ agentId: userId })
+async function getCallLogsByUser(organizationId, userId, limit = 50) {
+    const query = { agentId: userId };
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return CallLog.find(query)
         .sort({ createdAt: -1 })
         .limit(parseInt(limit))
         .populate('agentId', 'name email');
 }
 
 /**
- * Get all call logs (for owner/admin/manager)
+ * Get all call logs (for owner/admin/manager, scoped to org)
  */
-async function getAllCallLogs(limit = 100) {
-    return CallLog.find()
+async function getAllCallLogs(organizationId, limit = 100) {
+    const query = {};
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return CallLog.find(query)
         .sort({ createdAt: -1 })
         .limit(parseInt(limit))
         .populate('agentId', 'name email');

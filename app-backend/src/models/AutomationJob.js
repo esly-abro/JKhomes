@@ -4,6 +4,12 @@ const mongoose = require('mongoose');
  * AutomationJob tracks scheduled/delayed jobs for the workflow engine
  */
 const automationJobSchema = new mongoose.Schema({
+  // Organization (Multi-tenancy)
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    index: true
+  },
   automationRun: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'AutomationRun',

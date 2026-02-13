@@ -201,6 +201,9 @@ async function buildApp() {
 
     // Auth routes (no auth required)
     // Rate limited to prevent brute force attacks
+    app.post('/auth/register-organization', { 
+        preHandler: authLimiter 
+    }, authController.registerOrganization);
     app.post('/auth/register', { 
         preHandler: authLimiter 
     }, authController.register);
@@ -217,7 +220,23 @@ async function buildApp() {
             if (!request.user) {
                 return reply.status(401).send({ success: false, error: 'Not authenticated' });
             }
-            return reply.send({ success: true, user: request.user });
+
+            // Get organization data if user is part of an organization
+            let organization = null;
+            if (request.user.organizationId) {
+                try {
+                    const Organization = require('./models/organization.model');
+                    organization = await Organization.findById(request.user.organizationId).lean();
+                    if (organization && organization.logoBuffer) {
+                        organization.logoDataUrl = `data:${organization.logoMimeType};base64,${organization.logoBuffer.toString('base64')}`;
+                        delete organization.logoBuffer;
+                    }
+                } catch (e) {
+                    console.warn('Failed to fetch organization:', e.message);
+                }
+            }
+
+            return reply.send({ success: true, user: request.user, organization });
         } catch (error) {
             request.log.error('Get current user error:', error);
             return reply.status(500).send({ success: false, error: 'Failed to get user' });
@@ -468,6 +487,23 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin'])
         }, propertiesController.deleteProperty);
 
+        // Inventory Item routes (generic catalog - SaaS multi-tenant)
+        const inventoryItemController = require('./inventory/inventoryItem.controller');
+        protectedApp.get('/api/inventory-items', inventoryItemController.getItems);
+        protectedApp.get('/api/inventory-items/:id', inventoryItemController.getItemById);
+        protectedApp.post('/api/inventory-items', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, inventoryItemController.createItem);
+        protectedApp.patch('/api/inventory-items/:id', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, inventoryItemController.updateItem);
+        protectedApp.delete('/api/inventory-items/:id', {
+            preHandler: requireRole(['owner', 'admin'])
+        }, inventoryItemController.deleteItem);
+        protectedApp.patch('/api/inventory-items/:id/custom-fields', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, inventoryItemController.updateCustomFields);
+
         // Google Sheets Sync routes
         protectedApp.post('/api/properties/sync-google-sheets', {
             preHandler: requireRole(['owner', 'admin'])
@@ -678,6 +714,108 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, assignmentController.getAgentWorkload);
 
+        // Organization Profile routes (owner can update)
+        protectedApp.get('/api/organization/me', async (request, reply) => {
+            const Organization = require('./models/organization.model');
+            const org = await Organization.findById(request.user.organizationId).lean();
+            if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+            
+            if (org.logoBuffer) {
+                org.logoDataUrl = `data:${org.logoMimeType};base64,${org.logoBuffer.toString('base64')}`;
+                delete org.logoBuffer;
+            }
+            return reply.send({ success: true, organization: org });
+        });
+
+        // Update organization profile with logo upload
+        protectedApp.post('/api/organization/update-profile', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            const Organization = require('./models/organization.model');
+            const data = await request.file();
+            
+            if (!data) {
+                return reply.status(400).send({ success: false, error: 'No file uploaded' });
+            }
+
+            const buffer = await data.toBuffer();
+            const mimetype = data.mimetype;
+
+            // Validate file size (max 2MB)
+            if (buffer.length > 2 * 1024 * 1024) {
+                return reply.status(400).send({ success: false, error: 'File size exceeds 2MB limit' });
+            }
+
+            // Validate MIME type
+            if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mimetype)) {
+                return reply.status(400).send({ success: false, error: 'Only PNG, JPEG, GIF, or WebP images allowed' });
+            }
+
+            try {
+                const org = await Organization.findByIdAndUpdate(
+                    request.user.organizationId,
+                    {
+                        logoBuffer: buffer,
+                        logoMimeType: mimetype,
+                        logoUrl: null
+                    },
+                    { new: true }
+                ).lean();
+
+                if (org.logoBuffer) {
+                    org.logoDataUrl = `data:${org.logoMimeType};base64,${org.logoBuffer.toString('base64')}`;
+                    delete org.logoBuffer;
+                }
+
+                return reply.send({
+                    success: true,
+                    message: 'Organization logo updated successfully',
+                    organization: org
+                });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // Update organization name and settings (owner/admin only)
+        protectedApp.put('/api/organization/settings', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            const Organization = require('./models/organization.model');
+            const { name, settings } = request.body || {};
+            const updateFields = {};
+
+            if (name) updateFields.name = name;
+            if (settings) {
+                if (settings.timezone) updateFields['settings.timezone'] = settings.timezone;
+                if (settings.dateFormat) updateFields['settings.dateFormat'] = settings.dateFormat;
+                if (settings.currency) updateFields['settings.currency'] = settings.currency;
+            }
+
+            if (Object.keys(updateFields).length === 0) {
+                return reply.status(400).send({ success: false, error: 'No fields to update' });
+            }
+
+            try {
+                const org = await Organization.findByIdAndUpdate(
+                    request.user.organizationId,
+                    { $set: updateFields },
+                    { new: true }
+                ).lean();
+
+                if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+
+                if (org.logoBuffer) {
+                    org.logoDataUrl = `data:${org.logoMimeType};base64,${org.logoBuffer.toString('base64')}`;
+                    delete org.logoBuffer;
+                }
+
+                return reply.send({ success: true, organization: org });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
         // Zoho Sync routes (owner/admin only, rate limited)
         protectedApp.post('/api/sync/call-log/:callLogId', {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
@@ -699,6 +837,11 @@ async function buildApp() {
         protectedApp.post('/api/sync/pending', {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.syncAllPending);
+
+        // Import leads from Zoho CRM into MongoDB
+        protectedApp.post('/api/sync/import-from-zoho', {
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
+        }, syncController.importFromZoho);
 
         // Upload routes
         const uploadRoutes = require('./routes/upload');

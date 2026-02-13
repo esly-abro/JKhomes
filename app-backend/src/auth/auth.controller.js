@@ -8,6 +8,116 @@ const usersModel = require('../users/users.model');
 const { notifyOwnerOfNewAgent } = require('../services/email.service');
 
 /**
+ * POST /auth/register-organization
+ * Register a new organization with an owner account
+ */
+async function registerOrganization(request, reply) {
+    try {
+        const { organizationName, industry, catalogModuleLabel, categoryFieldLabel, appointmentFieldLabel, name, email, password, phone } = request.body;
+
+        // Validation
+        if (!organizationName || !name || !email || !password) {
+            return reply.code(400).send({
+                success: false,
+                message: 'Organization name, name, email, and password are required'
+            });
+        }
+
+        // Validate industry
+        const validIndustries = ['real_estate', 'saas', 'healthcare', 'education', 'insurance', 'automotive', 'finance', 'generic'];
+        const selectedIndustry = validIndustries.includes(industry) ? industry : 'generic';
+
+        // Check if user already exists
+        const existingUser = await usersModel.findByEmail(email);
+        if (existingUser) {
+            return reply.code(409).send({
+                success: false,
+                message: 'User with this email already exists'
+            });
+        }
+
+        // Check if we're in database mode
+        const isDbMode = usersModel.useDatabase();
+        if (!isDbMode) {
+            return reply.code(503).send({
+                success: false,
+                message: 'Organization registration requires database mode'
+            });
+        }
+
+        // Import models (only needed in DB mode)
+        const User = require('../models/User');
+        const Organization = require('../models/organization.model');
+        const TenantConfig = require('../models/tenantConfig.model');
+        const bcrypt = require('bcrypt');
+
+        // Hash password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create owner user first (organization requires ownerId)
+        const user = new User({
+            email: email.toLowerCase(),
+            passwordHash,
+            name,
+            phone,
+            role: 'owner',
+            isActive: true,
+            approvalStatus: 'approved'
+        });
+        await user.save();
+
+        console.log(`✅ Owner user created: ${email} (${user._id})`);
+
+        // Create organization with owner
+        const organization = new Organization({
+            name: organizationName,
+            ownerId: user._id,
+            isActive: true
+        });
+        await organization.save();
+
+        console.log(`✅ Organization created: ${organizationName} (${organization._id})`);
+
+        // Link user to organization
+        user.organizationId = organization._id;
+        await user.save();
+
+        // Create tenant config with selected industry and custom labels
+        const defaultConfig = new TenantConfig({
+            organizationId: organization._id,
+            industry: selectedIndustry,
+            // Set field labels: use custom if provided, otherwise use industry defaults
+            catalogModuleLabel: catalogModuleLabel || TenantConfig.getDefaultCatalogModuleLabel(selectedIndustry),
+            categoryFieldLabel: categoryFieldLabel || TenantConfig.getDefaultCategoryFieldLabel(selectedIndustry),
+            appointmentFieldLabel: appointmentFieldLabel || TenantConfig.getDefaultAppointmentFieldLabel(selectedIndustry)
+        });
+
+        await defaultConfig.save();
+
+        console.log(`✅ Tenant config created for ${organization._id} with industry: ${selectedIndustry}`);
+
+        return reply.code(201).send({
+            success: true,
+            message: 'Organization registered successfully! You can now log in.',
+            data: {
+                organizationId: organization._id,
+                userId: user._id,
+                email: user.email,
+                name: user.name,
+                organizationName: organization.name,
+                industry: selectedIndustry
+            }
+        });
+    } catch (error) {
+        console.error('Register organization error:', error);
+        return reply.code(500).send({
+            success: false,
+            message: 'Organization registration failed. Please try again.'
+        });
+    }
+}
+
+/**
  * POST /auth/register
  * Register a new agent (requires owner approval in DB mode, auto-approved in memory mode)
  * If createdByOwner is true, the agent is auto-approved
@@ -190,6 +300,7 @@ async function logout(request, reply) {
 }
 
 module.exports = {
+    registerOrganization,
     register,
     login,
     refresh,

@@ -9,17 +9,20 @@ const User = require('../models/User');
 /**
  * Get monthly trends for leads and deals
  */
-async function getMonthlyTrends(userId, range = '30days') {
+async function getMonthlyTrends(userId, range = '30days', organizationId = null) {
     const months = range === '90days' ? 3 : range === 'year' ? 12 : 1;
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
 
+    const matchFilter = { createdAt: { $gte: startDate } };
+    if (organizationId) {
+        matchFilter.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
+    }
+
     // Get leads grouped by month
     const monthlyData = await Lead.aggregate([
         {
-            $match: {
-                createdAt: { $gte: startDate }
-            }
+            $match: matchFilter
         },
         {
             $group: {
@@ -66,7 +69,7 @@ async function getMonthlyTrends(userId, range = '30days') {
 /**
  * Get conversion funnel data
  */
-async function getConversionFunnel(userId) {
+async function getConversionFunnel(userId, organizationId = null) {
     const stages = [
         { stage: 'Leads', statuses: ['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
         { stage: 'Contacted', statuses: ['Call Attended', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
@@ -77,9 +80,11 @@ async function getConversionFunnel(userId) {
 
     const funnelData = await Promise.all(
         stages.map(async ({ stage, statuses }) => {
-            const count = await Lead.countDocuments({
-                status: { $in: statuses }
-            });
+            const query = { status: { $in: statuses } };
+            if (organizationId) {
+                query.organizationId = organizationId;
+            }
+            const count = await Lead.countDocuments(query);
             return { stage, count };
         })
     );
@@ -90,8 +95,14 @@ async function getConversionFunnel(userId) {
 /**
  * Get source performance data
  */
-async function getSourcePerformance(userId) {
+async function getSourcePerformance(userId, organizationId = null) {
+    const matchFilter = {};
+    if (organizationId) {
+        matchFilter.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
+    }
+
     const sources = await Lead.aggregate([
+        { $match: matchFilter },
         {
             $group: {
                 _id: '$source',
@@ -135,9 +146,15 @@ async function getSourcePerformance(userId) {
 /**
  * Get team performance data
  */
-async function getTeamPerformance(userId) {
+async function getTeamPerformance(userId, organizationId = null) {
     // Get all users with role agent, manager, or bpo
+    const matchFilter = {};
+    if (organizationId) {
+        matchFilter.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
+    }
+
     const teamMembers = await Lead.aggregate([
+        { $match: matchFilter },
         {
             $lookup: {
                 from: 'users',
@@ -199,13 +216,19 @@ async function getTeamPerformance(userId) {
 /**
  * Get KPI metrics
  */
-async function getKPIMetrics(userId, range = '30days') {
+async function getKPIMetrics(userId, range = '30days', organizationId = null) {
     const days = range === '7days' ? 7 : range === '90days' ? 90 : 30;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    const baseMatch = {};
+    if (organizationId) {
+        baseMatch.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
+    }
+
     // Current period metrics
     const currentMetrics = await Lead.aggregate([
+        { $match: baseMatch },
         {
             $facet: {
                 total: [
@@ -259,6 +282,7 @@ async function getKPIMetrics(userId, range = '30days') {
     const previousMetrics = await Lead.aggregate([
         {
             $match: {
+                ...baseMatch,
                 createdAt: { $gte: previousStartDate, $lt: startDate }
             }
         },

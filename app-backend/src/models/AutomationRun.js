@@ -4,6 +4,12 @@ const mongoose = require('mongoose');
  * AutomationRun tracks each execution of an automation workflow
  */
 const automationRunSchema = new mongoose.Schema({
+  // Organization (Multi-tenancy)
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    index: true
+  },
   automation: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Automation',

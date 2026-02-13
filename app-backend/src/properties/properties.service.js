@@ -23,9 +23,14 @@ class PropertiesService {
     }
   }
 
-  async getAllProperties(filters = {}) {
+  async getAllProperties(organizationId, filters = {}) {
     try {
       const query = {};
+
+      // Scope to organization
+      if (organizationId) {
+        query.organizationId = organizationId;
+      }
 
       // Apply filters — support both 'category' and legacy 'propertyType'
       if (filters.category || filters.propertyType) {
@@ -56,9 +61,13 @@ class PropertiesService {
     }
   }
 
-  async getPropertyById(id) {
+  async getPropertyById(id, organizationId) {
     try {
-      const property = await Property.findById(id)
+      const query = { _id: id };
+      if (organizationId) {
+        query.organizationId = organizationId;
+      }
+      const property = await Property.findOne(query)
         .populate('createdBy', 'name email')
         .populate('assignedAgent', 'name email phone');
 
@@ -73,7 +82,7 @@ class PropertiesService {
     }
   }
 
-  async createProperty(propertyData, userId) {
+  async createProperty(propertyData, userId, organizationId) {
     try {
       // Normalize: if client sends 'propertyType', map it to 'category'
       if (propertyData.propertyType && !propertyData.category) {
@@ -82,7 +91,8 @@ class PropertiesService {
 
       const property = new Property({
         ...propertyData,
-        createdBy: userId
+        createdBy: userId,
+        organizationId: organizationId
       });
 
       await property.save();
@@ -97,10 +107,14 @@ class PropertiesService {
     }
   }
 
-  async updateProperty(id, updates) {
+  async updateProperty(id, updates, organizationId) {
     try {
-      const property = await Property.findByIdAndUpdate(
-        id,
+      const query = { _id: id };
+      if (organizationId) {
+        query.organizationId = organizationId;
+      }
+      const property = await Property.findOneAndUpdate(
+        query,
         { ...updates, updatedAt: Date.now() },
         { new: true, runValidators: true }
       )
@@ -121,9 +135,13 @@ class PropertiesService {
     }
   }
 
-  async deleteProperty(id) {
+  async deleteProperty(id, organizationId) {
     try {
-      const property = await Property.findByIdAndDelete(id);
+      const query = { _id: id };
+      if (organizationId) {
+        query.organizationId = organizationId;
+      }
+      const property = await Property.findOneAndDelete(query);
 
       if (!property) {
         throw new Error('Property not found');

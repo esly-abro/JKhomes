@@ -1,21 +1,21 @@
 /**
- * Default JK Construction Lead Nurturing Automation Flow
+ * Default Lead Nurturing Automation Flow
  * Based on the complete lead management workflow flowchart
  * 
  * Flow Overview:
- * 1. Lead Sources → Zoho CRM Entry
+ * 1. Lead Sources → CRM Entry
  * 2. Automated WhatsApp Msg 1 (Immediate)
  * 3. Wait for response → Follow-up sequences
  * 4. AI Voice Call (IVR System)
  * 5. Human Agent Manual Call
- * 6. Site Visit Scheduling
- * 7. Post-visit follow-up sequence
+ * 6. Appointment Scheduling
+ * 7. Post-appointment follow-up sequence
  * 8. Final negotiation → Close
  */
 
 const defaultAutomationTemplate = {
-  name: 'JK Construction Lead Nurturing Flow',
-  description: 'Complete lead management workflow with WhatsApp, AI calls, human calls, site visits, and follow-ups. Based on JK Construction best practices.',
+  name: 'Lead Nurturing Flow',
+  description: 'Complete lead management workflow with WhatsApp, AI calls, human calls, appointments, and follow-ups.',
   isDefault: true,
   
   nodes: [
@@ -29,7 +29,7 @@ const defaultAutomationTemplate = {
         type: 'newLead',
         color: 'bg-green-500',
         config: {
-          description: 'Triggered when lead enters from Social Media, Real Estate Platforms, Digital Ads, or Website Forms'
+          description: 'Triggered when lead enters from Social Media, Platforms, Digital Ads, or Website Forms'
         }
       }
     },
@@ -44,7 +44,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hello {{firstName}}! 🏠 Thank you for your interest in JK Construction properties. Are you interested in learning more about our premium residential projects?',
+          message: 'Hello {{firstName}}! 🏠 Thank you for your interest in {{organizationName}}. Are you interested in learning more about our offerings?',
           template: 'welcome_inquiry',
           buttons: [
             { text: 'Yes, Tell me more', payload: 'interested' },
@@ -82,8 +82,8 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Great! 🎉 Here\'s our latest property brochure and a link to schedule a site visit at your convenience:\n\n📍 View Properties: {{propertyLink}}\n📅 Schedule Visit: {{scheduleLink}}',
-          template: 'property_brochure'
+          message: 'Great! 🎉 Here\'s our latest brochure and a link to schedule a {{appointmentLabel}} at your convenience:\n\n📍 View {{catalogLabel}}: {{propertyLink}}\n📅 Schedule {{appointmentLabel}}: {{scheduleLink}}',
+          template: 'brochure'
         }
       }
     },
@@ -114,7 +114,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}, just following up on my earlier message. Would you be interested in scheduling a free site visit to see our premium properties? We have exciting offers this month! 🏡',
+          message: 'Hi {{firstName}}, just following up on my earlier message. Would you be interested in scheduling a free {{appointmentLabel}} to see our offerings? We have exciting offers this month! 🏡',
           template: 'follow_up_1'
         }
       }
@@ -168,7 +168,7 @@ const defaultAutomationTemplate = {
           script: 'lead_qualification',
           maxDuration: 300,
           voiceId: 'professional_male',
-          objective: 'Qualify lead interest, understand requirements, attempt to schedule site visit'
+          objective: 'Qualify lead interest, understand requirements, attempt to schedule {{appointmentLabel}}'
         }
       }
     },
@@ -196,11 +196,11 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 400, y: 1000 },
       data: {
-        label: 'Send Property Brochure',
+        label: 'Send Brochure',
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Thank you for speaking with us! 📋 As promised, here\'s our detailed property brochure with floor plans, pricing, and amenities:\n\n{{brochureLink}}',
+          message: 'Thank you for speaking with us! 📋 As promised, here\'s our detailed brochure with plans, pricing, and details:\n\n{{brochureLink}}',
           template: 'brochure_after_call'
         }
       }
@@ -228,7 +228,7 @@ const defaultAutomationTemplate = {
       type: 'condition',
       position: { x: 400, y: 1240 },
       data: {
-        label: 'Need to Schedule Visit?',
+        label: 'Need to Schedule {{appointmentLabel}}?',
         type: 'condition',
         color: 'bg-yellow-500',
         config: {
@@ -250,11 +250,11 @@ const defaultAutomationTemplate = {
         color: 'bg-orange-600',
         config: {
           taskType: 'call_lead',
-          title: 'Call lead - Schedule Site Visit',
+          title: 'Call lead - Schedule {{appointmentLabel}}',
           assignTo: 'auto',
           priority: 'high',
-          notes: 'Schedule site visit, address concerns, build rapport',
-          description: 'Objective: Convert to site visit'
+          notes: 'Schedule {{appointmentLabel}}, address concerns, build rapport',
+          description: 'Objective: Convert to {{appointmentLabel}}'
         }
       }
     },
@@ -298,7 +298,7 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 650, y: 1620 },
       data: {
-        label: 'Status: Site Visit Scheduled',
+        label: 'Status: {{appointmentLabel}} Scheduled',
         type: 'updateStatus',
         color: 'bg-purple-600',
         config: {
@@ -319,10 +319,10 @@ const defaultAutomationTemplate = {
         color: 'bg-orange-600',
         config: {
           taskType: 'confirm_site_visit',
-          title: 'Confirm site visit with lead',
+          title: 'Confirm {{appointmentLabel}} with lead',
           timing: 'same_day',
           priority: 'high',
-          notes: 'Confirm visit time, provide directions, set expectations'
+          notes: 'Confirm time, provide directions, set expectations'
         }
       }
     },
@@ -337,7 +337,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! 📅 Just a friendly reminder about your site visit tomorrow at {{visitTime}}.\n\n📍 Location: {{propertyAddress}}\n🚗 Directions: {{directionsLink}}\n\nLooking forward to meeting you!',
+          message: 'Hi {{firstName}}! 📅 Just a friendly reminder about your {{appointmentLabel}} tomorrow at {{visitTime}}.\n\n📍 Location: {{propertyAddress}}\n🚗 Directions: {{directionsLink}}\n\nLooking forward to meeting you!',
           template: 'visit_reminder_24hr'
         }
       }
@@ -353,7 +353,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! ⏰ Your site visit is in 2 hours at {{visitTime}}. Our representative {{agentName}} will meet you at the site entrance. Call {{agentPhone}} if needed!',
+          message: 'Hi {{firstName}}! ⏰ Your {{appointmentLabel}} is in 2 hours at {{visitTime}}. Our representative {{agentName}} will meet you at the location. Call {{agentPhone}} if needed!',
           template: 'visit_reminder_2hr'
         }
       }
@@ -365,7 +365,7 @@ const defaultAutomationTemplate = {
       type: 'condition',
       position: { x: 650, y: 2140 },
       data: {
-        label: 'Site Visit Happened?',
+        label: '{{appointmentLabel}} Happened?',
         type: 'condition',
         color: 'bg-yellow-500',
         config: {
@@ -399,12 +399,12 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 650, y: 2400 },
       data: {
-        label: 'Status: Site Visit Done - Agent Updates CRM',
+        label: 'Status: {{appointmentLabel}} Done - Agent Updates CRM',
         type: 'updateStatus',
         color: 'bg-purple-600',
         config: {
           status: 'site_visit_completed',
-          action: 'Agent to update CRM with visit notes and lead rating'
+          action: 'Agent to update CRM with notes and lead rating'
         }
       }
     },
@@ -435,7 +435,7 @@ const defaultAutomationTemplate = {
         type: 'createTask',
         color: 'bg-blue-500',
         config: {
-          task: 'Post-visit follow-up sequence',
+          task: 'Post-{{appointmentLabel}} follow-up sequence',
           priority: 'high'
         }
       }
@@ -451,7 +451,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! 🙏 Thank you for visiting our property today. We hope you liked what you saw! If you have any questions about the project, pricing, or payment plans, feel free to reach out.\n\nBest regards,\n{{agentName}}',
+          message: 'Hi {{firstName}}! 🙏 Thank you for your time today. We hope you liked what you saw! If you have any questions about pricing or payment plans, feel free to reach out.\n\nBest regards,\n{{agentName}}',
           template: 'post_visit_thankyou'
         }
       }
@@ -484,8 +484,8 @@ const defaultAutomationTemplate = {
         color: 'bg-orange-600',
         config: {
           taskType: 'followup_call',
-          title: 'Day 2 Follow-up: Discuss site visit thoughts',
-          notes: 'Follow up on site visit, understand thoughts, address concerns, discuss pricing',
+          title: 'Day 2 Follow-up: Discuss {{appointmentLabel}} thoughts',
+          notes: 'Follow up on {{appointmentLabel}}, understand thoughts, address concerns, discuss pricing',
           priority: 'high'
         }
       }

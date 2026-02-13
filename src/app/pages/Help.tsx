@@ -15,6 +15,8 @@ import {
   ChevronRight,
   ExternalLink
 } from 'lucide-react';
+import { useOrganization } from '../hooks/useOrganization';
+import { useTenantConfig } from '../context/TenantConfigContext';
 
 interface FAQItem {
   question: string;
@@ -27,18 +29,27 @@ interface GuideItem {
   icon: React.ReactNode;
 }
 
-const faqs: FAQItem[] = [
+const faqs: FAQItem[] = [];
+
+const guides: GuideItem[] = [];
+
+export default function Help() {
+  const { catalogModuleLabel } = useOrganization();
+  const { appointmentFieldLabel } = useTenantConfig();
+  const catalogLabel = catalogModuleLabel.toLowerCase();
+
+  const dynamicFaqs: FAQItem[] = [
   {
     question: 'How do I add a new lead?',
-    answer: 'Click the "+" button in the header and select "Add Lead", or go to the Leads page and click the "Add Lead" button. Fill in the lead details including name, phone, email, and interested property.'
+    answer: `Click the "+" button in the header and select "Add Lead", or go to the Leads page and click the "Add Lead" button. Fill in the lead details including name, phone, email, and interested ${catalogLabel}.`
   },
   {
     question: 'How do I assign leads to agents?',
-    answer: 'Go to the Leads page, select one or more leads using the checkboxes, then click the "Assign" button. You can choose a specific agent or use auto-assign to distribute leads based on workload and property expertise.'
+    answer: `Go to the Leads page, select one or more leads using the checkboxes, then click the "Assign" button. You can choose a specific agent or use auto-assign to distribute leads based on workload and ${catalogLabel} expertise.`
   },
   {
-    question: 'How do I schedule an appointment?',
-    answer: 'Open a lead\'s detail page and click "Schedule Appointment", or go to the Calendar page and create a new event. Select the lead, property, date, and time for the appointment.'
+    question: `How do I schedule an ${appointmentFieldLabel.toLowerCase()}?`,
+    answer: `Open a lead's detail page and click "Schedule ${appointmentFieldLabel}", or go to the Calendar page and create a new event. Select the lead, ${catalogLabel}, date, and time for the ${appointmentFieldLabel.toLowerCase()}.`
   },
   {
     question: 'How do I import leads from Excel?',
@@ -46,36 +57,36 @@ const faqs: FAQItem[] = [
   },
   {
     question: 'How do I track lead status and activities?',
-    answer: 'Each lead has a status (New, Call Attended, No Response, Not Interested, Appointment Booked, Appointment Scheduled, Interested) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.'
+    answer: `Each lead has a status (New, Call Attended, No Response, Not Interested, ${appointmentFieldLabel} Booked, ${appointmentFieldLabel} Scheduled, Interested) and activity history. View activities on the Activities page or in individual lead details. Update status from the lead detail page.`
   },
   {
     question: 'How do I view analytics and reports?',
-    answer: 'Go to the Analytics page from the sidebar to view conversion rates, lead sources, agent performance, and property interest trends. Export reports using the download button.'
+    answer: `Go to the Analytics page from the sidebar to view conversion rates, lead sources, agent performance, and ${catalogLabel} interest trends. Export reports using the download button.`
   },
   {
     question: 'How do I configure Twilio for calls?',
     answer: 'Go to Settings > Integrations tab. Configure your Twilio Account SID, Auth Token, and phone number. Enable Click-to-Call and Call Recording as needed.'
   },
   {
-    question: 'How do I add new properties?',
-    answer: 'Go to the Properties page and click "Add Property". Enter property details including name, location, type, price range, and amenities. Properties will be available for lead assignment.'
+    question: `How do I add new ${catalogLabel}?`,
+    answer: `Go to the ${catalogModuleLabel} page and click "Add ${catalogModuleLabel}". Enter details including name, location, type, price range, and other relevant information. ${catalogModuleLabel} will be available for lead assignment.`
   },
-];
+  ];
 
-const guides: GuideItem[] = [
+  const dynamicGuides: GuideItem[] = [
   {
     title: 'Managing Leads',
     description: 'Learn how to add, edit, assign, and track leads through the sales pipeline.',
     icon: <Users className="h-6 w-6 text-blue-600" />
   },
   {
-    title: 'Properties',
-    description: 'Add and manage your property listings, including details, pricing, and availability.',
+    title: catalogModuleLabel,
+    description: `Add and manage your ${catalogLabel} listings, including details, pricing, and availability.`,
     icon: <Home className="h-6 w-6 text-green-600" />
   },
   {
-    title: 'Appointments & Calendar',
-    description: 'Schedule and manage appointments, follow-ups, and other calendar events.',
+    title: `${appointmentFieldLabel}s & Calendar`,
+    description: `Schedule and manage ${appointmentFieldLabel.toLowerCase()}s, follow-ups, and other calendar events.`,
     icon: <Calendar className="h-6 w-6 text-orange-600" />
   },
   {
@@ -93,9 +104,7 @@ const guides: GuideItem[] = [
     description: 'Configure Twilio for click-to-call, call logging, and IVR.',
     icon: <Phone className="h-6 w-6 text-teal-600" />
   },
-];
-
-export default function Help() {
+  ];
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -105,7 +114,7 @@ export default function Help() {
         </div>
         <h1 className="text-3xl font-bold text-gray-900">Help & Support</h1>
         <p className="text-gray-600 mt-2">
-          Everything you need to know about using JK Homes Pulsar CRM
+          Everything you need to know about using your CRM
         </p>
       </div>
 
@@ -123,7 +132,7 @@ export default function Help() {
       <div>
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Guides</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {guides.map((guide, index) => (
+          {dynamicGuides.map((guide, index) => (
             <Card key={index} className="hover:shadow-md transition-shadow cursor-pointer">
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
@@ -147,7 +156,7 @@ export default function Help() {
         <h2 className="text-xl font-semibold text-gray-900 mb-4">Frequently Asked Questions</h2>
         <Card>
           <CardContent className="p-0 divide-y divide-gray-100">
-            {faqs.map((faq, index) => (
+            {dynamicFaqs.map((faq, index) => (
               <details key={index} className="group">
                 <summary className="flex items-center justify-between px-6 py-4 cursor-pointer hover:bg-gray-50">
                   <span className="font-medium text-gray-900">{faq.question}</span>
@@ -184,7 +193,7 @@ export default function Help() {
               </div>
               <div>
                 <p className="font-medium text-gray-900">Email Support</p>
-                <p className="text-sm text-gray-600">support@jkhomes.com</p>
+                <p className="text-sm text-gray-600">support@yourcompany.com</p>
               </div>
             </div>
             <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">

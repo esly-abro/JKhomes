@@ -10,7 +10,8 @@ const analyticsService = require('./analytics.service');
  * GET /api/metrics/overview
  */
 async function getOverview(request, reply) {
-    const metrics = await metricsService.getOverview();
+    const organizationId = request.user?.organizationId;
+    const metrics = await metricsService.getOverview(organizationId);
 
     return reply.code(200).send(metrics);
 }
@@ -21,8 +22,9 @@ async function getOverview(request, reply) {
 async function getMonthlyTrends(request, reply) {
     const { range = '30days' } = request.query;
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
-    const trends = await analyticsService.getMonthlyTrends(userId, range);
+    const trends = await analyticsService.getMonthlyTrends(userId, range, organizationId);
     return reply.code(200).send(trends);
 }
 
@@ -31,8 +33,9 @@ async function getMonthlyTrends(request, reply) {
  */
 async function getConversionFunnel(request, reply) {
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
-    const funnel = await analyticsService.getConversionFunnel(userId);
+    const funnel = await analyticsService.getConversionFunnel(userId, organizationId);
     return reply.code(200).send(funnel);
 }
 
@@ -41,8 +44,9 @@ async function getConversionFunnel(request, reply) {
  */
 async function getSourcePerformance(request, reply) {
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
-    const sources = await analyticsService.getSourcePerformance(userId);
+    const sources = await analyticsService.getSourcePerformance(userId, organizationId);
     return reply.code(200).send(sources);
 }
 
@@ -51,8 +55,9 @@ async function getSourcePerformance(request, reply) {
  */
 async function getTeamPerformance(request, reply) {
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
-    const team = await analyticsService.getTeamPerformance(userId);
+    const team = await analyticsService.getTeamPerformance(userId, organizationId);
     return reply.code(200).send(team);
 }
 
@@ -62,8 +67,9 @@ async function getTeamPerformance(request, reply) {
 async function getKPIMetrics(request, reply) {
     const { range = '30days' } = request.query;
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
-    const kpis = await analyticsService.getKPIMetrics(userId, range);
+    const kpis = await analyticsService.getKPIMetrics(userId, range, organizationId);
     return reply.code(200).send(kpis);
 }
 
@@ -73,13 +79,14 @@ async function getKPIMetrics(request, reply) {
 async function getAllAnalytics(request, reply) {
     const { range = '30days' } = request.query;
     const userId = request.user?.id;
+    const organizationId = request.user?.organizationId;
 
     const [monthlyTrends, conversionFunnel, sourcePerformance, teamPerformance, kpiMetrics] = await Promise.all([
-        analyticsService.getMonthlyTrends(userId, range),
-        analyticsService.getConversionFunnel(userId),
-        analyticsService.getSourcePerformance(userId),
-        analyticsService.getTeamPerformance(userId),
-        analyticsService.getKPIMetrics(userId, range)
+        analyticsService.getMonthlyTrends(userId, range, organizationId),
+        analyticsService.getConversionFunnel(userId, organizationId),
+        analyticsService.getSourcePerformance(userId, organizationId),
+        analyticsService.getTeamPerformance(userId, organizationId),
+        analyticsService.getKPIMetrics(userId, range, organizationId)
     ]);
 
     return reply.code(200).send({

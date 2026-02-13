@@ -102,6 +102,7 @@ async function automationRoutes(fastify, options) {
         name: name || templateData.name,
         description: templateData.description,
         owner: ownerId,
+        organizationId: request.user?.organizationId,
         nodes: templateData.nodes,
         edges: templateData.edges,
         isActive: false, // Start as inactive so user can review
@@ -141,6 +142,12 @@ async function automationRoutes(fastify, options) {
         });
       }
 
+      // Verify org ownership
+      if (request.user?.organizationId && originalAutomation.organizationId &&
+          originalAutomation.organizationId.toString() !== request.user.organizationId.toString()) {
+        return reply.code(404).send({ success: false, error: 'Automation not found' });
+      }
+
       const { name } = request.body;
       const ownerId = request.user?._id || originalAutomation.owner;
 
@@ -149,6 +156,7 @@ async function automationRoutes(fastify, options) {
         name: name || `${originalAutomation.name} (Copy)`,
         description: originalAutomation.description,
         owner: ownerId,
+        organizationId: request.user?.organizationId || originalAutomation.organizationId,
         nodes: originalAutomation.nodes.map(node => ({
           ...node,
           id: `${node.id}-${Date.now()}` // Generate new IDs
@@ -205,10 +213,17 @@ async function automationRoutes(fastify, options) {
       // Handle case where user might not be set (for development)
       const userId = request.user?._id;
       const userRole = request.user?.role;
+      const organizationId = request.user?.organizationId;
       
-      const query = !userId || userRole === 'admin' || userRole === 'owner'
-        ? {} // No user or Admins/owners can see all
-        : { owner: userId };
+      const query = {};
+      // Scope to organization
+      if (organizationId) {
+        query.organizationId = organizationId;
+      }
+      // Non-admin/owners can only see their own
+      if (userId && userRole !== 'admin' && userRole !== 'owner') {
+        query.owner = userId;
+      }
 
       const automations = await Automation.find(query)
         .sort({ updatedAt: -1 })
@@ -233,7 +248,11 @@ async function automationRoutes(fastify, options) {
    */
   fastify.get('/:id', async (request, reply) => {
     try {
-      const automation = await Automation.findById(request.params.id)
+      const findQuery = { _id: request.params.id };
+      if (request.user?.organizationId) {
+        findQuery.organizationId = request.user.organizationId;
+      }
+      const automation = await Automation.findOne(findQuery)
         .populate('owner', 'name email');
 
       if (!automation) {
@@ -286,6 +305,7 @@ async function automationRoutes(fastify, options) {
         name: name || 'Untitled Automation',
         description,
         owner: ownerId,
+        organizationId: request.user?.organizationId,
         nodes: nodes || [],
         edges: edges || [],
         isActive: isActive !== undefined ? isActive : true, // Default to active
@@ -317,7 +337,11 @@ async function automationRoutes(fastify, options) {
    */
   fastify.put('/:id', async (request, reply) => {
     try {
-      const automation = await Automation.findById(request.params.id);
+      const findQuery = { _id: request.params.id };
+      if (request.user?.organizationId) {
+        findQuery.organizationId = request.user.organizationId;
+      }
+      const automation = await Automation.findOne(findQuery);
 
       if (!automation) {
         return reply.code(404).send({
@@ -374,7 +398,11 @@ async function automationRoutes(fastify, options) {
    */
   fastify.delete('/:id', async (request, reply) => {
     try {
-      const automation = await Automation.findById(request.params.id);
+      const findQuery = { _id: request.params.id };
+      if (request.user?.organizationId) {
+        findQuery.organizationId = request.user.organizationId;
+      }
+      const automation = await Automation.findOne(findQuery);
 
       if (!automation) {
         return reply.code(404).send({
@@ -419,7 +447,11 @@ async function automationRoutes(fastify, options) {
    */
   fastify.post('/:id/toggle', async (request, reply) => {
     try {
-      const automation = await Automation.findById(request.params.id);
+      const findQuery = { _id: request.params.id };
+      if (request.user?.organizationId) {
+        findQuery.organizationId = request.user.organizationId;
+      }
+      const automation = await Automation.findOne(findQuery);
 
       if (!automation) {
         return reply.code(404).send({

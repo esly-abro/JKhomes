@@ -22,16 +22,16 @@ class GoogleSheetsService {
         this.serviceAccountPrivateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY;
         this.webAppUrl = process.env.GOOGLE_APPS_SCRIPT_URL; // For Apps Script deployment
         
-        // Headers for the properties sheet
+        // Headers for the catalog/properties sheet
         this.headers = [
-            'Property ID',
+            'Item ID',
             'Name',
             'Category',
             'Location',
             'Status',
-            'Price Min (INR)',
-            'Price Max (INR)',
-            'Size (sqft)',
+            'Price Min',
+            'Price Max',
+            'Size',
             'Bedrooms',
             'Bathrooms',
             'Description',
@@ -40,13 +40,13 @@ class GoogleSheetsService {
             'Agent Phone',
             'Agent Email',
             'Interested Leads Count',
-            // Site Visit Availability
-            'Site Visits Enabled',
+            // Appointment Availability
+            'Appointments Enabled',
             'Available Days',
             'Time Slots',
             'Slot Duration (mins)',
             'Buffer Time (mins)',
-            'Max Visits Per Day',
+            'Max Appointments Per Day',
             'Advance Booking Days',
             'Min Advance Hours',
             'Blocked Dates',
@@ -57,12 +57,12 @@ class GoogleSheetsService {
             'Last Synced'
         ];
 
-        // Headers for scheduled site visits sheet
+        // Headers for scheduled appointments sheet
         this.siteVisitHeaders = [
-            'Visit ID',
-            'Property ID',
-            'Property Name',
-            'Property Location',
+            'Appointment ID',
+            'Item ID',
+            'Item Name',
+            'Item Location',
             'Lead Name',
             'Lead Phone',
             'Scheduled Date',

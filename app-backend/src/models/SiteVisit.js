@@ -8,6 +8,14 @@
 const mongoose = require('mongoose');
 
 const siteVisitSchema = new mongoose.Schema({
+    // Organization scope for multi-tenancy
+    organizationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        required: true,
+        index: true
+    },
+    
     // Lead reference (Zoho CRM ID)
     leadId: {
         type: String,
@@ -69,12 +77,22 @@ const siteVisitSchema = new mongoose.Schema({
         default: 'scheduled'
     },
     
-    // Property for the site visit
+    // Property for the site visit (optional - for real estate and catalog-based orgs)
     propertyId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Property',
         index: true,
-        required: true
+        sparse: true,
+        required: false
+    },
+    
+    // Generic resource/inventory item for catalog-based appointments (optional)
+    inventoryItemId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'InventoryItem',
+        index: true,
+        sparse: true,
+        required: false
     },
     
     // Visit notes
@@ -126,18 +144,19 @@ const siteVisitSchema = new mongoose.Schema({
 });
 
 // Indexes for efficient queries
-siteVisitSchema.index({ leadId: 1, scheduledAt: -1 });
+siteVisitSchema.index({ organizationId: 1, leadId: 1, scheduledAt: -1 });
 siteVisitSchema.index({ agentId: 1, scheduledAt: -1 });
 siteVisitSchema.index({ status: 1 });
 siteVisitSchema.index({ syncStatus: 1, createdAt: -1 });
 
 // Compound index to prevent double-booking same property at same time
-// Only applies to non-cancelled visits
+// Only applies to non-cancelled visits with propertyId (sparse index)
 siteVisitSchema.index(
-    { propertyId: 1, scheduledDate: 1, 'timeSlot.startTime': 1, status: 1 },
+    { organizationId: 1, propertyId: 1, scheduledDate: 1, 'timeSlot.startTime': 1, status: 1 },
     { 
         unique: true,
-        partialFilterExpression: { status: { $in: ['scheduled', 'completed'] } }
+        sparse: true,
+        partialFilterExpression: { propertyId: { $exists: true }, status: { $in: ['scheduled', 'completed'] } }
     }
 );
 
@@ -145,9 +164,18 @@ siteVisitSchema.index(
 siteVisitSchema.index({ agentId: 1, scheduledDate: 1, 'timeSlot.startTime': 1, status: 1 });
 
 /**
- * Pre-save hook to set scheduledDate from scheduledAt
+ * Pre-save hook: Validation and data transformation
+ * 1. Validate that either propertyId or inventoryItemId is set
+ * 2. Set scheduledDate from scheduledAt
+ * 3. Set timeSlot based on scheduledAt and duration
  */
 siteVisitSchema.pre('save', async function() {
+    // Validation: Ensure either propertyId or inventoryItemId is set
+    if (!this.propertyId && !this.inventoryItemId) {
+        throw new Error('Either propertyId or inventoryItemId must be provided');
+    }
+    
+    // Set scheduledDate from scheduledAt
     if (this.scheduledAt) {
         const date = new Date(this.scheduledAt);
         this.scheduledDate = date.toISOString().split('T')[0];
@@ -171,13 +199,15 @@ siteVisitSchema.pre('save', async function() {
 
 /**
  * Static method to check for conflicts before booking
+ * Supports both property-based (real estate) and resource-based (generic) bookings
  */
-siteVisitSchema.statics.checkConflict = async function(propertyId, scheduledDate, startTime, excludeVisitId = null) {
+siteVisitSchema.statics.checkConflict = async function(organizationId, scheduledDate, startTime, resourceQuery = {}, excludeVisitId = null) {
     const query = {
-        propertyId,
+        organizationId,
         scheduledDate,
         'timeSlot.startTime': startTime,
-        status: { $in: ['scheduled', 'completed'] }
+        status: { $in: ['scheduled', 'completed'] },
+        ...resourceQuery  // Can be { propertyId } or { inventoryItemId } or { agentId }
     };
     
     if (excludeVisitId) {
@@ -210,8 +240,8 @@ siteVisitSchema.statics.checkAgentConflict = async function(agentId, scheduledDa
 /**
  * Get site visits by agent
  */
-siteVisitSchema.statics.getByAgentId = async function(agentId, limit = 50) {
-    return this.find({ agentId, status: { $ne: 'cancelled' } })
+siteVisitSchema.statics.getByAgentId = async function(organizationId, agentId, limit = 50) {
+    return this.find({ organizationId, agentId, status: { $ne: 'cancelled' } })
         .sort({ scheduledAt: -1 })
         .limit(limit)
         .populate('agentId', 'name email')
@@ -221,8 +251,8 @@ siteVisitSchema.statics.getByAgentId = async function(agentId, limit = 50) {
 /**
  * Get site visits by lead
  */
-siteVisitSchema.statics.getByLeadId = async function(leadId, limit = 50) {
-    return this.find({ leadId })
+siteVisitSchema.statics.getByLeadId = async function(organizationId, leadId, limit = 50) {
+    return this.find({ organizationId, leadId })
         .sort({ scheduledAt: -1 })
         .limit(limit)
         .populate('propertyId', 'name location');
@@ -231,9 +261,10 @@ siteVisitSchema.statics.getByLeadId = async function(leadId, limit = 50) {
 /**
  * Get visits for a property on a specific date
  */
-siteVisitSchema.statics.getByPropertyAndDate = async function(propertyId, date) {
+siteVisitSchema.statics.getByPropertyAndDate = async function(organizationId, propertyId, date) {
     const scheduledDate = typeof date === 'string' ? date : date.toISOString().split('T')[0];
     return this.find({
+        organizationId,
         propertyId,
         scheduledDate,
         status: { $in: ['scheduled', 'completed'] }
@@ -243,9 +274,10 @@ siteVisitSchema.statics.getByPropertyAndDate = async function(propertyId, date) 
 /**
  * Count visits for a property on a specific date
  */
-siteVisitSchema.statics.countByPropertyAndDate = async function(propertyId, date) {
+siteVisitSchema.statics.countByPropertyAndDate = async function(organizationId, propertyId, date) {
     const scheduledDate = typeof date === 'string' ? date : date.toISOString().split('T')[0];
     return this.countDocuments({
+        organizationId,
         propertyId,
         scheduledDate,
         status: { $in: ['scheduled', 'completed'] }

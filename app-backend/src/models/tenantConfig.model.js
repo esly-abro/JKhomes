@@ -204,14 +204,111 @@ function getDefaultAppointmentFieldLabel(industry) {
         saas: 'Demo',
         healthcare: 'Appointment',
         education: 'Campus Visit',
-        insurance: 'Consultation',
-        finance: 'Consultation',
+        insurance: 'Policy Consultation',
+        finance: 'Financial Consultation',
         automotive: 'Test Drive',
         generic: 'Appointment'
     };
     return labels[industry] || 'Appointment';
 }
 
+/**
+ * Returns the default catalog module label (e.g., "Properties", "Services", "Products")
+ * Used when catalog module is enabled for an organization.
+ */
+function getDefaultCatalogModuleLabel(industry) {
+    const labels = {
+        real_estate: 'Properties',
+        saas: 'Products',
+        healthcare: 'Services',
+        education: 'Programs',
+        insurance: 'Products',
+        automotive: 'Vehicles',
+        finance: 'Products',
+        generic: 'Catalog'
+    };
+    return labels[industry] || 'Catalog';
+}
+
+/**
+ * Returns the default enabled modules per industry.
+ * Controls which features are available for each organization type.
+ */
+function getDefaultEnabledModules(industry) {
+    const defaults = {
+        real_estate: {
+            catalog: true,              // ✅ Properties/Listings
+            appointments: true,         // ✅ Site Visits
+            broadcasts: true,           // ✅ Marketing Messages
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        saas: {
+            catalog: false,             // ❌ NO Properties
+            appointments: true,         // ✅ Demo Calls
+            broadcasts: true,           // ✅ Marketing
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        healthcare: {
+            catalog: false,             // ❌ NO Properties (patients, not properties)
+            appointments: true,         // ✅ Consultations
+            broadcasts: true,           // ✅ Health Messages
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        education: {
+            catalog: false,             // ❌ NO Properties
+            appointments: true,         // ✅ Campus Visits
+            broadcasts: true,           // ✅ Announcements
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        insurance: {
+            catalog: false,             // ❌ NO Properties
+            appointments: true,         // ✅ Policy Consultations
+            broadcasts: true,           // ✅ Notifications
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        automotive: {
+            catalog: true,              // ✅ Vehicle Listings
+            appointments: true,         // ✅ Test Drives
+            broadcasts: true,           // ✅ Marketing
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        finance: {
+            catalog: false,             // ❌ NO Properties
+            appointments: true,         // ✅ Loan Consultations
+            broadcasts: true,           // ✅ Notifications
+            aiCalling: true,            // ✅ AI Calling
+            knowledgeBase: true         // ✅ Knowledge Base
+        },
+        generic: {
+            catalog: false,             // Can be enabled if needed
+            appointments: true,         // ✅ Generic
+            broadcasts: true,           // ✅ Generic
+            aiCalling: true,            // ✅ Generic
+            knowledgeBase: true         // ✅ Generic
+        }
+    };
+    return defaults[industry] || defaults.generic;
+}
+
+function getDefaultAppointmentFieldLabel(industry) {
+    const labels = {
+        real_estate: 'Site Visit',
+        saas: 'Demo',
+        healthcare: 'Consultation',
+        education: 'Campus Visit',
+        insurance: 'Policy Consultation',
+        finance: 'Financial Consultation',
+        automotive: 'Test Drive',
+        generic: 'Appointment'
+    };
+    return labels[industry] || 'Appointment';
+}
 // ================================
 // MAIN SCHEMA
 // ================================
@@ -227,7 +324,7 @@ const tenantConfigSchema = new mongoose.Schema({
     // Industry identifier — drives default seeding
     industry: {
         type: String,
-        enum: ['real_estate', 'saas', 'healthcare', 'education', 'insurance', 'automotive', 'generic'],
+        enum: ['real_estate', 'saas', 'healthcare', 'education', 'insurance', 'automotive', 'finance', 'generic'],
         default: 'generic'
     },
 
@@ -267,6 +364,13 @@ const tenantConfigSchema = new mongoose.Schema({
         trim: true
     },
 
+    // What the catalog module is called in the UI ("Properties", "Services", "Products", etc.)
+    catalogModuleLabel: {
+        type: String,
+        default: 'Catalog',
+        trim: true
+    },
+
     // Company name for templates/emails (denormalized from Organization for fast access)
     companyName: {
         type: String,
@@ -275,11 +379,11 @@ const tenantConfigSchema = new mongoose.Schema({
 
     // Feature flags — which modules are enabled for this tenant
     enabledModules: {
-        catalog: { type: Boolean, default: true },      // Properties/Catalog page
-        appointments: { type: Boolean, default: true },  // Site visits / appointments
-        broadcasts: { type: Boolean, default: true },    // WhatsApp broadcasts
-        aiCalling: { type: Boolean, default: true },     // ElevenLabs AI calls
-        knowledgeBase: { type: Boolean, default: true }  // Knowledge base
+        catalog: { type: Boolean },      // Catalog (Properties/Services/Products page)
+        appointments: { type: Boolean },  // Site visits / appointments
+        broadcasts: { type: Boolean },    // WhatsApp broadcasts
+        aiCalling: { type: Boolean },     // ElevenLabs AI calls
+        knowledgeBase: { type: Boolean }  // Knowledge base
     }
 }, {
     timestamps: true
@@ -293,7 +397,7 @@ const tenantConfigSchema = new mongoose.Schema({
  * Get the TenantConfig for an organization, or create one with defaults if it doesn't exist.
  * This is the primary access pattern — never fails, always returns a config.
  */
-tenantConfigSchema.statics.getOrCreate = async function (organizationId, industry) {
+tenantConfigSchema.statics.getOrCreate = async function (organizationId, industry, catalogLabel) {
     // Build query: use orgId if available, otherwise find the "default" config (no org)
     const query = organizationId
         ? { organizationId }
@@ -307,7 +411,9 @@ tenantConfigSchema.statics.getOrCreate = async function (organizationId, industr
             categories: getDefaultCategories(effectiveIndustry),
             categoryFieldLabel: getDefaultCategoryFieldLabel(effectiveIndustry),
             appointmentTypes: getDefaultAppointmentTypes(effectiveIndustry),
-            appointmentFieldLabel: getDefaultAppointmentFieldLabel(effectiveIndustry)
+            appointmentFieldLabel: getDefaultAppointmentFieldLabel(effectiveIndustry),
+            catalogModuleLabel: catalogLabel || getDefaultCatalogModuleLabel(effectiveIndustry),
+            enabledModules: getDefaultEnabledModules(effectiveIndustry)
         };
         if (organizationId) doc.organizationId = organizationId;
         config = await this.create(doc);
@@ -344,5 +450,7 @@ TenantConfig.getDefaultCategories = getDefaultCategories;
 TenantConfig.getDefaultCategoryFieldLabel = getDefaultCategoryFieldLabel;
 TenantConfig.getDefaultAppointmentTypes = getDefaultAppointmentTypes;
 TenantConfig.getDefaultAppointmentFieldLabel = getDefaultAppointmentFieldLabel;
+TenantConfig.getDefaultCatalogModuleLabel = getDefaultCatalogModuleLabel;
+TenantConfig.getDefaultEnabledModules = getDefaultEnabledModules;
 
 module.exports = TenantConfig;

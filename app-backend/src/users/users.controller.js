@@ -14,6 +14,11 @@ async function getAllUsers(req, reply) {
     const { status, role } = req.query;
     const filter = {};
 
+    // Scope to organization
+    if (req.user.organizationId) {
+      filter.organizationId = req.user.organizationId;
+    }
+
     if (status) {
       filter.approvalStatus = status;
     }
@@ -43,7 +48,12 @@ async function getAllUsers(req, reply) {
  */
 async function getPendingUsers(req, reply) {
   try {
-    const pendingUsers = await User.find({ approvalStatus: 'pending' })
+    const pendingFilter = { approvalStatus: 'pending' };
+    // Scope to organization
+    if (req.user.organizationId) {
+      pendingFilter.organizationId = req.user.organizationId;
+    }
+    const pendingUsers = await User.find(pendingFilter)
       .select('-passwordHash')
       .sort({ createdAt: -1 });
 
@@ -271,11 +281,16 @@ async function deleteUser(req, reply) {
  */
 async function getAgents(req, reply) {
   try {
-    const agents = await User.find({
+    const agentFilter = {
       role: 'agent',
       approvalStatus: 'approved',
       isActive: true
-    })
+    };
+    // Scope to organization
+    if (req.user.organizationId) {
+      agentFilter.organizationId = req.user.organizationId;
+    }
+    const agents = await User.find(agentFilter)
       .select('name email phone')
       .sort({ name: 1 });
 
@@ -351,8 +366,9 @@ async function getAgentActivity(req, reply) {
     thisWeekStart.setDate(today.getDate() - today.getDay());
     const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Fetch all leads assigned to this agent
-    const leads = await Lead.find({ assignedTo: id });
+    // Fetch all leads assigned to this agent (scoped to org)
+    const orgFilter = req.user.organizationId ? { organizationId: req.user.organizationId } : {};
+    const leads = await Lead.find({ assignedTo: id, ...orgFilter });
     const leadIds = leads.map(l => l.zohoId || l._id.toString());
 
     // Lead statistics

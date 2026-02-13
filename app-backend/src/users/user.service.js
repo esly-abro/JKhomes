@@ -6,11 +6,15 @@
 const User = require('../models/User');
 
 /**
- * Get all users from MongoDB
+ * Get all users from MongoDB (scoped to organization)
  */
-async function getUsers() {
-    return User.find()
-        .select('name email role createdAt')
+async function getUsers(organizationId) {
+    const query = {};
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return User.find(query)
+        .select('name email role phone isActive approvalStatus createdAt lastLogin')
         .sort({ name: 1 });
 }
 
@@ -19,24 +23,32 @@ async function getUsers() {
  */
 async function getUserById(userId) {
     return User.findById(userId)
-        .select('name email role createdAt');
+        .select('name email role phone isActive approvalStatus createdAt lastLogin');
 }
 
 /**
- * Get users by role
+ * Get users by role (scoped to organization)
  */
-async function getUsersByRole(role) {
-    return User.find({ role })
-        .select('name email role createdAt')
+async function getUsersByRole(role, organizationId) {
+    const query = { role };
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return User.find(query)
+        .select('name email role phone isActive approvalStatus createdAt lastLogin')
         .sort({ name: 1 });
 }
 
 /**
- * Get agents (users with agent role)
+ * Get agents (users with agent role, scoped to organization)
  */
-async function getAgents() {
-    return User.find({ role: 'agent' })
-        .select('name email role createdAt')
+async function getAgents(organizationId) {
+    const query = { role: 'agent' };
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return User.find(query)
+        .select('name email role phone isActive approvalStatus createdAt lastLogin')
         .sort({ name: 1 });
 }
 

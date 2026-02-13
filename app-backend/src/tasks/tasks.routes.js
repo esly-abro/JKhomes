@@ -12,12 +12,14 @@ async function taskRoutes(fastify, options) {
   fastify.get('/my', async (request, reply) => {
     try {
       const userId = request.user._id;
+      const organizationId = request.user.organizationId;
       const { status, type, priority } = request.query;
       
       const tasks = await taskService.getTasksForUser(userId, {
         status,
         type,
-        priority
+        priority,
+        organizationId
       });
 
       return { success: true, data: tasks };
@@ -31,11 +33,12 @@ async function taskRoutes(fastify, options) {
   fastify.get('/', async (request, reply) => {
     try {
       const { role } = request.user;
+      const organizationId = request.user.organizationId;
       const { status, assignedTo, type, leadId } = request.query;
 
       // Agents can only see their own tasks
       if (role === 'agent' || role === 'bpo') {
-        const tasks = await taskService.getTasksForUser(request.user._id, { status, type });
+        const tasks = await taskService.getTasksForUser(request.user._id, { status, type, organizationId });
         return { success: true, data: tasks };
       }
 
@@ -44,7 +47,8 @@ async function taskRoutes(fastify, options) {
         status,
         assignedTo,
         type,
-        leadId
+        leadId,
+        organizationId
       });
 
       return { success: true, data: tasks };
@@ -63,7 +67,7 @@ async function taskRoutes(fastify, options) {
         return reply.code(403).send({ success: false, error: 'Access denied' });
       }
 
-      const tasks = await taskService.getUnassignedTasks();
+      const tasks = await taskService.getUnassignedTasks(request.user.organizationId);
       return { success: true, data: tasks };
     } catch (error) {
       console.error('Error fetching unassigned tasks:', error);
@@ -76,8 +80,9 @@ async function taskRoutes(fastify, options) {
     try {
       const { role } = request.user;
       const userId = ['owner', 'admin', 'manager'].includes(role) ? null : request.user._id;
+      const organizationId = request.user.organizationId;
 
-      const stats = await taskService.getTaskStats(userId);
+      const stats = await taskService.getTaskStats(userId, organizationId);
       return { success: true, data: stats };
     } catch (error) {
       console.error('Error fetching task stats:', error);
@@ -128,7 +133,8 @@ async function taskRoutes(fastify, options) {
         priority,
         dueDate: dueDate ? new Date(dueDate) : undefined,
         assignedTo,
-        createdBy: request.user._id
+        createdBy: request.user._id,
+        organizationId: request.user.organizationId
       });
 
       return { success: true, data: task };

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Search, Filter, Edit2, Trash2, MapPin, DollarSign, Home, Users, Upload, X, Clock } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -8,10 +9,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { getProperties, createProperty, updateProperty, deleteProperty, uploadPropertyImage, Property } from '../../services/properties';
 import { getAgents, Agent } from '../../services/agents';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { useOrganization } from '../hooks/useOrganization';
 import AvailabilitySettingsDialog from '../components/AvailabilitySettingsDialog';
 
 export default function Properties() {
-  const { categories, categoryFieldLabel } = useTenantConfig();
+  const { categories, categoryFieldLabel, isModuleEnabled } = useTenantConfig();
+  const { catalogModuleLabel, industry } = useOrganization();
+  const navigate = useNavigate();
+  const isRealEstate = industry === 'real_estate';
+
+  // Redirect if module is disabled
+  useEffect(() => {
+    if (!isModuleEnabled('catalog')) {
+      navigate('/dashboard');
+    }
+  }, [isModuleEnabled, navigate]);
+
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
@@ -20,7 +33,7 @@ export default function Properties() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [agents, setAgents] = useState<Agent[]>([]);
-  
+
   // Availability settings dialog state
   const [showAvailabilityDialog, setShowAvailabilityDialog] = useState(false);
   const [availabilityPropertyId, setAvailabilityPropertyId] = useState<string>('');
@@ -79,7 +92,7 @@ export default function Properties() {
 
       // Validate required fields
       if (!formData.name || !formData.name.trim()) {
-        alert('❌ Property name is required');
+        alert(`❌ ${catalogModuleLabel} name is required`);
         return;
       }
       if (!formData.location || !formData.location.trim()) {
@@ -112,18 +125,18 @@ export default function Properties() {
       await fetchProperties();
       setShowDialog(false);
       resetForm();
-      alert('✅ Property saved successfully!');
+      alert(`✅ ${catalogModuleLabel} saved successfully!`);
     } catch (error: any) {
       console.error('❌ Failed to save property:', error);
       console.error('Error response:', error.response);
-      const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to save property';
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || `Failed to save ${catalogModuleLabel.toLowerCase()}`;
       const errorDetails = error.response?.data?.details ? '\n\nDetails: ' + JSON.stringify(error.response.data.details, null, 2) : '';
       alert('❌ ' + errorMsg + errorDetails);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this property?')) return;
+    if (!confirm(`Are you sure you want to delete this ${catalogModuleLabel.toLowerCase()}?`)) return;
 
     try {
       await deleteProperty(id);
@@ -223,8 +236,8 @@ export default function Properties() {
     <div className="p-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Catalog Management</h1>
-        <p className="text-gray-600">Manage your inventory</p>
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">{catalogModuleLabel} Management</h1>
+        <p className="text-gray-600">Manage your {catalogModuleLabel.toLowerCase()}</p>
       </div>
 
       {/* Filters and Search */}
@@ -234,7 +247,7 @@ export default function Properties() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search properties..."
+                placeholder={`Search ${catalogModuleLabel.toLowerCase()}...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -269,7 +282,7 @@ export default function Properties() {
 
           <Button onClick={() => { resetForm(); setShowDialog(true); }}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Property
+            Add {catalogModuleLabel}
           </Button>
         </div>
       </div>
@@ -277,15 +290,15 @@ export default function Properties() {
       {/* Properties Grid */}
       {loading ? (
         <div className="text-center py-12">
-          <p className="text-gray-500">Loading properties...</p>
+          <p className="text-gray-500">Loading {catalogModuleLabel.toLowerCase()}...</p>
         </div>
       ) : filteredProperties.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
           <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">No properties found</p>
+          <p className="text-gray-500">No {catalogModuleLabel.toLowerCase()} found</p>
           <Button onClick={() => { resetForm(); setShowDialog(true); }} className="mt-4">
             <Plus className="h-4 w-4 mr-2" />
-            Add Your First Property
+            Add Your First {catalogModuleLabel}
           </Button>
         </div>
       ) : (
@@ -344,7 +357,7 @@ export default function Properties() {
                     <span className="text-gray-600">Size</span>
                     <span className="font-medium text-gray-900">{property.size.value} {property.size.unit}</span>
                   </div>
-                  {property.bedrooms && property.bathrooms && (
+                  {isRealEstate && property.bedrooms && property.bathrooms && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Config</span>
                       <span className="font-medium text-gray-900">{property.bedrooms}BHK, {property.bathrooms} Bath</span>
@@ -407,13 +420,13 @@ export default function Properties() {
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); resetForm(); } }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingProperty ? 'Edit Property' : 'Add New Property'}</DialogTitle>
+            <DialogTitle>{editingProperty ? `Edit ${catalogModuleLabel}` : `Add New ${catalogModuleLabel}`}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <Label htmlFor="name">Property Name *</Label>
+                <Label htmlFor="name">{catalogModuleLabel} Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -485,7 +498,7 @@ export default function Properties() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-gray-500 mt-1">
-                  Leads interested in this property will be auto-assigned to this agent
+                  Leads interested in this {catalogModuleLabel.toLowerCase()} will be auto-assigned to this agent
                 </p>
               </div>
 
@@ -518,7 +531,7 @@ export default function Properties() {
                     price: { ...formData.price!, min: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) }
                   })}
                   placeholder="5000000"
-/>
+                />
               </div>
 
               <div>
@@ -533,7 +546,7 @@ export default function Properties() {
                     price: { ...formData.price!, max: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) }
                   })}
                   placeholder="8000000"
-/>
+                />
               </div>
 
               <div>
@@ -548,9 +561,11 @@ export default function Properties() {
                     size: { ...formData.size!, value: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) }
                   })}
                   placeholder="2000"
-/>
+                />
               </div>
 
+              {isRealEstate && (
+              <>
               <div>
                 <Label htmlFor="bedrooms">Bedrooms</Label>
                 <Input
@@ -560,7 +575,7 @@ export default function Properties() {
                   value={formData.bedrooms || ''}
                   onChange={(e) => setFormData({ ...formData, bedrooms: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) })}
                   placeholder="3"
-/>
+                />
               </div>
 
               <div className="col-span-2">
@@ -572,11 +587,13 @@ export default function Properties() {
                   value={formData.bathrooms || ''}
                   onChange={(e) => setFormData({ ...formData, bathrooms: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) })}
                   placeholder="2"
-/>
+                />
               </div>
+              </>
+              )}
 
               <div className="col-span-2">
-                <Label htmlFor="images">Property Images</Label>
+                <Label htmlFor="images">{catalogModuleLabel} Images</Label>
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <Input
@@ -604,7 +621,7 @@ export default function Properties() {
                         <div key={index} className="relative group">
                           <img
                             src={image.url}
-                            alt={image.caption || `Property image ${index + 1}`}
+                            alt={image.caption || `${catalogModuleLabel} image ${index + 1}`}
                             className="w-full h-24 object-cover rounded border border-gray-200"
                           />
                           <button
@@ -619,7 +636,7 @@ export default function Properties() {
                     </div>
                   )}
                   <p className="text-xs text-gray-500">
-                    Upload property images (JPG, PNG). Multiple images supported.
+                    Upload {catalogModuleLabel.toLowerCase()} images (JPG, PNG). Multiple images supported.
                   </p>
                 </div>
               </div>
@@ -630,7 +647,7 @@ export default function Properties() {
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Describe the property features, amenities, and highlights..."
+                  placeholder={`Describe the ${catalogModuleLabel.toLowerCase()} features, amenities, and highlights...`}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
                 />
               </div>
@@ -642,7 +659,7 @@ export default function Properties() {
               Cancel
             </Button>
             <Button onClick={handleCreateOrUpdate}>
-              {editingProperty ? 'Update Property' : 'Create Property'}
+              {editingProperty ? `Update ${catalogModuleLabel}` : `Create ${catalogModuleLabel}`}
             </Button>
           </DialogFooter>
         </DialogContent>

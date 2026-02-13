@@ -249,6 +249,19 @@ const organizationSchema = new mongoose.Schema({
         enum: ['free', 'starter', 'professional', 'enterprise'],
         default: 'free'
     },
+    // Company branding & profile
+    logoUrl: {
+        type: String,
+        default: null
+    },
+    logoBuffer: {
+        type: Buffer,
+        default: null
+    },
+    logoMimeType: {
+        type: String,
+        default: 'image/png'
+    },
     // Settings
     settings: {
         timezone: {

@@ -4,7 +4,8 @@ class PropertiesController {
   async getProperties(req, reply) {
     try {
       const filters = req.query;
-      const properties = await propertiesService.getAllProperties(filters);
+      const organizationId = req.user?.organizationId;
+      const properties = await propertiesService.getAllProperties(organizationId, filters);
       return reply.code(200).send(properties);
     } catch (error) {
       console.error('Get properties controller error:', error);
@@ -15,7 +16,8 @@ class PropertiesController {
   async getPropertyById(req, reply) {
     try {
       const { id } = req.params;
-      const property = await propertiesService.getPropertyById(id);
+      const organizationId = req.user?.organizationId;
+      const property = await propertiesService.getPropertyById(id, organizationId);
       return reply.code(200).send(property);
     } catch (error) {
       console.error('Get property by ID controller error:', error);
@@ -26,6 +28,7 @@ class PropertiesController {
   async createProperty(req, reply) {
     try {
       const userId = req.user?.id;
+      const organizationId = req.user?.organizationId;
       
       // Log the incoming request body for debugging
       console.log('Create property request body:', JSON.stringify(req.body, null, 2));
@@ -41,7 +44,7 @@ class PropertiesController {
         });
       }
       
-      const property = await propertiesService.createProperty(req.body, userId);
+      const property = await propertiesService.createProperty(req.body, userId, organizationId);
       return reply.code(201).send(property);
     } catch (error) {
       console.error('Create property controller error:', error);
@@ -61,7 +64,8 @@ class PropertiesController {
   async updateProperty(req, reply) {
     try {
       const { id } = req.params;
-      const property = await propertiesService.updateProperty(id, req.body);
+      const organizationId = req.user?.organizationId;
+      const property = await propertiesService.updateProperty(id, req.body, organizationId);
       return reply.code(200).send(property);
     } catch (error) {
       console.error('Update property controller error:', error);
@@ -72,7 +76,8 @@ class PropertiesController {
   async deleteProperty(req, reply) {
     try {
       const { id } = req.params;
-      const result = await propertiesService.deleteProperty(id);
+      const organizationId = req.user?.organizationId;
+      const result = await propertiesService.deleteProperty(id, organizationId);
       return reply.code(200).send(result);
     } catch (error) {
       console.error('Delete property controller error:', error);

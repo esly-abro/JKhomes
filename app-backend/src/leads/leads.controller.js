@@ -36,6 +36,12 @@ async function getLead(request, reply) {
 async function createLead(request, reply) {
     const leadData = request.body;
 
+    // Inject user context for organization association
+    if (request.user) {
+        leadData.user = request.user;
+        leadData.organizationId = request.user.organizationId;
+    }
+
     const result = await leadsService.createLead(leadData);
 
     return reply.code(201).send(result);
@@ -70,11 +76,11 @@ async function deleteLead(request, reply) {
  */
 async function bulkDeleteLeads(request, reply) {
     const { leadIds } = request.body;
-    
+
     if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
         return reply.code(400).send({ success: false, error: 'Please provide leadIds array' });
     }
-    
+
     const result = await leadsService.deleteLeads(request.user, leadIds);
     return reply.code(200).send(result);
 }
@@ -95,12 +101,14 @@ async function updateLeadStatus(request, reply) {
 /**
  * POST /api/leads/:id/site-visit (also /api/leads/:id/appointment)
  * Schedule an appointment (backward-compat: site visit)
+ * Supports property-based appointments (real estate) or resource-based appointments (generic)
  */
 async function postSiteVisit(request, reply) {
     const leadId = request.params.id;
-    const { scheduledAt, propertyId, appointmentType } = request.body;
+    const { scheduledAt, propertyId, inventoryItemId, appointmentType } = request.body;
     const userId = request.user._id;
-    const visit = await leadsService.confirmSiteVisit(leadId, scheduledAt, userId, propertyId, appointmentType);
+    const organizationId = request.user.organizationId;
+    const visit = await leadsService.confirmSiteVisit(leadId, scheduledAt, userId, organizationId, propertyId, inventoryItemId, appointmentType);
     return reply.code(201).send(visit);
 }
 
@@ -109,7 +117,8 @@ async function postSiteVisit(request, reply) {
  */
 async function getTodaySiteVisits(request, reply) {
     const userId = request.user._id;
-    const visits = await leadsService.getSiteVisitsForToday(userId);
+    const organizationId = request.user.organizationId;
+    const visits = await leadsService.getSiteVisitsForToday(organizationId, userId);
     return reply.send(visits);
 }
 
@@ -118,7 +127,8 @@ async function getTodaySiteVisits(request, reply) {
  */
 async function postActivity(request, reply) {
     try {
-        const activity = await leadsService.createActivity(request.body);
+        const organizationId = request.user?.organizationId;
+        const activity = await leadsService.createActivity(request.body, organizationId);
         return reply.code(201).send(activity);
     } catch (error) {
         request.log.error(error);
@@ -133,7 +143,8 @@ async function postActivity(request, reply) {
  * GET /api/activities/recent
  */
 async function getRecentActivitiesHandler(request, reply) {
-    const activities = await leadsService.getRecentActivities(50);
+    const organizationId = request.user?.organizationId;
+    const activities = await leadsService.getRecentActivities(organizationId, 50);
     return reply.send(activities);
 }
 
@@ -142,8 +153,9 @@ async function getRecentActivitiesHandler(request, reply) {
  */
 async function getMyActivities(request, reply) {
     const userId = request.user._id;
+    const organizationId = request.user.organizationId;
     const limit = parseInt(request.query.limit) || 50;
-    const activities = await leadsService.getActivitiesByUser(userId, limit);
+    const activities = await leadsService.getActivitiesByUser(organizationId, userId, limit);
     return reply.send(activities);
 }
 
@@ -151,8 +163,9 @@ async function getMyActivities(request, reply) {
  * GET /api/activities/all - Get all activities (owner/admin/manager only)
  */
 async function getAllActivitiesHandler(request, reply) {
+    const organizationId = request.user?.organizationId;
     const limit = parseInt(request.query.limit) || 100;
-    const activities = await leadsService.getAllActivities(limit);
+    const activities = await leadsService.getAllActivities(organizationId, limit);
     return reply.send(activities);
 }
 
@@ -161,8 +174,9 @@ async function getAllActivitiesHandler(request, reply) {
  */
 async function getMyCallLogs(request, reply) {
     const userId = request.user._id;
+    const organizationId = request.user.organizationId;
     const limit = parseInt(request.query.limit) || 50;
-    const callLogs = await leadsService.getCallLogsByUser(userId, limit);
+    const callLogs = await leadsService.getCallLogsByUser(organizationId, userId, limit);
     return reply.send(callLogs);
 }
 
@@ -170,8 +184,9 @@ async function getMyCallLogs(request, reply) {
  * GET /api/call-logs/all - Get all call logs (owner/admin/manager only)
  */
 async function getAllCallLogsHandler(request, reply) {
+    const organizationId = request.user?.organizationId;
     const limit = parseInt(request.query.limit) || 100;
-    const callLogs = await leadsService.getAllCallLogs(limit);
+    const callLogs = await leadsService.getAllCallLogs(organizationId, limit);
     return reply.send(callLogs);
 }
 
@@ -180,8 +195,9 @@ async function getAllCallLogsHandler(request, reply) {
  */
 async function getMySiteVisits(request, reply) {
     const userId = request.user._id;
+    const organizationId = request.user.organizationId;
     const limit = parseInt(request.query.limit) || 50;
-    const visits = await leadsService.getSiteVisitsByUser(userId, limit);
+    const visits = await leadsService.getSiteVisitsByUser(organizationId, userId, limit);
     return reply.send(visits);
 }
 
@@ -189,8 +205,9 @@ async function getMySiteVisits(request, reply) {
  * GET /api/site-visits/all (also /api/appointments/all)
  */
 async function getAllSiteVisitsHandler(request, reply) {
+    const organizationId = request.user?.organizationId;
     const limit = parseInt(request.query.limit) || 100;
-    const visits = await leadsService.getAllSiteVisits(limit);
+    const visits = await leadsService.getAllSiteVisits(organizationId, limit);
     return reply.send(visits);
 }
 
@@ -240,7 +257,8 @@ async function deleteTask(request, reply) {
  * GET /api/users - Get all users (for team members list)
  */
 async function getUsers(request, reply) {
-    const users = await leadsService.getUsers();
+    const organizationId = request.user?.organizationId;
+    const users = await leadsService.getUsers(organizationId);
     return reply.send(users);
 }
 

@@ -17,6 +17,12 @@ import { getTenantConfig, TenantConfig, CategoryItem, AppointmentType, DEFAULT_T
 interface TenantConfigContextType {
     /** The full tenant config object */
     tenantConfig: TenantConfig;
+    /** The industry this tenant belongs to */
+    industry: string;
+    /** Map of enabled/disabled modules */
+    enabledModules: Record<string, boolean>;
+    /** Dynamic label for the catalog module (e.g. "Properties", "Products") */
+    catalogModuleLabel: string;
     /** Active categories (sorted by order) */
     categories: CategoryItem[];
     /** The label for the category field (e.g., "Property Type", "Product Plan") */
@@ -39,6 +45,9 @@ interface TenantConfigContextType {
 
 const TenantConfigContext = createContext<TenantConfigContextType>({
     tenantConfig: DEFAULT_TENANT_CONFIG,
+    industry: DEFAULT_TENANT_CONFIG.industry || 'generic',
+    enabledModules: (DEFAULT_TENANT_CONFIG.enabledModules || {}) as unknown as Record<string, boolean>,
+    catalogModuleLabel: DEFAULT_TENANT_CONFIG.catalogModuleLabel || 'Catalog',
     categories: DEFAULT_TENANT_CONFIG.categories,
     categoryFieldLabel: DEFAULT_TENANT_CONFIG.categoryFieldLabel,
     appointmentTypes: DEFAULT_TENANT_CONFIG.appointmentTypes,
@@ -92,6 +101,9 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
         .sort((a: AppointmentType, b: AppointmentType) => a.order - b.order);
 
     const appointmentFieldLabel = tenantConfig.appointmentFieldLabel || 'Appointment';
+    const industry = (tenantConfig as any).industry || 'generic';
+    const enabledModules = ((tenantConfig as any).enabledModules || {}) as Record<string, boolean>;
+    const catalogModuleLabel = (tenantConfig as any).catalogModuleLabel || 'Catalog';
 
     const isModuleEnabled = useCallback((moduleName: string): boolean => {
         const modules = tenantConfig.enabledModules;
@@ -110,6 +122,9 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
 
     const value: TenantConfigContextType = {
         tenantConfig,
+        industry,
+        enabledModules,
+        catalogModuleLabel,
         categories,
         categoryFieldLabel,
         appointmentTypes,

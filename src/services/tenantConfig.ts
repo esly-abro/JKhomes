@@ -38,6 +38,7 @@ export interface TenantConfig {
     categoryFieldLabel: string;
     appointmentTypes: AppointmentType[];
     appointmentFieldLabel: string;
+    catalogModuleLabel?: string;
     companyName?: string;
     enabledModules: EnabledModules;
     createdAt?: string;
@@ -123,6 +124,7 @@ export const DEFAULT_TENANT_CONFIG: TenantConfig = {
         { key: 'consultation', label: 'Consultation', isActive: true, order: 2 }
     ],
     appointmentFieldLabel: 'Site Visit',
+    catalogModuleLabel: 'Properties',
     enabledModules: {
         catalog: true,
         appointments: true,

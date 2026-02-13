@@ -18,8 +18,9 @@ const useDatabase = () => !!process.env.MONGODB_URI;
 
 /**
  * Confirm/schedule an appointment (site visit, demo, consultation, etc.)
+ * Generic for all industries - supports both property-based and resource-based appointments
  */
-async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, appointmentType = 'site_visit') {
+async function confirmSiteVisit(leadId, scheduledAt, userId, organizationId = null, propertyId = null, inventoryItemId = null, appointmentType = 'site_visit') {
     // Parse scheduledAt to get date and time
     const scheduledDate = new Date(scheduledAt);
     const dateStr = scheduledDate.toISOString().split('T')[0];
@@ -27,8 +28,8 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, 
     const minutes = scheduledDate.getMinutes().toString().padStart(2, '0');
     const startTime = `${hours}:${minutes}`;
     
-    // Check for conflicts if propertyId is provided
-    if (propertyId) {
+    // Check for conflicts if propertyId is provided (for property-based appointments)
+    if (propertyId && organizationId) {
         const conflicts = await availabilityService.checkConflicts(propertyId, userId, dateStr, startTime);
         
         if (conflicts.hasConflict) {
@@ -105,8 +106,9 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, 
         email: zohoLead?.Email || ''
     });
 
-    // Create a new site visit with updated schema
-    const visit = await SiteVisit.create({
+    // Build site visit object - support both property-based and resource-based appointments
+    const visitData = {
+        organizationId: organizationId,
         leadId: leadId,
         leadName: zohoLead?.Full_Name || zohoLead?.Last_Name || 'Unknown',
         leadPhone: zohoLead?.Phone || zohoLead?.Mobile || '',
@@ -118,10 +120,22 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, 
             endTime: null  // Will be calculated based on duration
         },
         agentId: userId,
-        propertyId: propertyId,
         status: 'scheduled',
         syncStatus: 'pending'
-    });
+    };
+    
+    // Add propertyId if provided
+    if (propertyId) {
+        visitData.propertyId = propertyId;
+    }
+    
+    // Add inventoryItemId if provided (for generic resource-based appointments)
+    if (inventoryItemId) {
+        visitData.inventoryItemId = inventoryItemId;
+    }
+    
+    // Create a new site visit with updated schema
+    const visit = await SiteVisit.create(visitData);
 
     // Sync site visit to Google Sheets (non-blocking)
     try {
@@ -190,14 +204,15 @@ async function confirmSiteVisit(leadId, scheduledAt, userId, propertyId = null, 
 /**
  * Get site visits for today
  */
-async function getSiteVisitsForToday(userId) {
+async function getSiteVisitsForToday(organizationId, userId) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     const end = new Date();
     end.setHours(23, 59, 59, 999);
 
-    // Use agentId instead of confirmedBy
+    // Use agentId instead of confirmedBy, and scope to organization
     const visits = await SiteVisit.find({
+        organizationId: organizationId,
         agentId: userId,
         scheduledAt: { $gte: start, $lte: end }
     }).populate('agentId', 'name email');
@@ -208,18 +223,22 @@ async function getSiteVisitsForToday(userId) {
 /**
  * Get site visits by user ID (for agent's own visits)
  */
-async function getSiteVisitsByUser(userId, limit = 50) {
-    return SiteVisit.find({ agentId: userId })
+async function getSiteVisitsByUser(organizationId, userId, limit = 50) {
+    return SiteVisit.find({ organizationId: organizationId, agentId: userId })
         .sort({ scheduledAt: -1 })
         .limit(parseInt(limit))
         .populate('agentId', 'name email');
 }
 
 /**
- * Get all site visits (for owner/admin/manager)
+ * Get all site visits (for owner/admin/manager, scoped to org)
  */
-async function getAllSiteVisits(limit = 100) {
-    return SiteVisit.find()
+async function getAllSiteVisits(organizationId, limit = 100) {
+    const query = {};
+    if (organizationId) {
+        query.organizationId = organizationId;
+    }
+    return SiteVisit.find(query)
         .sort({ scheduledAt: -1 })
         .limit(parseInt(limit))
         .populate('agentId', 'name email');

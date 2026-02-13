@@ -37,6 +37,8 @@ import {
 } from './ui/dropdown-menu';
 import { logout, getStoredUser } from '../../services/auth';
 import NotificationMenu from './NotificationMenu';
+import { useTenantConfig } from '../context/TenantConfigContext';
+import { useOrganization } from '../hooks/useOrganization';
 
 export default function MainLayout() {
   const location = useLocation();
@@ -54,20 +56,28 @@ export default function MainLayout() {
     window.location.href = '/login';
   };
 
+  const { isModuleEnabled } = useTenantConfig();
+  const { catalogModuleLabel } = useOrganization();
+
   // Navigation items - some are hidden for agents
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, showFor: 'all' },
     { name: isAgent ? 'My Leads' : 'Leads', href: '/leads', icon: Users, showFor: 'all' },
     { name: 'Tasks', href: '/tasks', icon: ClipboardList, showFor: 'all' },
     { name: 'Agents', href: '/agents', icon: UserCheck, showFor: 'admin' },
-    { name: 'Properties', href: '/properties', icon: Home, showFor: 'admin' },
-    { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin' },
+    { name: catalogModuleLabel, href: '/properties', icon: Home, showFor: 'admin', module: 'catalog' },
+    { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin', module: 'broadcasts' },
     { name: 'Activities', href: '/activities', icon: Activity, showFor: 'all' },
-    { name: 'Calendar', href: '/calendar', icon: Calendar, showFor: 'all' },
+    { name: 'Calendar', href: '/calendar', icon: Calendar, showFor: 'all', module: 'appointments' },
     { name: 'Analytics', href: '/analytics', icon: BarChart3, showFor: 'admin' },
     { name: 'Settings', href: '/settings', icon: Settings, showFor: 'admin' },
     { name: 'Automation', href: '/automation', icon: Zap, showFor: 'admin' },
-  ].filter(item => item.showFor === 'all' || (item.showFor === 'admin' && isAdminOrManager));
+  ].filter(item => {
+    // Check module enablement
+    if (item.module && !isModuleEnabled(item.module)) return false;
+    // Check role permissions
+    return item.showFor === 'all' || (item.showFor === 'admin' && isAdminOrManager);
+  });
 
   const isActive = (href: string) => location.pathname === href;
 

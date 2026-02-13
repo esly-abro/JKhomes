@@ -354,19 +354,14 @@ class PostCallOrchestrator {
         
         return `Hi ${name}! 👋
 
-Thank you for your interest in JK Construction properties!
+Thank you for your interest!
 
-Here are the details you requested:
-🏠 Premium 2/3 BHK apartments
-📍 Prime locations in Chennai
-💰 Starting from ₹45 Lakhs
+Here are the details you requested.
 
-📞 For more information or to schedule a site visit, reply to this message or call us.
-
-Visit our website: https://jkconstruction.com
+📞 For more information or to schedule an appointment, reply to this message or call us.
 
 Best regards,
-JK Construction Team`;
+Your Team`;
     }
 
     /**
@@ -388,15 +383,14 @@ JK Construction Team`;
             const name = lead?.name || leadInfo.leadName || 'there';
             const message = `Hi ${name}! 🏠
 
-Great to hear you'd like to visit our properties!
+Great to hear you're interested in scheduling an appointment!
 
-Click here to book your site visit:
-🔗 https://jkconstruction.com/book-visit?lead=${leadInfo.leadId || 'new'}
+🔗 Book here: ${leadInfo.bookingUrl || '#'}
 
 Or reply with your preferred date and time, and we'll arrange everything for you.
 
 See you soon!
-JK Construction Team`;
+Your Team`;
 
             await whatsappService.sendTextMessage(
                 leadInfo.phoneNumber,

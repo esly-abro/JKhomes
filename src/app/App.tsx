@@ -21,6 +21,7 @@ import Agents from './pages/Agents';
 import Automation from './pages/Automation';
 import Broadcasts from './pages/Broadcasts';
 import MainLayout from './components/MainLayout';
+import ModuleGuard from './components/ModuleGuard';
 import { getStoredUser, User } from '../services/auth';
 
 // Inner component that can use useData hook
@@ -70,16 +71,36 @@ function AppRoutes({ user, setUser, hasCompletedOnboarding, setHasCompletedOnboa
         <Route path="leads" element={<Leads />} />
         <Route path="leads/:id" element={<LeadDetail />} />
         <Route path="tasks" element={<Tasks />} />
-        <Route path="properties" element={<Properties />} />
+        
+        {/* Module-Gated Routes: Properties (Catalog) */}
+        <Route path="properties" element={
+          <ModuleGuard module="catalog">
+            <Properties />
+          </ModuleGuard>
+        } />
+        
         <Route path="activities" element={<Activities />} />
-        <Route path="calendar" element={<CalendarView />} />
+        
+        {/* Module-Gated Routes: Calendar (Appointments) */}
+        <Route path="calendar" element={
+          <ModuleGuard module="appointments">
+            <CalendarView />
+          </ModuleGuard>
+        } />
 
         <Route path="analytics" element={<Analytics />} />
         <Route path="agents" element={<Agents />} />
         <Route path="settings" element={<Settings />} />
         <Route path="settings/users" element={<UserManagement />} />
         <Route path="automation" element={<Automation />} />
-        <Route path="broadcasts" element={<Broadcasts />} />
+        
+        {/* Module-Gated Routes: Broadcasts */}
+        <Route path="broadcasts" element={
+          <ModuleGuard module="broadcasts">
+            <Broadcasts />
+          </ModuleGuard>
+        } />
+        
         <Route path="help" element={<Help />} />
       </Route>
     </Routes>

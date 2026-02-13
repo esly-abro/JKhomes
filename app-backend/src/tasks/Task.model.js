@@ -7,6 +7,14 @@
 const mongoose = require('mongoose');
 
 const TaskSchema = new mongoose.Schema({
+  // Organization ID (Multi-tenancy) - REQUIRED
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    required: true,
+    index: true
+  },
+
   // Core references
   lead: {
     type: mongoose.Schema.Types.ObjectId,

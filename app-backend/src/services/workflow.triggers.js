@@ -50,14 +50,19 @@ function matchesTriggerConditions(lead, conditions) {
 }
 
 /**
- * Find automations matching a trigger type
+ * Find automations matching a trigger type (scoped to lead's organization)
  */
 async function findMatchingAutomations(triggerType, lead, additionalFilter = {}) {
-    const automations = await Automation.find({
+    const query = {
         triggerType,
         isActive: true,
         ...additionalFilter
-    });
+    };
+    // Scope to the lead's organization
+    if (lead.organizationId) {
+        query.organizationId = lead.organizationId;
+    }
+    const automations = await Automation.find(query);
 
     return automations.filter(automation => 
         matchesTriggerConditions(lead, automation.triggerConditions)

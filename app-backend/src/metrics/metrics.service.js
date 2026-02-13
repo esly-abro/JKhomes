@@ -7,12 +7,17 @@ const zohoClient = require('../clients/zoho.client');
 const { mapZohoLeadToFrontend } = require('../leads/zoho.mapper');
 
 /**
- * Get dashboard overview metrics
+ * Get dashboard overview metrics (scoped to organization)
  */
-async function getOverview() {
+async function getOverview(organizationId) {
     // Fetch all leads (TODO: optimize with aggregation API)
     const zohoResponse = await zohoClient.getLeads(1, 500);
-    const allLeads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
+    const allLeadsRaw = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
+
+    // Filter by organizationId if provided
+    const allLeads = organizationId
+        ? allLeadsRaw.filter(l => l.organizationId && l.organizationId.toString() === organizationId.toString())
+        : allLeadsRaw;
 
     // Calculate metrics
     const totalLeads = allLeads.length;

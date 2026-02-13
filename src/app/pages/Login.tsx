@@ -133,9 +133,9 @@ export default function Login({ onLogin }: LoginProps) {
             </form>
 
             <p className="mt-8 text-center text-sm text-gray-600">
-              Don't have an account?{' '}
+              Don't have an organization?{' '}
               <Link to="/signup" className="font-semibold text-blue-600 hover:underline">
-                Sign up
+                Register new organization
               </Link>
             </p>
           </div>

@@ -12,12 +12,56 @@ export default function Dashboard() {
   const { leads, activities, siteVisits } = useData();
   const { appointmentFieldLabel } = useTenantConfig();
 
+  // Calculate real month-over-month changes
+  const monthlyStats = useMemo(() => {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+    const thisMonthLeads = leads.filter(l => l.createdAt && new Date(l.createdAt) >= thisMonthStart);
+    const lastMonthLeads = leads.filter(l => l.createdAt && new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) <= lastMonthEnd);
+
+    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Site Visit Scheduled'];
+    const closedStatuses = ['Deal Closed', 'Closed', 'Won'];
+
+    // Total leads change
+    const totalChange = lastMonthLeads.length > 0
+      ? Math.round(((thisMonthLeads.length - lastMonthLeads.length) / lastMonthLeads.length) * 100)
+      : thisMonthLeads.length > 0 ? 100 : 0;
+
+    // Active leads change
+    const thisMonthActive = thisMonthLeads.filter(l => activeStatuses.includes(l.status)).length;
+    const lastMonthActive = lastMonthLeads.filter(l => activeStatuses.includes(l.status)).length;
+    const activeChange = lastMonthActive > 0
+      ? Math.round(((thisMonthActive - lastMonthActive) / lastMonthActive) * 100)
+      : thisMonthActive > 0 ? 100 : 0;
+
+    // Conversion rate change
+    const thisMonthClosed = leads.filter(l => closedStatuses.includes(l.status) && l.createdAt && new Date(l.createdAt) >= thisMonthStart).length;
+    const lastMonthClosed = leads.filter(l => closedStatuses.includes(l.status) && l.createdAt && new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) <= lastMonthEnd).length;
+    const thisMonthRate = thisMonthLeads.length > 0 ? (thisMonthClosed / thisMonthLeads.length) * 100 : 0;
+    const lastMonthRate = lastMonthLeads.length > 0 ? (lastMonthClosed / lastMonthLeads.length) * 100 : 0;
+    const conversionChange = lastMonthRate > 0
+      ? Math.round(thisMonthRate - lastMonthRate)
+      : thisMonthRate > 0 ? Math.round(thisMonthRate) : 0;
+
+    // Pipeline value change
+    const thisMonthValue = thisMonthLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+    const lastMonthValue = lastMonthLeads.reduce((sum, l) => sum + (l.value || 0), 0);
+    const valueChange = lastMonthValue > 0
+      ? Math.round(((thisMonthValue - lastMonthValue) / lastMonthValue) * 100)
+      : thisMonthValue > 0 ? 100 : 0;
+
+    return { totalChange, activeChange, conversionChange, valueChange };
+  }, [leads]);
+
   const stats = [
     {
       title: 'Total Leads',
       value: leads.length,
-      change: '+12%',
-      trend: 'up',
+      change: `${monthlyStats.totalChange >= 0 ? '+' : ''}${monthlyStats.totalChange}%`,
+      trend: monthlyStats.totalChange >= 0 ? 'up' : 'down',
       icon: Users,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50'
@@ -25,8 +69,8 @@ export default function Dashboard() {
     {
       title: 'Active Leads',
       value: leads.filter(l => ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Site Visit Scheduled'].includes(l.status)).length,
-      change: '+8%',
-      trend: 'up',
+      change: `${monthlyStats.activeChange >= 0 ? '+' : ''}${monthlyStats.activeChange}%`,
+      trend: monthlyStats.activeChange >= 0 ? 'up' : 'down',
       icon: TrendingUp,
       color: 'text-green-600',
       bgColor: 'bg-green-50'
@@ -38,17 +82,17 @@ export default function Dashboard() {
         const closed = leads.filter(l => closedStatuses.includes(l.status)).length;
         return leads.length > 0 ? `${((closed / leads.length) * 100).toFixed(1)}%` : '0.0%';
       }, [leads]),
-      change: '+0%', // TODO: Calculate from historical data
-      trend: 'up',
+      change: `${monthlyStats.conversionChange >= 0 ? '+' : ''}${monthlyStats.conversionChange}%`,
+      trend: monthlyStats.conversionChange >= 0 ? 'up' : 'down',
       icon: Target,
       color: 'text-purple-600',
       bgColor: 'bg-purple-50'
     },
     {
       title: 'Pipeline Value',
-      value: `$${(leads.reduce((sum, lead) => sum + lead.value, 0) / 1000).toFixed(0)}K`,
-      change: '+15%',
-      trend: 'up',
+      value: `$${(leads.reduce((sum, lead) => sum + (lead.value || 0), 0) / 1000).toFixed(0)}K`,
+      change: `${monthlyStats.valueChange >= 0 ? '+' : ''}${monthlyStats.valueChange}%`,
+      trend: monthlyStats.valueChange >= 0 ? 'up' : 'down',
       icon: DollarSign,
       color: 'text-orange-600',
       bgColor: 'bg-orange-50'

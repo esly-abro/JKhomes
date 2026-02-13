@@ -86,9 +86,36 @@ async function syncAllPending(request, reply) {
   });
 }
 
+/**
+ * Import leads from Zoho CRM into MongoDB
+ */
+async function importFromZoho(request, reply) {
+  const { maxPages = 10, perPage = 200 } = request.query;
+
+  const result = await zohoSyncService.importLeadsFromZoho({
+    maxPages: parseInt(maxPages),
+    perPage: parseInt(perPage)
+  });
+
+  if (result.success) {
+    return reply.send({
+      success: true,
+      message: `Imported ${result.created} new leads, updated ${result.updated} existing leads from Zoho CRM`,
+      data: result
+    });
+  } else {
+    return reply.status(500).send({
+      success: false,
+      error: result.error,
+      data: result
+    });
+  }
+}
+
 module.exports = {
   syncCallLog,
   syncActivity,
   syncSiteVisit,
-  syncAllPending
+  syncAllPending,
+  importFromZoho
 };

@@ -1,6 +1,7 @@
 /**
  * Initialize Test Users in MongoDB
  * Creates owner, admin, and agent users for testing
+ * Also creates the JK Homes organization and links all users to it
  */
 
 require('dotenv').config();
@@ -20,6 +21,7 @@ const userSchema = new mongoose.Schema({
     enum: ['owner', 'admin', 'manager', 'agent', 'bpo'],
     default: 'agent'
   },
+  organizationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization' },
   zohoUserId: { type: String },
   isActive: { type: Boolean, default: true },
   approvalStatus: { type: String, default: 'approved' },
@@ -28,6 +30,23 @@ const userSchema = new mongoose.Schema({
 });
 
 const User = mongoose.model('User', userSchema);
+
+// Organization Schema (simplified for init)
+const organizationSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  slug: { type: String, unique: true, lowercase: true, trim: true },
+  ownerId: { type: mongoose.Schema.Types.Mixed, required: true },
+  plan: { type: String, enum: ['free', 'starter', 'professional', 'enterprise'], default: 'free' },
+  logoUrl: { type: String, default: null },
+  settings: {
+    timezone: { type: String, default: 'Asia/Kolkata' },
+    dateFormat: { type: String, default: 'DD/MM/YYYY' },
+    currency: { type: String, default: 'INR' }
+  },
+  isActive: { type: Boolean, default: true }
+}, { timestamps: true });
+
+const Organization = mongoose.model('Organization', organizationSchema);
 
 async function initializeUsers() {
   try {
@@ -48,7 +67,7 @@ async function initializeUsers() {
       {
         email: 'owner@jkhomes.com',
         passwordHash: await bcrypt.hash('owner123', 10),
-        name: 'Owner User',
+        name: 'J Kamalakannan',
         role: 'owner',
         isActive: true,
         approvalStatus: 'approved'
@@ -56,7 +75,7 @@ async function initializeUsers() {
       {
         email: 'admin@jkhomes.com',
         passwordHash: await bcrypt.hash('admin123', 10),
-        name: 'Admin User',
+        name: 'J Kamalakannan',
         role: 'admin',
         isActive: true,
         approvalStatus: 'approved'
@@ -93,8 +112,37 @@ async function initializeUsers() {
       console.log(`✅ Created: ${user.email} (${user.role})`);
     }
 
+    // Create JK Homes Organization
+    console.log('\nCreating JK Homes organization...');
+    const ownerUser = await User.findOne({ email: 'owner@jkhomes.com' });
+    
+    // Remove existing org if re-running
+    await Organization.deleteMany({ slug: 'jk-homes' });
+    
+    const org = await Organization.create({
+      name: 'JK Homes',
+      slug: 'jk-homes',
+      ownerId: ownerUser._id,
+      plan: 'professional',
+      settings: {
+        timezone: 'Asia/Kolkata',
+        dateFormat: 'DD/MM/YYYY',
+        currency: 'INR'
+      },
+      isActive: true
+    });
+    console.log(`✅ Created organization: ${org.name} (${org._id})`);
+
+    // Link all users to the organization
+    console.log('\nLinking users to organization...');
+    const linkResult = await User.updateMany(
+      { email: /@jkhomes\.com$/i },
+      { $set: { organizationId: org._id } }
+    );
+    console.log(`✅ Linked ${linkResult.modifiedCount} users to JK Homes\n`);
+
     console.log('\n═══════════════════════════════════════════════');
-    console.log('  Test Users Created Successfully!');
+    console.log('  Test Users & Organization Created Successfully!');
     console.log('═══════════════════════════════════════════════\n');
     
     console.log('Login Credentials:\n');

@@ -100,6 +100,7 @@ async function createTask(options) {
     nodeId,
     assignedTo,
     createdBy,
+    organizationId,
     type = 'manual_action',
     title,
     description,
@@ -115,14 +116,22 @@ async function createTask(options) {
   // Determine assignee - use lead's assigned agent if not specified
   let assignee = assignedTo;
   if (!assignee && leadId) {
-    const lead = await Lead.findById(leadId).select('assignedTo assignedAgent');
+    const lead = await Lead.findById(leadId).select('assignedTo assignedAgent organizationId');
     assignee = lead?.assignedTo || lead?.assignedAgent;
+  }
+
+  // Resolve organizationId from lead if not provided
+  let orgId = organizationId;
+  if (!orgId && leadId) {
+    const lead = await Lead.findById(leadId).select('organizationId');
+    orgId = lead?.organizationId;
   }
 
   // Build redirect URL
   const redirectUrl = `/leads/${leadId}`;
 
   const task = new Task({
+    organizationId: orgId,
     lead: leadId,
     automationRun: automationRunId,
     automation: automationId,
@@ -152,6 +161,11 @@ async function createTask(options) {
  */
 async function getTasksForUser(userId, filters = {}) {
   const query = { assignedTo: userId };
+
+  // Scope to organization if provided
+  if (filters.organizationId) {
+    query.organizationId = filters.organizationId;
+  }
 
   if (filters.status) {
     query.status = filters.status;
@@ -191,6 +205,11 @@ async function getTasksForUser(userId, filters = {}) {
 async function getAllTasks(filters = {}) {
   const query = {};
 
+  // Scope to organization if provided
+  if (filters.organizationId) {
+    query.organizationId = filters.organizationId;
+  }
+
   if (filters.status) {
     query.status = filters.status;
   }
@@ -224,10 +243,20 @@ async function getAllTasks(filters = {}) {
 }
 
 /**
- * Get unassigned tasks (for admin to delegate)
+ * Get unassigned tasks (for admin to delegate, scoped to org)
  */
-async function getUnassignedTasks() {
-  return Task.findUnassigned();
+async function getUnassignedTasks(organizationId) {
+  const query = {
+    assignedTo: null,
+    status: { $in: ['pending', 'overdue'] }
+  };
+  if (organizationId) {
+    query.organizationId = organizationId;
+  }
+  return Task.find(query)
+    .populate('lead', 'name phone email status source budget')
+    .populate('automation', 'name')
+    .sort({ priority: -1, dueDate: 1 });
 }
 
 /**
@@ -339,8 +368,10 @@ async function checkAutoCompleteForStatusChange(leadId, newStatus) {
 /**
  * Get task statistics for a user
  */
-async function getTaskStats(userId = null) {
-  const matchStage = userId ? { assignedTo: userId } : {};
+async function getTaskStats(userId = null, organizationId = null) {
+  const matchStage = {};
+  if (userId) matchStage.assignedTo = userId;
+  if (organizationId) matchStage.organizationId = organizationId;
 
   const stats = await Task.aggregate([
     { $match: matchStage },
@@ -369,10 +400,14 @@ async function getTaskStats(userId = null) {
 
   // Count unassigned separately
   if (!userId) {
-    result.unassigned = await Task.countDocuments({ 
+    const unassignedQuery = { 
       assignedTo: null, 
       status: { $in: ['pending', 'overdue'] } 
-    });
+    };
+    if (organizationId) {
+      unassignedQuery.organizationId = organizationId;
+    }
+    result.unassigned = await Task.countDocuments(unassignedQuery);
   }
 
   return result;

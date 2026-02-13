@@ -6,6 +6,13 @@
 const mongoose = require('mongoose');
 
 const callLogSchema = new mongoose.Schema({
+    // Organization (Multi-tenancy)
+    organizationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        index: true
+    },
+
     // Call identifiers
     callSid: {
         type: String,

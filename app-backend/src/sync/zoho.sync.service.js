@@ -6,7 +6,9 @@
 const CallLog = require('../models/CallLog');
 const Activity = require('../models/Activity');
 const SiteVisit = require('../models/SiteVisit');
+const Lead = require('../models/Lead');
 const zohoClient = require('../clients/zoho.client');
+const { mapZohoLeadToFrontend } = require('../leads/zoho.mapper');
 
 /**
  * Sync a CallLog entry to Zoho CRM as a call activity
@@ -203,10 +205,10 @@ async function syncSiteVisitToZoho(siteVisitId) {
 
     // Prepare task data for Zoho
     const taskData = {
-      Subject: `Site Visit - ${siteVisit.leadName}`,
+      Subject: `Appointment - ${siteVisit.leadName}`,
       Status: siteVisit.status === 'completed' ? 'Completed' : siteVisit.status === 'cancelled' ? 'Cancelled' : 'Not Started',
       Due_Date: siteVisit.scheduledDate,
-      Description: `Site visit scheduled for ${siteVisit.leadName}\n${siteVisit.notes || ''}\nPhone: ${siteVisit.leadPhone}`,
+      Description: `Appointment scheduled for ${siteVisit.leadName}\n${siteVisit.notes || ''}\nPhone: ${siteVisit.leadPhone}`,
       $se_module: 'Leads',
       What_Id: siteVisit.leadId
     };
@@ -342,9 +344,129 @@ function getCallResult(status) {
   return resultMap[status] || 'Not Available';
 }
 
+/**
+ * Import/sync leads FROM Zoho CRM INTO MongoDB
+ * Fetches all leads from Zoho and upserts them into MongoDB.
+ * Preserves local-only fields (assignedTo, notes, propertyId, etc.)
+ *
+ * @param {Object} options
+ * @param {number} options.maxPages - Maximum pages to fetch (default: 10, ~2000 leads)
+ * @param {number} options.perPage - Leads per page (default: 200)
+ * @param {string} [options.organizationId] - Organization ID for multi-tenant
+ * @returns {Promise<Object>} Import results summary
+ */
+async function importLeadsFromZoho(options = {}) {
+  const { maxPages = 10, perPage = 200, organizationId = null } = options;
+
+  const results = {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    failed: 0,
+    errors: [],
+    totalFetched: 0
+  };
+
+  console.log(`[ZohoSync] Starting lead import from Zoho CRM (maxPages: ${maxPages}, perPage: ${perPage})`);
+
+  try {
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore && page <= maxPages) {
+      let zohoResponse;
+      try {
+        zohoResponse = await zohoClient.getLeads(page, perPage, organizationId);
+      } catch (error) {
+        console.error(`[ZohoSync] Failed to fetch page ${page} from Zoho:`, error.message);
+        results.errors.push(`Page ${page}: ${error.message}`);
+        break;
+      }
+
+      const zohoLeads = zohoResponse?.data || [];
+
+      if (zohoLeads.length === 0) {
+        console.log(`[ZohoSync] No leads returned on page ${page}, stopping.`);
+        break;
+      }
+
+      results.totalFetched += zohoLeads.length;
+      console.log(`[ZohoSync] Processing page ${page}: ${zohoLeads.length} leads`);
+
+      for (const zohoLead of zohoLeads) {
+        try {
+          const zohoId = zohoLead.id;
+          if (!zohoId) {
+            results.skipped++;
+            continue;
+          }
+
+          // Map Zoho fields to our format
+          const mapped = mapZohoLeadToFrontend(zohoLead);
+
+          // Build the upsert data — only update Zoho-owned fields
+          // Local-only fields (assignedTo, notes, propertyId) are NOT overwritten
+          const upsertData = {
+            zohoId: zohoId,
+            name: mapped.name || 'Unknown',
+            email: mapped.email || undefined,
+            phone: mapped.phone || undefined,
+            company: mapped.company || undefined,
+            source: mapped.source || 'Website',
+            status: mapped.status || 'New',
+            score: mapped.priority === 'high' ? 85 : mapped.priority === 'low' ? 30 : 50,
+            budget: mapped.value || 0,
+            syncedWithZoho: true,
+            lastSyncedAt: new Date()
+          };
+
+          // Remove undefined fields so we don't overwrite existing data
+          Object.keys(upsertData).forEach(key => {
+            if (upsertData[key] === undefined) delete upsertData[key];
+          });
+
+          // Upsert: match by zohoId, only set Zoho fields, preserve local fields
+          const existingLead = await Lead.findOne({ zohoId: zohoId });
+
+          if (existingLead) {
+            await Lead.findByIdAndUpdate(existingLead._id, { $set: upsertData });
+            results.updated++;
+          } else {
+            await Lead.create(upsertData);
+            results.created++;
+          }
+        } catch (leadError) {
+          results.failed++;
+          results.errors.push(`Lead ${zohoLead.id}: ${leadError.message}`);
+          console.error(`[ZohoSync] Failed to upsert lead ${zohoLead.id}:`, leadError.message);
+        }
+      }
+
+      // Check if there are more pages
+      hasMore = zohoResponse.info?.more_records === true;
+      page++;
+    }
+
+    console.log(`[ZohoSync] Import complete: ${results.totalFetched} fetched, ${results.created} created, ${results.updated} updated, ${results.failed} failed`);
+
+    return {
+      success: true,
+      ...results
+    };
+  } catch (error) {
+    console.error('[ZohoSync] Import failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      ...results
+    };
+  }
+}
+
 module.exports = {
   syncCallLogToZoho,
   syncActivityToZoho,
   syncSiteVisitToZoho,
-  syncPendingToZoho
+  syncPendingToZoho,
+  importLeadsFromZoho
 };

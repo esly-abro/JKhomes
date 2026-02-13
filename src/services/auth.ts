@@ -31,15 +31,29 @@ export interface RegisterResponse {
 }
 
 /**
- * Register a new agent account
+ * Register a new organization with owner account
  */
-export async function register(email: string, password: string, name: string, phone?: string, role?: string): Promise<RegisterResponse> {
-    const { data } = await api.post<RegisterResponse>('/auth/register', {
+export async function register(
+    organizationName: string,
+    industry: string,
+    catalogModuleLabel: string,
+    categoryFieldLabel: string,
+    appointmentFieldLabel: string,
+    name: string,
+    email: string,
+    password: string,
+    phone?: string
+): Promise<RegisterResponse> {
+    const { data } = await api.post<RegisterResponse>('/auth/register-organization', {
+        organizationName,
+        industry,
+        catalogModuleLabel,
+        categoryFieldLabel,
+        appointmentFieldLabel,
+        name,
         email,
         password,
-        name,
-        phone,
-        role: role || 'agent'
+        phone
     });
 
     return data;
