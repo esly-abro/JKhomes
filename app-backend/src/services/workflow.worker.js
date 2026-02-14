@@ -840,7 +840,7 @@ async function handleFailedExecuteJob(job, err) {
                     failedAt: new Date().toISOString(),
                     workerId: WORKER_ID,
                 }, {
-                    jobId: `dlq:${runId}:${nodeId}:${Date.now()}`,
+                    jobId: `dlq-${runId}-${nodeId}-${Date.now()}`,
                 });
                 logger.warn(`📦 Job moved to DLQ: "${nodeLabel}" [run ${runId}]`);
             } catch (dlqErr) {

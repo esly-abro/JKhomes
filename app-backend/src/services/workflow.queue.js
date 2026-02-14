@@ -88,7 +88,7 @@ function getTimeoutQueue() {
  */
 async function enqueueTriggerEvent(event, leadId, organizationId, extra = {}) {
     const queue = getTriggerQueue();
-    const jobId = `trigger:${event}:${leadId}:${Date.now()}`;
+    const jobId = `trigger-${event.replace(/[:.]/g, '-')}-${leadId}-${Date.now()}`;
 
     const job = await queue.add(
         event,                      // job name
@@ -131,7 +131,7 @@ async function enqueueNodeExecution(opts) {
     } = opts;
 
     const queue = getExecuteQueue();
-    const jobId = `exec:${runId}:${nodeId}:${Date.now()}`;
+    const jobId = `exec-${runId}-${nodeId}-${Date.now()}`;
     const nodeLabel = nodeData?.label || nodeData?.type || nodeId;
 
     const jobOpts = { jobId };
@@ -167,10 +167,10 @@ async function enqueueNodeExecution(opts) {
  */
 async function enqueueTimeoutCheck(runId, type, delayMs) {
     const queue = getTimeoutQueue();
-    const jobId = `timeout:${type}:${runId}:${Date.now()}`;
+    const jobId = `timeout-${type}-${runId}-${Date.now()}`;
 
     const job = await queue.add(
-        `timeout:${type}`,
+        `timeout-${type}`,
         {
             runId: String(runId),
             type,

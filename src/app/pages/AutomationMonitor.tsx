@@ -208,9 +208,9 @@ function RunRow({ run: initialRun, onCancel }: { run: AutomationRun; onCancel: (
   };
 
   const lead = run.lead;
-  const leadName = typeof lead === 'object' ? lead.name : 'Unknown Lead';
-  const leadPhone = typeof lead === 'object' ? lead.phone : '';
-  const leadEmail = typeof lead === 'object' ? lead.email : '';
+  const leadName = lead && typeof lead === 'object' ? lead.name : 'Unknown Lead';
+  const leadPhone = lead && typeof lead === 'object' ? lead.phone : '';
+  const leadEmail = lead && typeof lead === 'object' ? lead.email : '';
 
   // Determine current step
   const executionPath = run.executionPath || [];
