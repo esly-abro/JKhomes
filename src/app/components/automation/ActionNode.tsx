@@ -99,9 +99,14 @@ function ActionNode({ data, selected }: NodeProps) {
             </div>
           )}
           {nodeData.type === 'aiCall' && (
-            <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
-              Max: {nodeData.config.maxDuration || 300}s
-            </div>
+            <>
+              <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                Max: {nodeData.config.maxDuration || 300}s
+              </div>
+              <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
+                ⚡ ~5s pipeline overhead after delay
+              </div>
+            </>
           )}
           {nodeData.type === 'humanCall' && (
             <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded">

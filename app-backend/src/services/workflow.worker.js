@@ -152,33 +152,48 @@ async function scheduleNextNodes(run, automation, lead, currentNodeId, handle = 
             delay = conditions.calculateDelay(node.data.config);
         }
 
-        // Record in execution path
-        run.executionPath.push({
-            nodeId: node.id,
-            nodeType: node.data?.type || node.type,
-            nodeLabel: node.data?.label || node.id,
-            label: node.data?.label || node.id,
-            status: 'pending',
-            scheduledFor: new Date(Date.now() + delay),
-        });
+        // Record in execution path (avoid duplicates)
+        const alreadyTracked = run.executionPath.some(
+            (p) => p.nodeId === node.id && (p.status === 'pending' || p.status === 'running')
+        );
+        if (!alreadyTracked) {
+            run.executionPath.push({
+                nodeId: node.id,
+                nodeType: node.data?.type || node.type,
+                nodeLabel: node.data?.label || node.id,
+                label: node.data?.label || node.id,
+                status: 'pending',
+                scheduledFor: new Date(Date.now() + delay),
+            });
+        }
         await run.save();
 
         // Also record in AutomationJob for backwards compatibility / monitoring
-        const jobRecord = new AutomationJob({
-            automation: automation._id,
+        // Skip if a pending/processing job already exists for this node in this run
+        const existingJob = await AutomationJob.findOne({
             automationRun: run._id,
-            lead: lead._id,
-            organizationId: lead.organizationId,
             nodeId: node.id,
-            nodeType: node.data?.type || node.type,
-            nodeData: node.data,
-            edgeId: edge?.id,
-            status: 'pending',
-            scheduledFor: new Date(Date.now() + delay),
-            attempts: 0,
-            maxAttempts: node.data?.config?.maxRetries || 3,
+            status: { $in: ['pending', 'processing'] },
         });
-        await jobRecord.save();
+        if (!existingJob) {
+            const jobRecord = new AutomationJob({
+                automation: automation._id,
+                automationRun: run._id,
+                lead: lead._id,
+                organizationId: lead.organizationId,
+                nodeId: node.id,
+                nodeType: node.data?.type || node.type,
+                nodeData: node.data,
+                edgeId: edge?.id,
+                status: 'pending',
+                scheduledFor: new Date(Date.now() + delay),
+                attempts: 0,
+                maxAttempts: node.data?.config?.maxRetries || 3,
+            });
+            await jobRecord.save();
+        } else {
+            logger.info(`Skipping duplicate AutomationJob for node ${node.id} (run ${run._id})`);
+        }
 
         // Enqueue in BullMQ
         await enqueueNodeExecution({
@@ -611,7 +626,7 @@ async function processExecuteJob(job) {
     if (result.delayed) {
         const delayMs = conditions.calculateDelay(nodeData?.config);
 
-        logger.info(`⏱️  Delay node "${nodeLabel}": ${delayMs}ms [run ${runId}]`);
+        logger.info(`⏱️  Delay node "${nodeLabel}": ${delayMs}ms (already waited via BullMQ delayed job) [run ${runId}]`);
 
         updateExecutionPathStatus(run, nodeId, 'completed', result);
         await run.save();
@@ -619,7 +634,7 @@ async function processExecuteJob(job) {
         await logExecution({
             run, automation, lead, nodeId, nodeData,
             status: 'success',
-            message: `Delay scheduled: ${delayMs}ms`,
+            message: `Delay completed: ${delayMs}ms`,
             duration: elapsed,
             attempt: job.attemptsMade + 1,
             metadata: { delayMs },
@@ -631,8 +646,10 @@ async function processExecuteJob(job) {
             { status: 'completed', result, completedAt: new Date() }
         );
 
-        // Schedule next nodes with the delay
-        await scheduleNextNodes(run, automation, lead, nodeId, null, delayMs);
+        // Schedule next nodes IMMEDIATELY — delay was already applied
+        // by BullMQ's delayed job mechanism when this node was enqueued.
+        // Passing delayMs here would double the wait time.
+        await scheduleNextNodes(run, automation, lead, nodeId, null, 0);
         return { delayed: true, delayMs, nodeId };
     }
 
@@ -927,6 +944,8 @@ function startWorkers() {
         {
             connection,
             concurrency: EXECUTE_CONCURRENCY,
+            lockDuration: 120000,      // 2 min lock (covers NODE_EXECUTION_TIMEOUT_MS)
+            stalledInterval: 120000,   // Check for stalled jobs every 2 min (avoids false positives on Redis 5.x)
         }
     );
 
