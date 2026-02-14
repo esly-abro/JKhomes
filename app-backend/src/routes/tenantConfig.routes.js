@@ -30,6 +30,11 @@ async function tenantConfigRoutes(app, options) {
         preHandler: requireRole(['owner', 'admin'])
     }, tenantConfigController.updateIndustry);
 
+    // PUT /api/tenant-config/location-label — owner/admin only
+    app.put('/api/tenant-config/location-label', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, tenantConfigController.updateLocationLabel);
+
     // GET /api/tenant-config/category-usage — owner/admin/manager
     app.get('/api/tenant-config/category-usage', {
         preHandler: requireRole(['owner', 'admin', 'manager'])

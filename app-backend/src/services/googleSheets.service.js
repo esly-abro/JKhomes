@@ -23,6 +23,7 @@ class GoogleSheetsService {
         this.webAppUrl = process.env.GOOGLE_APPS_SCRIPT_URL; // For Apps Script deployment
         
         // Headers for the catalog/properties sheet
+        // TODO: Make 'Location' and 'Item Location' headers dynamic via TenantConfig.locationFieldLabel
         this.headers = [
             'Item ID',
             'Name',

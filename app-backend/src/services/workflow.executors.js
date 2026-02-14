@@ -21,6 +21,7 @@ const Lead = require('../models/Lead');
 const Activity = require('../models/Activity');
 const User = require('../models/User');
 const { taskService } = require('../tasks');
+const TenantConfig = require('../models/tenantConfig.model');
 const { evaluateCondition, interpolateTemplate, calculateDelay, normalizePhoneNumber } = require('./workflow.conditions');
 
 /**
@@ -411,6 +412,11 @@ async function executeHumanCall(lead, config, run = null) {
 
         console.log(`✅ Task created: ${task._id} for agent ${assignedAgent?.name || 'unassigned'}`);
 
+        // Load tenant config for dynamic field labels
+        const tenantConfig = await TenantConfig.getOrCreate(lead.organizationId);
+        const locationLabel = tenantConfig?.locationFieldLabel || 'Location';
+        const categoryLabel = tenantConfig?.categoryFieldLabel || 'Category';
+
         // Send notification email to the assigned agent
         if (assignedAgent?.email) {
             try {
@@ -434,8 +440,8 @@ async function executeHumanCall(lead, config, run = null) {
                                         <tr><td style="padding: 4px 8px; color: #666;"><strong>Email:</strong></td><td style="padding: 4px 8px;">${lead.email || 'N/A'}</td></tr>
                                         <tr><td style="padding: 4px 8px; color: #666;"><strong>Budget:</strong></td><td style="padding: 4px 8px;">${lead.budget || 'N/A'}</td></tr>
                                         <tr><td style="padding: 4px 8px; color: #666;"><strong>Source:</strong></td><td style="padding: 4px 8px;">${lead.source || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Category:</strong></td><td style="padding: 4px 8px;">${lead.category || lead.propertyType || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Location:</strong></td><td style="padding: 4px 8px;">${lead.location || 'N/A'}</td></tr>
+                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>${categoryLabel}:</strong></td><td style="padding: 4px 8px;">${lead.category || lead.propertyType || 'N/A'}</td></tr>
+                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>${locationLabel}:</strong></td><td style="padding: 4px 8px;">${lead.location || 'N/A'}</td></tr>
                                         <tr><td style="padding: 4px 8px; color: #666;"><strong>Status:</strong></td><td style="padding: 4px 8px;">${lead.status || 'N/A'}</td></tr>
                                     </table>
                                 </div>

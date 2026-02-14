@@ -291,7 +291,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 export default function Leads() {
   const { leads, loading, error, refreshLeads } = useData();
   const { addNotification } = useNotifications();
-  const { categoryFieldLabel, appointmentFieldLabel } = useTenantConfig();
+  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel } = useTenantConfig();
   const { catalogModuleLabel } = useOrganization();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -798,7 +798,7 @@ export default function Leads() {
                 />
                 <Label htmlFor="autoAssign" className="cursor-pointer flex-1">
                   <div className="font-medium text-gray-900">Auto-Assign with Smart Rules</div>
-                  <div className="text-xs text-gray-600">Automatically assign based on workload, {categoryFieldLabel.toLowerCase()} & location</div>
+                  <div className="text-xs text-gray-600">Automatically assign based on workload, {categoryFieldLabel.toLowerCase()} & {locationFieldLabel.toLowerCase()}</div>
                 </Label>
               </div>
 

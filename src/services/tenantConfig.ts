@@ -39,6 +39,7 @@ export interface TenantConfig {
     appointmentTypes: AppointmentType[];
     appointmentFieldLabel: string;
     catalogModuleLabel?: string;
+    locationFieldLabel: string;
     companyName?: string;
     enabledModules: EnabledModules;
     createdAt?: string;
@@ -103,6 +104,16 @@ export async function getCategoryUsage(): Promise<Record<string, number>> {
     return response.data;
 }
 
+/** Update the location field label. */
+export async function updateLocationLabel(
+    locationFieldLabel: string
+): Promise<TenantConfig> {
+    const response = await api.put('/api/tenant-config/location-label', {
+        locationFieldLabel
+    });
+    return response.data;
+}
+
 // ================================
 // DEFAULTS (used before config loads)
 // ================================
@@ -125,6 +136,7 @@ export const DEFAULT_TENANT_CONFIG: TenantConfig = {
     ],
     appointmentFieldLabel: 'Site Visit',
     catalogModuleLabel: 'Properties',
+    locationFieldLabel: 'Location',
     enabledModules: {
         catalog: true,
         appointments: true,

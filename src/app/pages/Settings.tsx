@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
 import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical } from 'lucide-react';
 import { useTenantConfig } from '../context/TenantConfigContext';
-import { updateCategories, updateAppointmentTypes, updateIndustry, CategoryItem, AppointmentType } from '../../services/tenantConfig';
+import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, CategoryItem, AppointmentType } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
 
 interface Profile {
@@ -66,7 +66,7 @@ interface Invoice {
 }
 
 export default function Settings() {
-  const { categoryFieldLabel, appointmentFieldLabel, categories, appointmentTypes, tenantConfig, refreshConfig } = useTenantConfig();
+  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, categories, appointmentTypes, tenantConfig, refreshConfig } = useTenantConfig();
   const [loadingTeam, setLoadingTeam] = useState(true);
 
   // Customization tab state
@@ -74,6 +74,7 @@ export default function Settings() {
   const [editCategoryLabel, setEditCategoryLabel] = useState('');
   const [editAppointmentTypes, setEditAppointmentTypes] = useState<AppointmentType[]>([]);
   const [editAppointmentLabel, setEditAppointmentLabel] = useState('');
+  const [editLocationLabel, setEditLocationLabel] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [customSaving, setCustomSaving] = useState(false);
   const [customMessage, setCustomMessage] = useState<string | null>(null);
@@ -86,6 +87,7 @@ export default function Settings() {
       setEditCategoryLabel(tenantConfig.categoryFieldLabel || 'Category');
       setEditAppointmentTypes(tenantConfig.appointmentTypes?.map((a, i) => ({ ...a, order: a.order ?? i })) || []);
       setEditAppointmentLabel(tenantConfig.appointmentFieldLabel || 'Appointment');
+      setEditLocationLabel(tenantConfig.locationFieldLabel || 'Location');
       setSelectedIndustry(tenantConfig.industry || 'real_estate');
       setCustomizationInitialized(true);
     }
@@ -139,6 +141,20 @@ export default function Settings() {
       setCustomMessage('Appointment types saved successfully!');
     } catch (err) {
       setCustomMessage('Failed to save appointment types');
+    } finally {
+      setCustomSaving(false);
+      setTimeout(() => setCustomMessage(null), 4000);
+    }
+  };
+
+  const handleSaveLocationLabel = async () => {
+    try {
+      setCustomSaving(true);
+      await updateLocationLabel(editLocationLabel);
+      await refreshConfig();
+      setCustomMessage('Location label saved successfully!');
+    } catch (err) {
+      setCustomMessage('Failed to save location label');
     } finally {
       setCustomSaving(false);
       setTimeout(() => setCustomMessage(null), 4000);
@@ -1270,6 +1286,36 @@ export default function Settings() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* Location Field Label */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">{locationFieldLabel} Field Label</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">Rename the location field to match your business (e.g. "Location", "Service Area", "Region", "Campus").</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="locationLabel" className="text-sm font-medium">Field Label</Label>
+                  <Input
+                    id="locationLabel"
+                    value={editLocationLabel}
+                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditLocationLabel(e.target.value)}
+                    placeholder="e.g. Location, Service Area, Region"
+                    className="mt-1"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">This label appears across the entire CRM wherever the location field is shown.</p>
+                </div>
+
+                <Button onClick={handleSaveLocationLabel} disabled={customSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                  {customSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  Save {locationFieldLabel} Label
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -1408,8 +1454,8 @@ export default function Settings() {
                   {/* Location Matching */}
                   <div className="flex items-start justify-between p-3 border rounded-lg hover:bg-gray-50">
                     <div className="flex-1">
-                      <div className="font-medium text-gray-900">Location Matching</div>
-                      <div className="text-sm text-gray-600">Assign leads to agents familiar with the location</div>
+                      <div className="font-medium text-gray-900">{locationFieldLabel} Matching</div>
+                      <div className="text-sm text-gray-600">Assign leads to agents familiar with the {locationFieldLabel.toLowerCase()}</div>
                     </div>
                     <Switch
                       checked={assignmentSettings.locationMatchingEnabled}

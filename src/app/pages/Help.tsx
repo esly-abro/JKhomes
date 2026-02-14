@@ -35,7 +35,7 @@ const guides: GuideItem[] = [];
 
 export default function Help() {
   const { catalogModuleLabel } = useOrganization();
-  const { appointmentFieldLabel } = useTenantConfig();
+  const { appointmentFieldLabel, locationFieldLabel } = useTenantConfig();
   const catalogLabel = catalogModuleLabel.toLowerCase();
 
   const dynamicFaqs: FAQItem[] = [
@@ -69,7 +69,7 @@ export default function Help() {
   },
   {
     question: `How do I add new ${catalogLabel}?`,
-    answer: `Go to the ${catalogModuleLabel} page and click "Add ${catalogModuleLabel}". Enter details including name, location, type, price range, and other relevant information. ${catalogModuleLabel} will be available for lead assignment.`
+    answer: `Go to the ${catalogModuleLabel} page and click "Add ${catalogModuleLabel}". Enter details including name, ${locationFieldLabel.toLowerCase()}, type, price range, and other relevant information. ${catalogModuleLabel} will be available for lead assignment.`
   },
   ];
 

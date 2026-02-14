@@ -127,6 +127,24 @@ function getDefaultCategories(industry) {
 }
 
 /**
+ * Returns the default location field label per industry.
+ * Controls what "Location" is called in the UI (e.g., "Service Area", "Region").
+ */
+function getDefaultLocationFieldLabel(industry) {
+    const labels = {
+        real_estate: 'Location',
+        saas: 'Region',
+        healthcare: 'Service Area',
+        education: 'Campus',
+        insurance: 'Coverage Area',
+        finance: 'Branch',
+        automotive: 'Showroom',
+        generic: 'Location'
+    };
+    return labels[industry] || 'Location';
+}
+
+/**
  * Returns the default category field label per industry.
  */
 function getDefaultCategoryFieldLabel(industry) {
@@ -371,6 +389,13 @@ const tenantConfigSchema = new mongoose.Schema({
         trim: true
     },
 
+    // What the location field is called in the UI ("Location", "Service Area", "Region", etc.)
+    locationFieldLabel: {
+        type: String,
+        default: 'Location',
+        trim: true
+    },
+
     // Company name for templates/emails (denormalized from Organization for fast access)
     companyName: {
         type: String,
@@ -413,6 +438,7 @@ tenantConfigSchema.statics.getOrCreate = async function (organizationId, industr
             appointmentTypes: getDefaultAppointmentTypes(effectiveIndustry),
             appointmentFieldLabel: getDefaultAppointmentFieldLabel(effectiveIndustry),
             catalogModuleLabel: catalogLabel || getDefaultCatalogModuleLabel(effectiveIndustry),
+            locationFieldLabel: getDefaultLocationFieldLabel(effectiveIndustry),
             enabledModules: getDefaultEnabledModules(effectiveIndustry)
         };
         if (organizationId) doc.organizationId = organizationId;
@@ -448,6 +474,7 @@ const TenantConfig = mongoose.model('TenantConfig', tenantConfigSchema);
 // Also export helper functions for use in constants/seeding
 TenantConfig.getDefaultCategories = getDefaultCategories;
 TenantConfig.getDefaultCategoryFieldLabel = getDefaultCategoryFieldLabel;
+TenantConfig.getDefaultLocationFieldLabel = getDefaultLocationFieldLabel;
 TenantConfig.getDefaultAppointmentTypes = getDefaultAppointmentTypes;
 TenantConfig.getDefaultAppointmentFieldLabel = getDefaultAppointmentFieldLabel;
 TenantConfig.getDefaultCatalogModuleLabel = getDefaultCatalogModuleLabel;

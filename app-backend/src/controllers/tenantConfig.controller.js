@@ -133,6 +133,7 @@ class TenantConfigController {
                     config.categoryFieldLabel = TenantConfig.getDefaultCategoryFieldLabel(industry);
                     config.appointmentTypes = TenantConfig.getDefaultAppointmentTypes(industry);
                     config.appointmentFieldLabel = TenantConfig.getDefaultAppointmentFieldLabel(industry);
+                    config.locationFieldLabel = TenantConfig.getDefaultLocationFieldLabel(industry);
                 }
                 await config.save();
                 return reply.code(200).send(config);
@@ -219,6 +220,32 @@ class TenantConfigController {
         } catch (error) {
             console.error('[TenantConfig] getCategoryUsage error:', error);
             return reply.code(500).send({ error: 'Failed to get category usage' });
+        }
+    }
+    /**
+     * PUT /api/tenant-config/location-label
+     * Update the location field label.
+     * Body: { locationFieldLabel: string }
+     */
+    async updateLocationLabel(req, reply) {
+        try {
+            const orgId = req.user?.organizationId || null;
+            const { locationFieldLabel } = req.body;
+
+            if (!locationFieldLabel || typeof locationFieldLabel !== 'string' || !locationFieldLabel.trim()) {
+                return reply.code(400).send({ error: 'locationFieldLabel is required and must be a non-empty string' });
+            }
+
+            const config = await TenantConfig.getOrCreate(orgId);
+
+            if (config._id) {
+                config.locationFieldLabel = locationFieldLabel.trim();
+                await config.save();
+                return reply.code(200).send(config);
+            }
+        } catch (error) {
+            console.error('[TenantConfig] updateLocationLabel error:', error);
+            return reply.code(500).send({ error: 'Failed to update location label' });
         }
     }
 }

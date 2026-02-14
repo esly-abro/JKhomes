@@ -31,6 +31,8 @@ interface TenantConfigContextType {
     appointmentTypes: AppointmentType[];
     /** The label for the appointment field (e.g., "Site Visit", "Meeting", "Appointment") */
     appointmentFieldLabel: string;
+    /** The label for the location field (e.g., "Location", "Service Area", "Region") */
+    locationFieldLabel: string;
     /** Whether a module is enabled */
     isModuleEnabled: (moduleName: string) => boolean;
     /** Get category label by key */
@@ -52,6 +54,7 @@ const TenantConfigContext = createContext<TenantConfigContextType>({
     categoryFieldLabel: DEFAULT_TENANT_CONFIG.categoryFieldLabel,
     appointmentTypes: DEFAULT_TENANT_CONFIG.appointmentTypes,
     appointmentFieldLabel: DEFAULT_TENANT_CONFIG.appointmentFieldLabel,
+    locationFieldLabel: DEFAULT_TENANT_CONFIG.locationFieldLabel,
     isModuleEnabled: () => true,
     getCategoryLabel: (key) => key,
     getAppointmentTypeLabel: (key) => key,
@@ -101,6 +104,7 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
         .sort((a: AppointmentType, b: AppointmentType) => a.order - b.order);
 
     const appointmentFieldLabel = tenantConfig.appointmentFieldLabel || 'Appointment';
+    const locationFieldLabel = tenantConfig.locationFieldLabel || 'Location';
     const industry = (tenantConfig as any).industry || 'generic';
     const enabledModules = ((tenantConfig as any).enabledModules || {}) as Record<string, boolean>;
     const catalogModuleLabel = (tenantConfig as any).catalogModuleLabel || 'Catalog';
@@ -129,6 +133,7 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
         categoryFieldLabel,
         appointmentTypes,
         appointmentFieldLabel,
+        locationFieldLabel,
         isModuleEnabled,
         getCategoryLabel,
         getAppointmentTypeLabel,
