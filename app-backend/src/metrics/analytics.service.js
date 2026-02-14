@@ -5,6 +5,22 @@
 
 const Lead = require('../models/Lead');
 const User = require('../models/User');
+const TenantConfig = require('../models/tenantConfig.model');
+
+/**
+ * Helper: get closed status keys for an organization from TenantConfig
+ * Falls back to ['Deal Closed', 'Lost'] if no config found
+ */
+async function getClosedStatusKeys(organizationId) {
+    if (!organizationId) return ['Deal Closed', 'Lost', 'Closed', 'Won'];
+    try {
+        const config = await TenantConfig.findOne({ organizationId });
+        if (config && config.leadStatuses && config.leadStatuses.length > 0) {
+            return config.leadStatuses.filter(s => s.isClosed).map(s => s.key);
+        }
+    } catch (e) { /* fallback */ }
+    return ['Deal Closed', 'Lost', 'Closed', 'Won'];
+}
 
 /**
  * Get monthly trends for leads and deals
@@ -13,6 +29,8 @@ async function getMonthlyTrends(userId, range = '30days', organizationId = null)
     const months = range === '90days' ? 3 : range === 'year' ? 12 : 1;
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
+
+    const closedKeys = await getClosedStatusKeys(organizationId);
 
     const matchFilter = { createdAt: { $gte: startDate } };
     if (organizationId) {
@@ -34,7 +52,7 @@ async function getMonthlyTrends(userId, range = '30days', organizationId = null)
                 deals: {
                     $sum: {
                         $cond: [
-                            { $in: ['$status', ['Deal Closed', 'Closed', 'Won']] },
+                            { $in: ['$status', closedKeys] },
                             1,
                             0
                         ]
@@ -43,7 +61,7 @@ async function getMonthlyTrends(userId, range = '30days', organizationId = null)
                 revenue: {
                     $sum: {
                         $cond: [
-                            { $in: ['$status', ['Deal Closed', 'Closed', 'Won']] },
+                            { $in: ['$status', closedKeys] },
                             '$value',
                             0
                         ]
@@ -70,13 +88,29 @@ async function getMonthlyTrends(userId, range = '30days', organizationId = null)
  * Get conversion funnel data
  */
 async function getConversionFunnel(userId, organizationId = null) {
-    const stages = [
-        { stage: 'Leads', statuses: ['New', 'Call Attended', 'No Response', 'Not Interested', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
-        { stage: 'Contacted', statuses: ['Call Attended', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
-        { stage: 'Qualified', statuses: ['Site Visit Booked', 'Site Visit Scheduled', 'Interested'] },
-        { stage: 'Proposal', statuses: ['Site Visit Scheduled', 'Interested'] },
-        { stage: 'Closed', statuses: ['Interested'] }
-    ];
+    // Build funnel from TenantConfig lead statuses (progressive narrowing)
+    let allKeys = [];
+    try {
+        if (organizationId) {
+            const config = await TenantConfig.findOne({ organizationId });
+            if (config && config.leadStatuses && config.leadStatuses.length > 0) {
+                allKeys = config.leadStatuses
+                    .filter(s => s.isActive)
+                    .sort((a, b) => a.order - b.order)
+                    .map(s => s.key);
+            }
+        }
+    } catch (e) { /* fallback */ }
+
+    if (allKeys.length === 0) {
+        allKeys = ['New', 'Call Attended', 'No Response', 'Interested', 'Appointment Booked', 'Appointment Scheduled', 'Not Interested', 'Deal Closed', 'Lost'];
+    }
+
+    // Build progressive funnel: each stage includes itself and all later stages
+    const stages = allKeys.map((key, i) => ({
+        stage: key,
+        statuses: allKeys.slice(i)
+    }));
 
     const funnelData = await Promise.all(
         stages.map(async ({ stage, statuses }) => {
@@ -89,13 +123,14 @@ async function getConversionFunnel(userId, organizationId = null) {
         })
     );
 
-    return funnelData;
+    return funnelData.filter(d => d.count > 0);
 }
 
 /**
  * Get source performance data
  */
 async function getSourcePerformance(userId, organizationId = null) {
+    const closedKeys = await getClosedStatusKeys(organizationId);
     const matchFilter = {};
     if (organizationId) {
         matchFilter.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
@@ -110,7 +145,7 @@ async function getSourcePerformance(userId, organizationId = null) {
                 conversions: {
                     $sum: {
                         $cond: [
-                            { $in: ['$status', ['Deal Closed', 'Closed', 'Won']] },
+                            { $in: ['$status', closedKeys] },
                             1,
                             0
                         ]
@@ -147,6 +182,7 @@ async function getSourcePerformance(userId, organizationId = null) {
  * Get team performance data
  */
 async function getTeamPerformance(userId, organizationId = null) {
+    const closedKeys = await getClosedStatusKeys(organizationId);
     // Get all users with role agent, manager, or bpo
     const matchFilter = {};
     if (organizationId) {
@@ -178,7 +214,7 @@ async function getTeamPerformance(userId, organizationId = null) {
                 deals: {
                     $sum: {
                         $cond: [
-                            { $in: ['$status', ['Deal Closed', 'Closed', 'Won']] },
+                            { $in: ['$status', closedKeys] },
                             1,
                             0
                         ]
@@ -187,7 +223,7 @@ async function getTeamPerformance(userId, organizationId = null) {
                 revenue: {
                     $sum: {
                         $cond: [
-                            { $in: ['$status', ['Deal Closed', 'Closed', 'Won']] },
+                            { $in: ['$status', closedKeys] },
                             '$value',
                             0
                         ]
@@ -221,6 +257,8 @@ async function getKPIMetrics(userId, range = '30days', organizationId = null) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
+    const closedKeys = await getClosedStatusKeys(organizationId);
+
     const baseMatch = {};
     if (organizationId) {
         baseMatch.organizationId = new (require('mongoose').Types.ObjectId)(organizationId);
@@ -239,13 +277,13 @@ async function getKPIMetrics(userId, range = '30days', organizationId = null) {
                     { $count: 'count' }
                 ],
                 closed: [
-                    { $match: { status: { $in: ['Deal Closed', 'Closed', 'Won'] } } },
+                    { $match: { status: { $in: closedKeys } } },
                     { $count: 'count' }
                 ],
                 recentClosed: [
                     {
                         $match: {
-                            status: { $in: ['Deal Closed', 'Closed', 'Won'] },
+                            status: { $in: closedKeys },
                             createdAt: { $gte: startDate }
                         }
                     },
@@ -253,7 +291,7 @@ async function getKPIMetrics(userId, range = '30days', organizationId = null) {
                 ],
                 revenue: [
                     {
-                        $match: { status: { $in: ['Deal Closed', 'Closed', 'Won'] } }
+                        $match: { status: { $in: closedKeys } }
                     },
                     {
                         $group: {
@@ -290,7 +328,7 @@ async function getKPIMetrics(userId, range = '30days', organizationId = null) {
             $facet: {
                 total: [{ $count: 'count' }],
                 closed: [
-                    { $match: { status: { $in: ['Deal Closed', 'Closed', 'Won'] } } },
+                    { $match: { status: { $in: closedKeys } } },
                     { $count: 'count' }
                 ]
             }

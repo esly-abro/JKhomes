@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog';
 import AgentActivityDialog from '../components/AgentActivityDialog';
+import { useTenantConfig } from '../context/TenantConfigContext';
 
 interface Agent {
   _id: string;
@@ -38,6 +39,7 @@ interface Lead {
 }
 
 export default function Agents() {
+  const { getStatusColor, getStatusLabel } = useTenantConfig();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -236,18 +238,16 @@ export default function Agents() {
   };
 
   const getLeadStatusBadge = (status: string) => {
-    const statusColors: { [key: string]: string } = {
-      'new': 'bg-blue-100 text-blue-800',
-      'call attended': 'bg-purple-100 text-purple-800',
-      'no response': 'bg-orange-100 text-orange-800',
-      'not interested': 'bg-red-100 text-red-800',
-      'appointment booked': 'bg-yellow-100 text-yellow-800',
-      'appointment scheduled': 'bg-emerald-100 text-emerald-800',
-      'site visit booked': 'bg-yellow-100 text-yellow-800',
-      'site visit scheduled': 'bg-emerald-100 text-emerald-800',
-      'interested': 'bg-green-100 text-green-800',
-    };
-    return statusColors[status?.toLowerCase()] || 'bg-gray-100 text-gray-800';
+    const color = getStatusColor(status);
+    const label = getStatusLabel(status);
+    return (
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+        style={{ backgroundColor: `${color}20`, color: color }}
+      >
+        {label}
+      </span>
+    );
   };
 
   const getStatusBadge = (agent: Agent) => {
@@ -615,9 +615,7 @@ export default function Agents() {
                                           <div>{lead.phone || '-'}</div>
                                         </td>
                                         <td className="px-4 py-3">
-                                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getLeadStatusBadge(lead.status)}`}>
-                                            {lead.status || 'Unknown'}
-                                          </span>
+                                          {getLeadStatusBadge(lead.status)}
                                         </td>
                                         <td className="px-4 py-3 text-sm text-gray-600">
                                           {lead.source || '-'}

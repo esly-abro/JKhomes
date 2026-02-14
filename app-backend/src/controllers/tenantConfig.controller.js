@@ -131,6 +131,7 @@ class TenantConfigController {
                 if (resetCategories) {
                     config.categories = TenantConfig.getDefaultCategories(industry);
                     config.categoryFieldLabel = TenantConfig.getDefaultCategoryFieldLabel(industry);
+                    config.leadStatuses = TenantConfig.getDefaultLeadStatuses(industry);
                     config.appointmentTypes = TenantConfig.getDefaultAppointmentTypes(industry);
                     config.appointmentFieldLabel = TenantConfig.getDefaultAppointmentFieldLabel(industry);
                     config.locationFieldLabel = TenantConfig.getDefaultLocationFieldLabel(industry);
@@ -246,6 +247,93 @@ class TenantConfigController {
         } catch (error) {
             console.error('[TenantConfig] updateLocationLabel error:', error);
             return reply.code(500).send({ error: 'Failed to update location label' });
+        }
+    }
+
+    /**
+     * PUT /api/tenant-config/lead-statuses
+     * Update the lead status pipeline (custom stages/funnel).
+     * Body: { leadStatuses: [{ key, label, color, isActive, isClosed, order }] }
+     */
+    async updateLeadStatuses(req, reply) {
+        try {
+            const orgId = req.user?.organizationId || null;
+            const { leadStatuses } = req.body;
+
+            if (!leadStatuses || !Array.isArray(leadStatuses)) {
+                return reply.code(400).send({ error: 'leadStatuses must be an array' });
+            }
+
+            if (leadStatuses.length < 2) {
+                return reply.code(400).send({ error: 'At least 2 lead statuses are required' });
+            }
+
+            // Validate each status has key + label
+            for (const status of leadStatuses) {
+                if (!status.key || !status.label) {
+                    return reply.code(400).send({
+                        error: 'Each lead status must have a key and label',
+                        invalidStatus: status
+                    });
+                }
+            }
+
+            // Check for duplicate keys
+            const keys = leadStatuses.map(s => s.key.trim());
+            const uniqueKeys = new Set(keys);
+            if (uniqueKeys.size !== keys.length) {
+                return reply.code(400).send({ error: 'Duplicate status keys are not allowed' });
+            }
+
+            // Must have at least one non-closed status
+            const hasOpen = leadStatuses.some(s => !s.isClosed && s.isActive !== false);
+            if (!hasOpen) {
+                return reply.code(400).send({ error: 'At least one open (non-closed) status is required' });
+            }
+
+            const config = await TenantConfig.getOrCreate(orgId);
+
+            if (config._id) {
+                config.leadStatuses = leadStatuses.map((s, idx) => ({
+                    key: s.key.trim(),
+                    label: s.label.trim(),
+                    color: s.color || '#6b7280',
+                    isActive: s.isActive !== false,
+                    isClosed: s.isClosed === true,
+                    order: s.order ?? idx
+                }));
+
+                await config.save();
+                return reply.code(200).send(config);
+            }
+        } catch (error) {
+            console.error('[TenantConfig] updateLeadStatuses error:', error);
+            return reply.code(500).send({ error: 'Failed to update lead statuses' });
+        }
+    }
+
+    /**
+     * GET /api/tenant-config/status-usage
+     * Returns the count of leads using each status.
+     * Useful before deleting a status to show how many leads would be affected.
+     */
+    async getStatusUsage(req, reply) {
+        try {
+            const usage = await Lead.aggregate([
+                { $match: { status: { $ne: null, $exists: true } } },
+                { $group: { _id: '$status', count: { $sum: 1 } } },
+                { $sort: { count: -1 } }
+            ]);
+
+            const result = {};
+            usage.forEach(item => {
+                result[item._id] = item.count;
+            });
+
+            return reply.code(200).send(result);
+        } catch (error) {
+            console.error('[TenantConfig] getStatusUsage error:', error);
+            return reply.code(500).send({ error: 'Failed to get status usage' });
         }
     }
 }

@@ -5,6 +5,7 @@
 
 const zohoClient = require('../clients/zoho.client');
 const { mapZohoLeadToFrontend } = require('../leads/zoho.mapper');
+const TenantConfig = require('../models/tenantConfig.model');
 
 /**
  * Get dashboard overview metrics (scoped to organization)
@@ -19,15 +20,25 @@ async function getOverview(organizationId) {
         ? allLeadsRaw.filter(l => l.organizationId && l.organizationId.toString() === organizationId.toString())
         : allLeadsRaw;
 
+    // Load active/closed status keys from TenantConfig
+    let activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Booked', 'Appointment Scheduled', 'No Response'];
+    let closedStatuses = ['Deal Closed', 'Lost'];
+    try {
+        if (organizationId) {
+            const config = await TenantConfig.findOne({ organizationId });
+            if (config && config.leadStatuses && config.leadStatuses.length > 0) {
+                activeStatuses = config.leadStatuses.filter(s => s.isActive && !s.isClosed).map(s => s.key);
+                closedStatuses = config.leadStatuses.filter(s => s.isClosed).map(s => s.key);
+            }
+        }
+    } catch (e) { /* fallback */ }
+
     // Calculate metrics
     const totalLeads = allLeads.length;
-
-    // Active leads (New, Call Attended, Interested)
-    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled'];
     const activeLeads = allLeads.filter(l => activeStatuses.includes(l.status)).length;
 
-    // Conversion rate (simplified - closed won / total)
-    const closedWon = allLeads.filter(l => l.status === 'Closed Won').length;
+    // Conversion rate (closed / total)
+    const closedWon = allLeads.filter(l => closedStatuses.includes(l.status)).length;
     const conversionRate = totalLeads > 0 ? ((closedWon / totalLeads) * 100).toFixed(1) : 0;
 
     // Pipeline value

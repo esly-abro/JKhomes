@@ -10,7 +10,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 export default function Dashboard() {
   const { leads, activities, siteVisits } = useData();
-  const { appointmentFieldLabel } = useTenantConfig();
+  const { appointmentFieldLabel, leadStatuses, leadStatusKeys, closedStatusKeys, getStatusLabel, getStatusColor } = useTenantConfig();
 
   // Calculate real month-over-month changes
   const monthlyStats = useMemo(() => {
@@ -22,8 +22,8 @@ export default function Dashboard() {
     const thisMonthLeads = leads.filter(l => l.createdAt && new Date(l.createdAt) >= thisMonthStart);
     const lastMonthLeads = leads.filter(l => l.createdAt && new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) <= lastMonthEnd);
 
-    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Site Visit Scheduled'];
-    const closedStatuses = ['Deal Closed', 'Closed', 'Won'];
+    const activeStatuses = leadStatusKeys.filter(k => !closedStatusKeys.includes(k));
+    const closedStatuses = closedStatusKeys;
 
     // Total leads change
     const totalChange = lastMonthLeads.length > 0
@@ -68,7 +68,7 @@ export default function Dashboard() {
     },
     {
       title: 'Active Leads',
-      value: leads.filter(l => ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Site Visit Scheduled'].includes(l.status)).length,
+      value: leads.filter(l => leadStatusKeys.filter(k => !closedStatusKeys.includes(k)).includes(l.status)).length,
       change: `${monthlyStats.activeChange >= 0 ? '+' : ''}${monthlyStats.activeChange}%`,
       trend: monthlyStats.activeChange >= 0 ? 'up' : 'down',
       icon: TrendingUp,
@@ -78,8 +78,7 @@ export default function Dashboard() {
     {
       title: 'Conversion Rate',
       value: useMemo(() => {
-        const closedStatuses = ['Deal Closed', 'Closed', 'Won'];
-        const closed = leads.filter(l => closedStatuses.includes(l.status)).length;
+        const closed = leads.filter(l => closedStatusKeys.includes(l.status)).length;
         return leads.length > 0 ? `${((closed / leads.length) * 100).toFixed(1)}%` : '0.0%';
       }, [leads]),
       change: `${monthlyStats.conversionChange >= 0 ? '+' : ''}${monthlyStats.conversionChange}%`,
@@ -99,15 +98,14 @@ export default function Dashboard() {
     },
   ];
 
-  const funnelData = [
-    { name: 'New', value: leads.filter(l => l.status === 'New').length, fill: '#3b82f6' },
-    { name: 'Attended', value: leads.filter(l => l.status === 'Call Attended').length, fill: '#8b5cf6' },
-    { name: 'Interested', value: leads.filter(l => l.status === 'Interested').length, fill: '#10b981' },
-    { name: 'Appt Scheduled', value: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled').length, fill: '#f59e0b' },
-    { name: 'Appt Booked', value: leads.filter(l => l.status === 'Appointment Booked' || l.status === 'Site Visit Booked').length, fill: '#ec4899' },
-    { name: 'No Response', value: leads.filter(l => l.status === 'No Response').length, fill: '#6b7280' },
-    { name: 'Not Interested', value: leads.filter(l => l.status === 'Not Interested').length, fill: '#ef4444' },
-  ];
+  const funnelData = leadStatuses
+    .filter(s => s.isActive)
+    .map(s => ({
+      name: s.label,
+      value: leads.filter(l => l.status === s.key).length,
+      fill: s.color
+    }))
+    .filter(d => d.value > 0);
 
   const sourceData = [
     { name: 'Website', value: leads.filter(l => l.source === 'Website').length, color: '#3b82f6' },
@@ -186,8 +184,7 @@ export default function Dashboard() {
 
   // Calculate team performance from database agents
   const teamPerformance = useMemo(() => {
-    const closedStatuses = ['Deal Closed', 'Closed', 'Won'];
-    const activeStatuses = ['New', 'Call Attended', 'Interested', 'Appointment Scheduled', 'Appointment Booked', 'Site Visit Scheduled', 'Site Visit Booked'];
+    const activeKeys = leadStatusKeys.filter(k => !closedStatusKeys.includes(k));
 
     return agents.map(agent => {
       const agentLeads = leads.filter(lead => {
@@ -196,8 +193,8 @@ export default function Dashboard() {
         return ownerId === agent._id;
       });
 
-      const active = agentLeads.filter(l => activeStatuses.includes(l.status)).length;
-      const closed = agentLeads.filter(l => closedStatuses.includes(l.status)).length;
+      const active = agentLeads.filter(l => activeKeys.includes(l.status)).length;
+      const closed = agentLeads.filter(l => closedStatusKeys.includes(l.status)).length;
       const total = agentLeads.length;
 
       return {

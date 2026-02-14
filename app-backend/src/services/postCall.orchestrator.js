@@ -11,20 +11,7 @@
 const Lead = require('../models/Lead');
 const zohoClient = require('../clients/zoho.client');
 const dataLayer = require('../leads/lead.dataLayer');
-
-// Lead status mappings for CRM
-const LEAD_STATUS = {
-    NEW: 'New',
-    CALL_ATTENDED: 'Call Attended',
-    NO_RESPONSE: 'No Response',
-    NOT_INTERESTED: 'Not Interested',
-    APPOINTMENT_BOOKED: 'Appointment Booked',
-    APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
-    // Backward compat aliases
-    SITE_VISIT_BOOKED: 'Appointment Booked',
-    SITE_VISIT_SCHEDULED: 'Appointment Scheduled',
-    INTERESTED: 'Interested'
-};
+const { LEAD_STATUSES: LEAD_STATUS } = require('../constants');
 
 // Action types that can be executed
 const ACTION_TYPES = {

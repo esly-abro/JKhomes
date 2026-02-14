@@ -35,10 +35,20 @@ async function tenantConfigRoutes(app, options) {
         preHandler: requireRole(['owner', 'admin'])
     }, tenantConfigController.updateLocationLabel);
 
+    // PUT /api/tenant-config/lead-statuses — owner/admin only
+    app.put('/api/tenant-config/lead-statuses', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, tenantConfigController.updateLeadStatuses);
+
     // GET /api/tenant-config/category-usage — owner/admin/manager
     app.get('/api/tenant-config/category-usage', {
         preHandler: requireRole(['owner', 'admin', 'manager'])
     }, tenantConfigController.getCategoryUsage);
+
+    // GET /api/tenant-config/status-usage — owner/admin/manager
+    app.get('/api/tenant-config/status-usage', {
+        preHandler: requireRole(['owner', 'admin', 'manager'])
+    }, tenantConfigController.getStatusUsage);
 }
 
 module.exports = tenantConfigRoutes;

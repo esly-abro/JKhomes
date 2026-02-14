@@ -8,7 +8,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { getTenantConfig, TenantConfig, CategoryItem, AppointmentType, DEFAULT_TENANT_CONFIG } from '../../services/tenantConfig';
+import { getTenantConfig, TenantConfig, CategoryItem, AppointmentType, LeadStatus, DEFAULT_TENANT_CONFIG } from '../../services/tenantConfig';
 
 // ================================
 // CONTEXT TYPES
@@ -27,6 +27,16 @@ interface TenantConfigContextType {
     categories: CategoryItem[];
     /** The label for the category field (e.g., "Property Type", "Product Plan") */
     categoryFieldLabel: string;
+    /** Active lead statuses (sorted by order) — the tenant's custom pipeline */
+    leadStatuses: LeadStatus[];
+    /** All lead status keys (active only) */
+    leadStatusKeys: string[];
+    /** Closed status keys (deal won/lost) */
+    closedStatusKeys: string[];
+    /** Get status label by key */
+    getStatusLabel: (key: string) => string;
+    /** Get status color by key */
+    getStatusColor: (key: string) => string;
     /** Active appointment types (sorted by order) */
     appointmentTypes: AppointmentType[];
     /** The label for the appointment field (e.g., "Site Visit", "Meeting", "Appointment") */
@@ -52,6 +62,11 @@ const TenantConfigContext = createContext<TenantConfigContextType>({
     catalogModuleLabel: DEFAULT_TENANT_CONFIG.catalogModuleLabel || 'Catalog',
     categories: DEFAULT_TENANT_CONFIG.categories,
     categoryFieldLabel: DEFAULT_TENANT_CONFIG.categoryFieldLabel,
+    leadStatuses: DEFAULT_TENANT_CONFIG.leadStatuses,
+    leadStatusKeys: DEFAULT_TENANT_CONFIG.leadStatuses.filter(s => s.isActive).map(s => s.key),
+    closedStatusKeys: DEFAULT_TENANT_CONFIG.leadStatuses.filter(s => s.isActive && s.isClosed).map(s => s.key),
+    getStatusLabel: (key) => key,
+    getStatusColor: () => '#6b7280',
     appointmentTypes: DEFAULT_TENANT_CONFIG.appointmentTypes,
     appointmentFieldLabel: DEFAULT_TENANT_CONFIG.appointmentFieldLabel,
     locationFieldLabel: DEFAULT_TENANT_CONFIG.locationFieldLabel,
@@ -98,6 +113,14 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
 
     const categoryFieldLabel = tenantConfig.categoryFieldLabel || 'Category';
 
+    // Derived: active lead statuses sorted by order
+    const leadStatuses = (tenantConfig.leadStatuses || DEFAULT_TENANT_CONFIG.leadStatuses)
+        .filter((s: LeadStatus) => s.isActive)
+        .sort((a: LeadStatus, b: LeadStatus) => a.order - b.order);
+
+    const leadStatusKeys = leadStatuses.map((s: LeadStatus) => s.key);
+    const closedStatusKeys = leadStatuses.filter((s: LeadStatus) => s.isClosed).map((s: LeadStatus) => s.key);
+
     // Derived: active appointment types sorted by order
     const appointmentTypes = (tenantConfig.appointmentTypes || [])
         .filter((a: AppointmentType) => a.isActive)
@@ -124,6 +147,18 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
         return apt ? apt.label : key;
     }, [tenantConfig.appointmentTypes]);
 
+    const getStatusLabel = useCallback((key: string): string => {
+        const allStatuses = tenantConfig.leadStatuses || DEFAULT_TENANT_CONFIG.leadStatuses;
+        const st = allStatuses.find((s: LeadStatus) => s.key === key);
+        return st ? st.label : key;
+    }, [tenantConfig.leadStatuses]);
+
+    const getStatusColor = useCallback((key: string): string => {
+        const allStatuses = tenantConfig.leadStatuses || DEFAULT_TENANT_CONFIG.leadStatuses;
+        const st = allStatuses.find((s: LeadStatus) => s.key === key);
+        return st ? st.color : '#6b7280';
+    }, [tenantConfig.leadStatuses]);
+
     const value: TenantConfigContextType = {
         tenantConfig,
         industry,
@@ -131,6 +166,11 @@ export function TenantConfigProvider({ children }: { children: React.ReactNode }
         catalogModuleLabel,
         categories,
         categoryFieldLabel,
+        leadStatuses,
+        leadStatusKeys,
+        closedStatusKeys,
+        getStatusLabel,
+        getStatusColor,
         appointmentTypes,
         appointmentFieldLabel,
         locationFieldLabel,

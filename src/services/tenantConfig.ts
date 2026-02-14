@@ -22,6 +22,15 @@ export interface AppointmentType {
     order: number;
 }
 
+export interface LeadStatus {
+    key: string;
+    label: string;
+    color: string;
+    isActive: boolean;
+    isClosed: boolean;
+    order: number;
+}
+
 export interface EnabledModules {
     catalog: boolean;
     appointments: boolean;
@@ -36,6 +45,7 @@ export interface TenantConfig {
     industry: string;
     categories: CategoryItem[];
     categoryFieldLabel: string;
+    leadStatuses: LeadStatus[];
     appointmentTypes: AppointmentType[];
     appointmentFieldLabel: string;
     catalogModuleLabel?: string;
@@ -114,6 +124,22 @@ export async function updateLocationLabel(
     return response.data;
 }
 
+/** Update the lead status pipeline (custom stages/funnel). */
+export async function updateLeadStatuses(
+    leadStatuses: LeadStatus[]
+): Promise<TenantConfig> {
+    const response = await api.put('/api/tenant-config/lead-statuses', {
+        leadStatuses
+    });
+    return response.data;
+}
+
+/** Get usage counts for each status (how many leads in each). */
+export async function getStatusUsage(): Promise<Record<string, number>> {
+    const response = await api.get('/api/tenant-config/status-usage');
+    return response.data;
+}
+
 // ================================
 // DEFAULTS (used before config loads)
 // ================================
@@ -129,6 +155,17 @@ export const DEFAULT_TENANT_CONFIG: TenantConfig = {
         { key: 'townhouse', label: 'Townhouse', isActive: true, order: 6 }
     ],
     categoryFieldLabel: 'Property Type',
+    leadStatuses: [
+        { key: 'New', label: 'New', color: '#3b82f6', isActive: true, isClosed: false, order: 0 },
+        { key: 'Call Attended', label: 'Call Attended', color: '#8b5cf6', isActive: true, isClosed: false, order: 1 },
+        { key: 'No Response', label: 'No Response', color: '#6b7280', isActive: true, isClosed: false, order: 2 },
+        { key: 'Interested', label: 'Interested', color: '#10b981', isActive: true, isClosed: false, order: 3 },
+        { key: 'Appointment Booked', label: 'Site Visit Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+        { key: 'Appointment Scheduled', label: 'Site Visit Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        { key: 'Not Interested', label: 'Not Interested', color: '#ef4444', isActive: true, isClosed: false, order: 6 },
+        { key: 'Deal Closed', label: 'Deal Closed', color: '#059669', isActive: true, isClosed: true, order: 7 },
+        { key: 'Lost', label: 'Lost', color: '#dc2626', isActive: true, isClosed: true, order: 8 },
+    ],
     appointmentTypes: [
         { key: 'site_visit', label: 'Site Visit', isActive: true, order: 0 },
         { key: 'meeting', label: 'Meeting', isActive: true, order: 1 },

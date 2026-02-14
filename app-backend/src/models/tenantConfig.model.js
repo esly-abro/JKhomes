@@ -56,6 +56,37 @@ const appointmentTypeSchema = new mongoose.Schema({
     }
 }, { _id: false });
 
+// Lead status schema — defines the tenant's custom pipeline stages
+const leadStatusSchema = new mongoose.Schema({
+    key: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    label: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    color: {
+        type: String,
+        default: '#6b7280',
+        trim: true
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    isClosed: {
+        type: Boolean,
+        default: false
+    },
+    order: {
+        type: Number,
+        default: 0
+    }
+}, { _id: false });
+
 // ================================
 // INDUSTRY DEFAULTS
 // ================================
@@ -249,6 +280,67 @@ function getDefaultCatalogModuleLabel(industry) {
 }
 
 /**
+ * Returns the default lead statuses (pipeline stages) for a given industry.
+ * Each status has a key (stored in DB), label (displayed in UI), color, and flags.
+ * isClosed=true means the lead is considered "done" (won or lost).
+ */
+function getDefaultLeadStatuses(industry) {
+    // Core statuses shared by all industries
+    const coreStatuses = [
+        { key: 'New', label: 'New', color: '#3b82f6', isActive: true, isClosed: false, order: 0 },
+        { key: 'Call Attended', label: 'Call Attended', color: '#8b5cf6', isActive: true, isClosed: false, order: 1 },
+        { key: 'No Response', label: 'No Response', color: '#6b7280', isActive: true, isClosed: false, order: 2 },
+        { key: 'Interested', label: 'Interested', color: '#10b981', isActive: true, isClosed: false, order: 3 },
+    ];
+
+    // Industry-specific middle stages
+    const industryStages = {
+        real_estate: [
+            { key: 'Appointment Booked', label: 'Site Visit Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Site Visit Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        saas: [
+            { key: 'Appointment Booked', label: 'Demo Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Demo Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        healthcare: [
+            { key: 'Appointment Booked', label: 'Consultation Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Consultation Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        education: [
+            { key: 'Appointment Booked', label: 'Campus Visit Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Campus Visit Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        insurance: [
+            { key: 'Appointment Booked', label: 'Meeting Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Meeting Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        automotive: [
+            { key: 'Appointment Booked', label: 'Test Drive Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Test Drive Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        finance: [
+            { key: 'Appointment Booked', label: 'Meeting Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Meeting Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ],
+        generic: [
+            { key: 'Appointment Booked', label: 'Appointment Booked', color: '#8b5cf6', isActive: true, isClosed: false, order: 4 },
+            { key: 'Appointment Scheduled', label: 'Appointment Scheduled', color: '#6366f1', isActive: true, isClosed: false, order: 5 },
+        ]
+    };
+
+    // Closing statuses shared by all industries
+    const closingStatuses = [
+        { key: 'Not Interested', label: 'Not Interested', color: '#ef4444', isActive: true, isClosed: false, order: 6 },
+        { key: 'Deal Closed', label: 'Deal Closed', color: '#059669', isActive: true, isClosed: true, order: 7 },
+        { key: 'Lost', label: 'Lost', color: '#dc2626', isActive: true, isClosed: true, order: 8 },
+    ];
+
+    const stages = industryStages[industry] || industryStages.generic;
+    return [...coreStatuses, ...stages, ...closingStatuses];
+}
+
+/**
  * Returns the default enabled modules per industry.
  * Controls which features are available for each organization type.
  */
@@ -365,6 +457,17 @@ const tenantConfigSchema = new mongoose.Schema({
     },
 
     // ================================
+    // CONFIGURABLE LEAD STATUS PIPELINE
+    // (replaces hardcoded LEAD_STATUSES)
+    // ================================
+    leadStatuses: {
+        type: [leadStatusSchema],
+        default: function () {
+            return getDefaultLeadStatuses(this.industry || 'generic');
+        }
+    },
+
+    // ================================
     // CONFIGURABLE APPOINTMENT TYPES
     // (replaces hardcoded "Site Visit")
     // ================================
@@ -435,6 +538,7 @@ tenantConfigSchema.statics.getOrCreate = async function (organizationId, industr
             industry: effectiveIndustry,
             categories: getDefaultCategories(effectiveIndustry),
             categoryFieldLabel: getDefaultCategoryFieldLabel(effectiveIndustry),
+            leadStatuses: getDefaultLeadStatuses(effectiveIndustry),
             appointmentTypes: getDefaultAppointmentTypes(effectiveIndustry),
             appointmentFieldLabel: getDefaultAppointmentFieldLabel(effectiveIndustry),
             catalogModuleLabel: catalogLabel || getDefaultCatalogModuleLabel(effectiveIndustry),
@@ -445,6 +549,32 @@ tenantConfigSchema.statics.getOrCreate = async function (organizationId, industr
         config = await this.create(doc);
     }
     return config;
+};
+
+/**
+ * Get active lead status keys for validation.
+ */
+tenantConfigSchema.methods.getActiveStatusKeys = function () {
+    return this.leadStatuses
+        .filter(s => s.isActive)
+        .map(s => s.key);
+};
+
+/**
+ * Get status label by key.
+ */
+tenantConfigSchema.methods.getStatusLabel = function (key) {
+    const st = this.leadStatuses.find(s => s.key === key);
+    return st ? st.label : key;
+};
+
+/**
+ * Get closed status keys.
+ */
+tenantConfigSchema.methods.getClosedStatusKeys = function () {
+    return this.leadStatuses
+        .filter(s => s.isActive && s.isClosed)
+        .map(s => s.key);
 };
 
 /**
@@ -475,6 +605,7 @@ const TenantConfig = mongoose.model('TenantConfig', tenantConfigSchema);
 TenantConfig.getDefaultCategories = getDefaultCategories;
 TenantConfig.getDefaultCategoryFieldLabel = getDefaultCategoryFieldLabel;
 TenantConfig.getDefaultLocationFieldLabel = getDefaultLocationFieldLabel;
+TenantConfig.getDefaultLeadStatuses = getDefaultLeadStatuses;
 TenantConfig.getDefaultAppointmentTypes = getDefaultAppointmentTypes;
 TenantConfig.getDefaultAppointmentFieldLabel = getDefaultAppointmentFieldLabel;
 TenantConfig.getDefaultCatalogModuleLabel = getDefaultCatalogModuleLabel;

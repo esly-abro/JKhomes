@@ -49,7 +49,7 @@ const createLeadSchema = z.object({
         phone: phoneSchema,
         email: emailSchema.optional(),
         source: z.enum(['website', 'referral', 'social', 'advertisement', 'whatsapp', 'call', 'walk-in', 'other']).optional(),
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.string().max(100).optional(),
         budget: z.number().positive().optional(),
         notes: z.string().max(2000, 'Notes must be less than 2000 characters').optional(),
         propertyInterest: z.string().optional(),
@@ -69,7 +69,7 @@ const updateLeadSchema = z.object({
         phone: phoneSchema.optional(),
         email: emailSchema.optional(),
         source: z.enum(['website', 'referral', 'social', 'advertisement', 'whatsapp', 'call', 'walk-in', 'other']).optional(),
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.string().max(100).optional(),
         budget: z.number().positive().optional(),
         notes: z.string().max(2000).optional(),
         propertyInterest: z.string().optional(),
@@ -83,7 +83,7 @@ const updateLeadSchema = z.object({
 
 const getLeadsSchema = z.object({
     query: paginationSchema.extend({
-        status: z.enum(['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested']).optional(),
+        status: z.string().max(100).optional(),
         agentId: objectIdSchema.optional(),
         source: z.string().optional(),
         search: z.string().max(100).optional(),

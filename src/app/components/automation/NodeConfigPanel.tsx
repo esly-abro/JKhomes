@@ -14,7 +14,7 @@ interface NodeConfigPanelProps {
 }
 
 export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddConditionNode }: NodeConfigPanelProps) {
-  const { categoryFieldLabel } = useTenantConfig();
+  const { categoryFieldLabel, leadStatuses } = useTenantConfig();
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [templateError, setTemplateError] = useState<string | null>(null);
@@ -492,13 +492,9 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       <option value="">Select status...</option>
-                      <option value="New">New</option>
-                      <option value="Call Attended">Call Attended</option>
-                      <option value="No Response">No Response</option>
-                      <option value="Not Interested">Not Interested</option>
-                      <option value="Appointment Booked">Appointment Booked</option>
-                      <option value="Appointment Scheduled">Appointment Scheduled</option>
-                      <option value="Interested">Interested</option>
+                      {leadStatuses.map(s => (
+                        <option key={s.key} value={s.key}>{s.label}</option>
+                      ))}
                     </select>
                   )}
 

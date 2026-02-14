@@ -29,7 +29,7 @@ interface LeadActivity {
 
 export default function LeadDetail() {
   const { id } = useParams();
-  const { categoryFieldLabel, appointmentFieldLabel } = useTenantConfig();
+  const { categoryFieldLabel, appointmentFieldLabel, leadStatuses, getStatusColor, getStatusLabel, closedStatusKeys } = useTenantConfig();
   const { leads, activities, updateLead, addActivity } = useData();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [callStatus, setCallStatus] = useState<string | null>(null);
@@ -375,11 +375,8 @@ export default function LeadDetail() {
   };
 
   const getStatusBadgeColor = (status: string) => {
-    if (status.includes('Attended')) return 'bg-green-100 text-green-700';
-    if (status.includes('No Response')) return 'bg-yellow-100 text-yellow-700';
-    if (status.includes('Not Interested')) return 'bg-red-100 text-red-700';
-    if (status.includes('Site Visit') || status.includes('Appointment')) return 'bg-purple-100 text-purple-700';
-    return 'bg-gray-100 text-gray-700';
+    const color = getStatusColor(status);
+    return `bg-opacity-10 text-opacity-90`;
   };
 
   return (
@@ -406,8 +403,8 @@ export default function LeadDetail() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-lg font-semibold text-gray-700 mb-2">Lead Information</h2>
-                <Badge className={getStatusBadgeColor(lead.status)}>
-                  {lead.status}
+                <Badge style={{ backgroundColor: `${getStatusColor(lead.status)}20`, color: getStatusColor(lead.status) }}>
+                  {getStatusLabel(lead.status)}
                 </Badge>
               </div>
               <div className="text-right">
@@ -648,10 +645,9 @@ export default function LeadDetail() {
                   <SelectValue placeholder="Select status..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Call Attended">Call Attended</SelectItem>
-                  <SelectItem value="No Response">No Response</SelectItem>
-                  <SelectItem value="Not Interested">Not Interested</SelectItem>
-                  <SelectItem value="Appointment Booked">{appointmentFieldLabel} Booked</SelectItem>
+                  {leadStatuses.filter(s => !s.isClosed).map(s => (
+                    <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -679,15 +675,7 @@ export default function LeadDetail() {
                   // Also update local state
                   updateLead(lead.id, { status: newStatus });
 
-                  // Log activity for status update
-                  const colorMap: Record<string, string> = {
-                    'Call Attended': 'bg-green-500',
-                    'No Response': 'bg-yellow-500',
-                    'Not Interested': 'bg-red-500',
-                    'Appointment Booked': 'bg-purple-500',
-                    'Site Visit Booked': 'bg-purple-500'
-                  };
-                  addLeadActivity('status', `Status Updated: ${newStatus}`, colorMap[newStatus] || 'bg-gray-500');
+                  addLeadActivity('status', `Status Updated: ${getStatusLabel(newStatus)}`, 'bg-gray-500');
 
                   setUpdateMessage(`✅ Status updated to "${newStatus}" and synced to Zoho CRM`);
                   setTimeout(() => {

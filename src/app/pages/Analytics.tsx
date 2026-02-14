@@ -10,7 +10,7 @@ import { getAllAnalytics, type AnalyticsData } from '../../services/analytics';
 
 export default function Analytics() {
   const { leads } = useData();
-  const { appointmentFieldLabel } = useTenantConfig();
+  const { appointmentFieldLabel, leadStatuses, getStatusLabel, getStatusColor } = useTenantConfig();
   const [dateRange, setDateRange] = useState('30days');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -229,25 +229,22 @@ export default function Analytics() {
         <TabsContent value="leads" className="space-y-6">
           {/* Lead Status Summary */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            {[
-              { status: 'New', count: leads.filter(l => l.status === 'New').length, color: 'bg-blue-500' },
-              { status: 'Call Attended', count: leads.filter(l => l.status === 'Call Attended').length, color: 'bg-purple-500' },
-              { status: 'Interested', count: leads.filter(l => l.status === 'Interested').length, color: 'bg-green-500' },
-              { status: `${appointmentFieldLabel} Scheduled`, count: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled').length, color: 'bg-orange-500' },
-              { status: 'Not Interested', count: leads.filter(l => l.status === 'Not Interested').length, color: 'bg-red-500' },
-            ].map(item => (
-              <Card key={item.status}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${item.color}`}></div>
-                    <div>
-                      <p className="text-sm text-gray-600">{item.status}</p>
-                      <p className="text-2xl font-bold">{item.count}</p>
+            {leadStatuses.filter(s => !s.isClosed).map(s => {
+              const count = leads.filter(l => l.status === s.key).length;
+              return (
+                <Card key={s.key}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }}></div>
+                      <div>
+                        <p className="text-sm text-gray-600">{s.label}</p>
+                        <p className="text-2xl font-bold">{count}</p>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -260,14 +257,11 @@ export default function Analytics() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
-                      data={[
-                        { name: 'New', value: leads.filter(l => l.status === 'New').length },
-                        { name: 'Call Attended', value: leads.filter(l => l.status === 'Call Attended').length },
-                        { name: 'Interested', value: leads.filter(l => l.status === 'Interested').length },
-                        { name: appointmentFieldLabel, value: leads.filter(l => l.status === 'Appointment Scheduled' || l.status === 'Site Visit Scheduled' || l.status === 'Appointment Booked' || l.status === 'Site Visit Booked').length },
-                        { name: 'No Response', value: leads.filter(l => l.status === 'No Response').length },
-                        { name: 'Not Interested', value: leads.filter(l => l.status === 'Not Interested').length },
-                      ].filter(d => d.value > 0)}
+                      data={leadStatuses.map(s => ({
+                        name: s.label,
+                        value: leads.filter(l => l.status === s.key).length,
+                        fill: s.color,
+                      })).filter(d => d.value > 0)}
                       cx="50%"
                       cy="50%"
                       labelLine={false}
@@ -276,8 +270,8 @@ export default function Analytics() {
                       fill="#8884d8"
                       dataKey="value"
                     >
-                      {COLORS.map((color, index) => (
-                        <Cell key={`cell-${index}`} fill={color} />
+                      {leadStatuses.filter(s => leads.some(l => l.status === s.key)).map((s, index) => (
+                        <Cell key={`cell-${index}`} fill={s.color} />
                       ))}
                     </Pie>
                     <Tooltip />

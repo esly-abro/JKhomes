@@ -210,9 +210,9 @@ const LeadsList = ({ leads }: { leads: Lead[] }) => (
 );
 
 const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
-  const statuses = ['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Appointment Scheduled', 'Site Visit Booked', 'Site Visit Scheduled', 'Interested'];
-  // Include statuses that are in leads but not in the default list
-  const allStatuses = Array.from(new Set([...statuses, ...leads.map(l => l.status)]));
+  const { leadStatusKeys, getStatusLabel } = useTenantConfig();
+  // Include statuses that are in leads but not in the tenant pipeline
+  const allStatuses = Array.from(new Set([...leadStatusKeys, ...leads.map(l => l.status)]));
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 min-h-[calc(100vh-250px)]">
@@ -221,7 +221,7 @@ const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
         return (
           <div key={status} className="min-w-[300px] w-[300px] bg-gray-50 rounded-lg flex flex-col h-full max-h-full">
             <div className="p-3 font-semibold text-sm text-gray-700 flex justify-between items-center bg-gray-100/50 rounded-t-lg border-b border-gray-200">
-              <span>{status}</span>
+              <span>{getStatusLabel(status)}</span>
               <span className="bg-white px-2 py-0.5 rounded-full text-xs text-gray-500 border border-gray-200">
                 {statusLeads.length}
               </span>
@@ -259,30 +259,19 @@ const LeadsKanban = ({ leads }: { leads: Lead[] }) => {
 };
 
 const StatusBadge = ({ status }: { status: string }) => {
-  const getStatusStyles = (s: string) => {
-    switch (s) {
-      case 'Call Attended':
-        return 'bg-blue-100 text-blue-700 hover:bg-blue-100';
-      case 'No Response':
-      case 'New':
-        return 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100';
-      case 'Site Visit Scheduled':
-      case 'Site Visit Booked':
-      case 'Appointment Scheduled':
-      case 'Appointment Booked':
-        return 'bg-purple-100 text-purple-700 hover:bg-purple-100';
-      case 'Interested':
-        return 'bg-green-100 text-green-700 hover:bg-green-100';
-      case 'Not Interested':
-        return 'bg-red-100 text-red-700 hover:bg-red-100';
-      default:
-        return 'bg-gray-100 text-gray-700';
-    }
+  const { getStatusColor, getStatusLabel } = useTenantConfig();
+  const color = getStatusColor(status);
+
+  // Convert hex color to a tailwind-like badge style
+  const style = {
+    backgroundColor: `${color}20`,
+    color: color,
+    borderColor: `${color}40`,
   };
 
   return (
-    <Badge className={getStatusStyles(status)}>
-      {status}
+    <Badge style={style} className="border">
+      {getStatusLabel(status)}
     </Badge>
   );
 };
@@ -291,7 +280,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 export default function Leads() {
   const { leads, loading, error, refreshLeads } = useData();
   const { addNotification } = useNotifications();
-  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel } = useTenantConfig();
+  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, leadStatuses, leadStatusKeys } = useTenantConfig();
   const { catalogModuleLabel } = useOrganization();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -685,13 +674,12 @@ export default function Leads() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="New">New</SelectItem>
-                <SelectItem value="Call Attended">Call Attended</SelectItem>
-                <SelectItem value="No Response">No Response</SelectItem>
-                <SelectItem value="Not Interested">Not Interested</SelectItem>
-                <SelectItem value="Appointment Booked">{appointmentFieldLabel} Booked</SelectItem>
+                {leadStatuses.map(s => (
+                  <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>
+                ))}
+                {/* Include statuses from leads that aren't in the pipeline */}
                 {Array.from(new Set(leads.map(l => l.status)))
-                  .filter(s => !['New', 'Call Attended', 'No Response', 'Not Interested', 'Appointment Booked', 'Site Visit Booked'].includes(s))
+                  .filter(s => !leadStatusKeys.includes(s))
                   .map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)
                 }
               </SelectContent>
