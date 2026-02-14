@@ -16,15 +16,16 @@
  */
 
 const { Queue, QueueEvents } = require('bullmq');
-const { getRedisConnection } = require('../config/redis');
+const { getRedisConfig } = require('../config/redis');
 const logger = require('../utils/logger');
 
 // ─── Queue Names ────────────────────────────────────────────────
 
 const QUEUE_NAMES = {
-    EXECUTE: 'workflow:execute',
-    TRIGGER: 'workflow:trigger',
-    TIMEOUT: 'workflow:timeout',
+    EXECUTE: 'workflow-execute',
+    TRIGGER: 'workflow-trigger',
+    TIMEOUT: 'workflow-timeout',
+    DEAD_LETTER: 'workflow-dead-letter',
 };
 
 // ─── Queue Instances ────────────────────────────────────────────
@@ -32,11 +33,12 @@ const QUEUE_NAMES = {
 let _executeQueue = null;
 let _triggerQueue = null;
 let _timeoutQueue = null;
+let _deadLetterQueue = null;
 
 function getExecuteQueue() {
     if (!_executeQueue) {
         _executeQueue = new Queue(QUEUE_NAMES.EXECUTE, {
-            connection: getRedisConnection(),
+            connection: getRedisConfig(),
             defaultJobOptions: {
                 attempts: 3,
                 backoff: { type: 'exponential', delay: 2000 },
@@ -51,9 +53,9 @@ function getExecuteQueue() {
 function getTriggerQueue() {
     if (!_triggerQueue) {
         _triggerQueue = new Queue(QUEUE_NAMES.TRIGGER, {
-            connection: getRedisConnection(),
+            connection: getRedisConfig(),
             defaultJobOptions: {
-                attempts: 2,
+                attempts: 3,
                 backoff: { type: 'exponential', delay: 1000 },
                 removeOnComplete: { count: 200, age: 24 * 3600 },
                 removeOnFail: { count: 500, age: 7 * 24 * 3600 },
@@ -66,9 +68,9 @@ function getTriggerQueue() {
 function getTimeoutQueue() {
     if (!_timeoutQueue) {
         _timeoutQueue = new Queue(QUEUE_NAMES.TIMEOUT, {
-            connection: getRedisConnection(),
+            connection: getRedisConfig(),
             defaultJobOptions: {
-                attempts: 2,
+                attempts: 3,
                 backoff: { type: 'exponential', delay: 5000 },
                 removeOnComplete: { count: 100 },
                 removeOnFail: { count: 200 },
@@ -181,6 +183,25 @@ async function enqueueTimeoutCheck(runId, type, delayMs) {
     return job;
 }
 
+// ─── Dead Letter Queue ──────────────────────────────────────────
+
+/**
+ * Dead Letter Queue — stores jobs that exhausted all retries.
+ * Jobs are kept indefinitely for manual inspection and replay.
+ */
+function getDeadLetterQueue() {
+    if (!_deadLetterQueue) {
+        _deadLetterQueue = new Queue(QUEUE_NAMES.DEAD_LETTER, {
+            connection: getRedisConfig(),
+            defaultJobOptions: {
+                removeOnComplete: false,  // keep all for inspection
+                removeOnFail: false,
+            },
+        });
+    }
+    return _deadLetterQueue;
+}
+
 // ─── Drain & Close ──────────────────────────────────────────────
 
 async function closeQueues() {
@@ -188,10 +209,12 @@ async function closeQueues() {
     if (_executeQueue) promises.push(_executeQueue.close());
     if (_triggerQueue) promises.push(_triggerQueue.close());
     if (_timeoutQueue) promises.push(_timeoutQueue.close());
+    if (_deadLetterQueue) promises.push(_deadLetterQueue.close());
     await Promise.allSettled(promises);
     _executeQueue = null;
     _triggerQueue = null;
     _timeoutQueue = null;
+    _deadLetterQueue = null;
     logger.info('BullMQ queues closed');
 }
 
@@ -202,6 +225,7 @@ module.exports = {
     getExecuteQueue,
     getTriggerQueue,
     getTimeoutQueue,
+    getDeadLetterQueue,
     enqueueTriggerEvent,
     enqueueNodeExecution,
     enqueueTimeoutCheck,

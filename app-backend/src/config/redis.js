@@ -1,8 +1,10 @@
 /**
  * Redis Configuration
  * 
- * Provides Redis connection for BullMQ job queues.
- * Supports both single-instance and Sentinel configurations.
+ * Provides Redis connection config for BullMQ job queues.
+ * 
+ * BullMQ manages its own connections internally — we provide config, not instances.
+ * A separate shared IORedis instance is kept only for health checks.
  * 
  * Environment Variables:
  *   REDIS_HOST     - Redis host (default: 127.0.0.1)
@@ -15,12 +17,31 @@
 const IORedis = require('ioredis');
 const logger = require('../utils/logger');
 
-// ─── Parse Config ───────────────────────────────────────────────
+let _healthConnection = null;
+let _redisAvailable = null; // null = unknown, true/false = checked
 
+// ─── Connection Config (for BullMQ) ────────────────────────────
+
+/**
+ * Returns a plain config object suitable for BullMQ Queue / Worker `connection` option.
+ * BullMQ will create and manage its own IORedis instances from this config.
+ */
 function getRedisConfig() {
-    // If REDIS_URL is set, use it directly (e.g. redis://:password@host:6379/0)
     if (process.env.REDIS_URL) {
-        return { url: process.env.REDIS_URL };
+        // Parse URL into components for BullMQ (it needs host/port, not url)
+        try {
+            const url = new URL(process.env.REDIS_URL);
+            return {
+                host: url.hostname || '127.0.0.1',
+                port: parseInt(url.port, 10) || 6379,
+                password: url.password || undefined,
+                db: parseInt(url.pathname?.slice(1), 10) || 0,
+                maxRetriesPerRequest: null,
+                enableReadyCheck: false,
+            };
+        } catch {
+            logger.warn('Invalid REDIS_URL, falling back to host/port config');
+        }
     }
 
     return {
@@ -30,111 +51,67 @@ function getRedisConfig() {
         db: parseInt(process.env.REDIS_DB, 10) || 0,
         maxRetriesPerRequest: null, // Required by BullMQ
         enableReadyCheck: false,    // Required by BullMQ
-        retryStrategy(times) {
-            const delay = Math.min(times * 200, 5000);
-            logger.warn(`Redis reconnecting in ${delay}ms (attempt ${times})`);
-            return delay;
-        },
     };
 }
 
-// ─── Shared connection (for BullMQ Queue + Worker) ──────────────
-
-let _connection = null;
-let _subscriber = null;
+// ─── Health Check Connection ────────────────────────────────────
 
 /**
- * Get or create the shared Redis connection.
- * BullMQ requires maxRetriesPerRequest: null.
+ * Get a lightweight IORedis connection for health checks only.
+ * This is NOT used by BullMQ — it manages its own connections.
  */
-function getRedisConnection() {
-    if (_connection) return _connection;
+function _getHealthConnection() {
+    if (_healthConnection) return _healthConnection;
 
     const config = getRedisConfig();
-
-    if (config.url) {
-        _connection = new IORedis(config.url, {
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-        });
-    } else {
-        _connection = new IORedis(config);
-    }
-
-    _connection.on('connect', () => {
-        logger.info('✅ Redis connected');
+    _healthConnection = new IORedis({
+        ...config,
+        lazyConnect: true,           // Don't auto-connect
+        retryStrategy: () => null,   // Don't auto-retry — health check is on-demand
     });
 
-    _connection.on('error', (err) => {
-        logger.error(`Redis connection error: ${err.message}`);
-    });
+    // Suppress unhandled error events
+    _healthConnection.on('error', () => {});
 
-    _connection.on('close', () => {
-        logger.warn('Redis connection closed');
-    });
-
-    return _connection;
-}
-
-/**
- * Get a separate subscriber connection for BullMQ Worker.
- * BullMQ workers need their own subscriber connection.
- */
-function getRedisSubscriber() {
-    if (_subscriber) return _subscriber;
-
-    const config = getRedisConfig();
-
-    if (config.url) {
-        _subscriber = new IORedis(config.url, {
-            maxRetriesPerRequest: null,
-            enableReadyCheck: false,
-        });
-    } else {
-        _subscriber = new IORedis(config);
-    }
-
-    _subscriber.on('error', (err) => {
-        logger.error(`Redis subscriber error: ${err.message}`);
-    });
-
-    return _subscriber;
-}
-
-/**
- * Graceful shutdown — close both connections.
- */
-async function closeRedis() {
-    const promises = [];
-    if (_connection) {
-        promises.push(_connection.quit().catch(() => _connection.disconnect()));
-        _connection = null;
-    }
-    if (_subscriber) {
-        promises.push(_subscriber.quit().catch(() => _subscriber.disconnect()));
-        _subscriber = null;
-    }
-    await Promise.allSettled(promises);
-    logger.info('Redis connections closed');
+    return _healthConnection;
 }
 
 /**
  * Health check — returns true if Redis is reachable.
+ * Non-blocking, times out after 2s.
  */
 async function isRedisHealthy() {
     try {
-        const conn = getRedisConnection();
-        const pong = await conn.ping();
-        return pong === 'PONG';
+        const conn = _getHealthConnection();
+        if (conn.status !== 'ready' && conn.status !== 'connect') {
+            await conn.connect();
+        }
+        const result = await Promise.race([
+            conn.ping(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000)),
+        ]);
+        _redisAvailable = (result === 'PONG');
+        return _redisAvailable;
     } catch {
+        _redisAvailable = false;
         return false;
     }
 }
 
+/**
+ * Graceful shutdown — close health check connection.
+ * BullMQ workers and queues close their own connections via .close().
+ */
+async function closeRedis() {
+    if (_healthConnection) {
+        try { await _healthConnection.quit(); } catch { /* ignore */ }
+        _healthConnection = null;
+    }
+    logger.info('Redis connections closed');
+}
+
 module.exports = {
     getRedisConfig,
-    getRedisConnection,
-    getRedisSubscriber,
     closeRedis,
     isRedisHealthy,
 };

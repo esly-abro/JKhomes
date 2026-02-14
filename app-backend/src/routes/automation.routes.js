@@ -5,9 +5,10 @@
 const Automation = require('../models/Automation');
 const AutomationRun = require('../models/AutomationRun');
 const AutomationJob = require('../models/AutomationJob');
+const ExecutionLog = require('../models/ExecutionLog');
 const workflowEngine = require('../services/workflow.engine');
 const defaultAutomationTemplate = require('../config/defaultAutomationTemplate');
-const { getExecuteQueue, getTriggerQueue, getTimeoutQueue } = require('../services/workflow.queue');
+const { getExecuteQueue, getTriggerQueue, getTimeoutQueue, getDeadLetterQueue } = require('../services/workflow.queue');
 
 async function automationRoutes(fastify, options) {
   const { requireRole } = require('../middleware/roles');
@@ -832,6 +833,118 @@ async function automationRoutes(fastify, options) {
       return { success: true, data: health };
     } catch (error) {
       console.error('Error getting engine health:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  // =========================================================================
+  // Execution Logs (Phase 3 — Structured per-step audit trail)
+  // =========================================================================
+
+  /**
+   * GET /api/automations/runs/:runId/logs
+   * Get all execution logs for a specific automation run
+   */
+  fastify.get('/runs/:runId/logs', async (request, reply) => {
+    try {
+      const { runId } = request.params;
+      const orgId = request.user?.organizationId;
+
+      const query = { automationRun: runId };
+      if (orgId) query.organizationId = orgId;
+
+      const logs = await ExecutionLog.find(query)
+        .sort({ timestamp: 1 })
+        .limit(500)
+        .lean();
+
+      return { success: true, data: logs };
+    } catch (error) {
+      console.error('Error fetching execution logs:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/automations/execution-logs
+   * Search execution logs with filters
+   * Query params: automationId, status, leadId, from, to, limit, skip
+   */
+  fastify.get('/execution-logs', async (request, reply) => {
+    try {
+      const orgId = request.user?.organizationId;
+      const {
+        automationId,
+        status,
+        leadId,
+        from,
+        to,
+        limit = 100,
+        skip = 0,
+      } = request.query;
+
+      const query = {};
+      if (orgId) query.organizationId = orgId;
+      if (automationId) query.automation = automationId;
+      if (status) query.status = status;
+      if (leadId) query.lead = leadId;
+      if (from || to) {
+        query.timestamp = {};
+        if (from) query.timestamp.$gte = new Date(from);
+        if (to) query.timestamp.$lte = new Date(to);
+      }
+
+      const [logs, total] = await Promise.all([
+        ExecutionLog.find(query)
+          .sort({ timestamp: -1 })
+          .skip(Number(skip))
+          .limit(Math.min(Number(limit), 500))
+          .lean(),
+        ExecutionLog.countDocuments(query),
+      ]);
+
+      return {
+        success: true,
+        data: logs,
+        pagination: { total, limit: Number(limit), skip: Number(skip) },
+      };
+    } catch (error) {
+      console.error('Error searching execution logs:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/automations/queue/dead-letter
+   * Get Dead Letter Queue jobs for inspection
+   */
+  fastify.get('/queue/dead-letter', async (request, reply) => {
+    try {
+      const dlq = getDeadLetterQueue();
+      const { start = 0, end = 49 } = request.query;
+
+      const [waiting, completed] = await Promise.all([
+        dlq.getJobs(['waiting'], Number(start), Number(end)),
+        dlq.getJobs(['completed'], Number(start), Number(end)),
+      ]);
+
+      const jobs = [...waiting, ...completed]
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .map(j => ({
+          id: j.id,
+          data: j.data,
+          timestamp: j.timestamp,
+          processedOn: j.processedOn,
+        }));
+
+      const counts = await dlq.getJobCounts('waiting', 'completed', 'active');
+
+      return {
+        success: true,
+        data: { jobs, counts },
+      };
+    } catch (error) {
+      console.error('Error fetching DLQ:', error);
       return reply.code(500).send({ success: false, error: error.message });
     }
   });

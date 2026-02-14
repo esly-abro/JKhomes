@@ -19,8 +19,8 @@
  */
 
 const { Worker } = require('bullmq');
-const { getRedisConnection, getRedisSubscriber } = require('../config/redis');
-const { QUEUE_NAMES, enqueueNodeExecution, enqueueTimeoutCheck } = require('./workflow.queue');
+const { getRedisConfig } = require('../config/redis');
+const { QUEUE_NAMES, enqueueNodeExecution, enqueueTimeoutCheck, getDeadLetterQueue } = require('./workflow.queue');
 const logger = require('../utils/logger');
 
 // MongoDB models
@@ -28,6 +28,7 @@ const Automation = require('../models/Automation');
 const AutomationRun = require('../models/AutomationRun');
 const AutomationJob = require('../models/AutomationJob');
 const Lead = require('../models/Lead');
+const ExecutionLog = require('../models/ExecutionLog');
 
 // Existing modular engine components (reuse all of them)
 const triggers = require('./workflow.triggers');
@@ -36,17 +37,77 @@ const executors = require('./workflow.executors');
 const resume = require('./workflow.resume');
 const recovery = require('./workflow.recovery');
 
+// ─── Worker Instance ID (unique per process for horizontal scaling) ──
+
+const WORKER_ID = `w-${process.pid}-${Date.now().toString(36)}`;
+
 // ─── Concurrency Config ─────────────────────────────────────────
 
 const TRIGGER_CONCURRENCY = parseInt(process.env.WORKFLOW_TRIGGER_CONCURRENCY, 10) || 5;
 const EXECUTE_CONCURRENCY = parseInt(process.env.WORKFLOW_EXECUTE_CONCURRENCY, 10) || 10;
 const TIMEOUT_CONCURRENCY = parseInt(process.env.WORKFLOW_TIMEOUT_CONCURRENCY, 10) || 3;
 
+// ─── Execution Timeout (wall-clock cap for any node execution) ──
+
+const NODE_EXECUTION_TIMEOUT_MS = parseInt(process.env.NODE_EXECUTION_TIMEOUT_MS, 10) || 120000; // 2 min default
+
 // ─── Worker Instances ───────────────────────────────────────────
 
 let _triggerWorker = null;
 let _executeWorker = null;
 let _timeoutWorker = null;
+
+// ─── Helper: Execution Timeout Wrapper ──────────────────────────
+
+/**
+ * Wraps a promise with a wall-clock timeout.
+ * If the promise doesn't resolve/reject within `ms`, rejects with a timeout error.
+ * This prevents hung executors (API calls that never respond) from blocking workers.
+ */
+function withTimeout(promise, ms, nodeLabel) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`Node "${nodeLabel}" timed out after ${ms}ms`));
+        }, ms);
+        promise.then(
+            (val) => { clearTimeout(timer); resolve(val); },
+            (err) => { clearTimeout(timer); reject(err); }
+        );
+    });
+}
+
+// ─── Helper: Structured Execution Logging ───────────────────────
+
+/**
+ * Write a structured execution log entry.
+ * Each node transition (pending → running → success/failed) gets logged.
+ * 
+ * Format: { nodeId, status, timestamp, message, ...metadata }
+ */
+async function logExecution({ run, automation, lead, nodeId, nodeData, status, message, error, attempt, duration, metadata }) {
+    try {
+        await ExecutionLog.create({
+            organizationId: run.organizationId,
+            automationRun: run._id,
+            automation: automation?._id || automation,
+            lead: lead?._id || lead,
+            nodeId,
+            nodeType: nodeData?.type,
+            nodeLabel: nodeData?.label || nodeId,
+            status,
+            message,
+            error,
+            duration,
+            attempt,
+            workerId: WORKER_ID,
+            metadata,
+            timestamp: new Date(),
+        });
+    } catch (e) {
+        // Never let logging failure crash execution
+        logger.error(`Failed to write execution log: ${e.message}`);
+    }
+}
 
 // ─── Helper: Schedule Next Nodes ────────────────────────────────
 
@@ -426,6 +487,14 @@ async function processExecuteJob(job) {
         { status: 'processing', lastAttemptAt: new Date(), attempts: job.attemptsMade + 1 }
     );
 
+    // Log: running
+    await logExecution({
+        run, automation, lead, nodeId, nodeData,
+        status: 'running',
+        message: `Executing node "${nodeLabel}" (${nodeData?.type})`,
+        attempt: job.attemptsMade + 1,
+    });
+
     // ── Build a minimal job-like object for the executors ────────
     // The existing executors expect a job object with these fields
     const pseudoJob = {
@@ -441,8 +510,39 @@ async function processExecuteJob(job) {
         maxAttempts: 3,
     };
 
-    // ── Execute the node ────────────────────────
-    const result = await executors.executeNode(nodeData, lead, run, automation, pseudoJob);
+    // ── Execute the node (with wall-clock timeout) ──────────────
+    const startTime = Date.now();
+    let result;
+    try {
+        result = await withTimeout(
+            executors.executeNode(nodeData, lead, run, automation, pseudoJob),
+            NODE_EXECUTION_TIMEOUT_MS,
+            nodeLabel
+        );
+    } catch (timeoutOrExecErr) {
+        const elapsed = Date.now() - startTime;
+        const isTimeout = timeoutOrExecErr.message?.includes('timed out after');
+
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: isTimeout ? 'timeout' : 'failed',
+            message: timeoutOrExecErr.message,
+            error: timeoutOrExecErr.message,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+        });
+
+        // Update AutomationJob
+        await AutomationJob.findOneAndUpdate(
+            { automationRun: run._id, nodeId, status: 'processing' },
+            { status: 'failed', lastError: timeoutOrExecErr.message, completedAt: new Date() }
+        );
+
+        // Throw to trigger BullMQ retry
+        throw timeoutOrExecErr;
+    }
+
+    const elapsed = Date.now() - startTime;
 
     // ── Handle waiting nodes (WhatsApp response, AI call result) ─
     if (result.waiting) {
@@ -450,6 +550,15 @@ async function processExecuteJob(job) {
 
         updateExecutionPathStatus(run, nodeId, 'waiting', result);
         await run.save();
+
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: 'waiting',
+            message: `Waiting for ${result.waitingFor || 'response'}`,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+            metadata: { waitingFor: result.waitingFor, timeoutAt: result.timeoutAt },
+        });
 
         // Update AutomationJob
         await AutomationJob.findOneAndUpdate(
@@ -478,6 +587,15 @@ async function processExecuteJob(job) {
         updateExecutionPathStatus(run, nodeId, 'completed', result);
         await run.save();
 
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: 'success',
+            message: `Condition evaluated → ${handle}`,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+            metadata: { conditionResult: handle },
+        });
+
         // Update AutomationJob
         await AutomationJob.findOneAndUpdate(
             { automationRun: run._id, nodeId, status: 'processing' },
@@ -497,6 +615,15 @@ async function processExecuteJob(job) {
 
         updateExecutionPathStatus(run, nodeId, 'completed', result);
         await run.save();
+
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: 'success',
+            message: `Delay scheduled: ${delayMs}ms`,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+            metadata: { delayMs },
+        });
 
         // Update AutomationJob
         await AutomationJob.findOneAndUpdate(
@@ -530,6 +657,14 @@ async function processExecuteJob(job) {
         updateExecutionPathStatus(run, nodeId, 'completed', result);
         await run.save();
 
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: 'success',
+            message: result.skipped ? `Node skipped` : `Node completed successfully`,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+        });
+
         // Update AutomationJob
         await AutomationJob.findOneAndUpdate(
             { automationRun: run._id, nodeId, status: 'processing' },
@@ -544,6 +679,15 @@ async function processExecuteJob(job) {
     // ── Handle explicit failure from executor ───
     const errMsg = result.error || 'Unknown executor error';
     logger.error(`❌ Node "${nodeLabel}" failed: ${errMsg} [run ${runId}]`);
+
+    await logExecution({
+        run, automation, lead, nodeId, nodeData,
+        status: 'failed',
+        message: errMsg,
+        error: errMsg,
+        duration: elapsed,
+        attempt: job.attemptsMade + 1,
+    });
 
     // Update AutomationJob
     await AutomationJob.findOneAndUpdate(
@@ -575,6 +719,23 @@ async function processTimeoutJob(job) {
         logger.info(`Run ${runId} is no longer waiting (status: ${run.status}), skipping timeout`);
         return { skipped: true, reason: `not_waiting` };
     }
+
+    // Find the waiting node for logging
+    const waitingEntry = (run.executionPath || []).find(e => e.status === 'waiting');
+    const waitingNodeId = waitingEntry?.nodeId || 'unknown';
+    const waitingNodeData = { type: waitingEntry?.nodeType, label: waitingEntry?.nodeLabel };
+
+    await logExecution({
+        run,
+        automation: run.automation,
+        lead: run.lead,
+        nodeId: waitingNodeId,
+        nodeData: waitingNodeData,
+        status: 'timeout',
+        message: `${type} timeout triggered — resuming workflow`,
+        attempt: job.attemptsMade + 1,
+        metadata: { timeoutType: type },
+    });
 
     // Use the BullMQ-compatible scheduleNode function
     const scheduleNodeFn = async (run, automation, lead, node, edge, delay = 0) => {
@@ -614,10 +775,10 @@ async function processTimeoutJob(job) {
 // ═════════════════════════════════════════════════════════════════
 
 async function handleFailedExecuteJob(job, err) {
-    const { runId, nodeId, nodeData } = job.data || {};
+    const { runId, automationId, leadId, nodeId, nodeData } = job.data || {};
     const nodeLabel = nodeData?.label || nodeData?.type || nodeId;
 
-    // If this was the final attempt (all retries exhausted), mark run as failed
+    // If this was the final attempt (all retries exhausted), mark run as failed + DLQ
     if (job.attemptsMade >= (job.opts?.attempts || 3)) {
         logger.error(`💀 Node "${nodeLabel}" exhausted all retries [run ${runId}]: ${err.message}`);
 
@@ -661,11 +822,71 @@ async function handleFailedExecuteJob(job, err) {
                 { automationRun: runId, nodeId, status: { $in: ['pending', 'processing'] } },
                 { status: 'failed', lastError: err.message, completedAt: new Date() }
             );
+
+            // ── Dead Letter Queue: persist for manual inspection/replay ──
+            try {
+                const dlq = getDeadLetterQueue();
+                await dlq.add('dead-letter', {
+                    originalJobId: job.id,
+                    originalJobName: job.name,
+                    runId,
+                    automationId,
+                    leadId,
+                    nodeId,
+                    nodeData,
+                    error: err.message,
+                    stack: err.stack,
+                    attemptsMade: job.attemptsMade,
+                    failedAt: new Date().toISOString(),
+                    workerId: WORKER_ID,
+                }, {
+                    jobId: `dlq:${runId}:${nodeId}:${Date.now()}`,
+                });
+                logger.warn(`📦 Job moved to DLQ: "${nodeLabel}" [run ${runId}]`);
+            } catch (dlqErr) {
+                logger.error(`Failed to enqueue DLQ job: ${dlqErr.message}`);
+            }
+
+            // ── Structured log: dead-letter ──
+            const run2 = await AutomationRun.findById(runId);
+            if (run2) {
+                await logExecution({
+                    run: run2,
+                    automation: automationId,
+                    lead: leadId,
+                    nodeId,
+                    nodeData,
+                    status: 'dead-letter',
+                    message: `Exhausted ${job.attemptsMade} retries — moved to DLQ`,
+                    error: err.message,
+                    attempt: job.attemptsMade,
+                });
+            }
         } catch (e) {
             logger.error(`Error in failed job handler: ${e.message}`);
         }
     } else {
         logger.warn(`⚠️ Node "${nodeLabel}" failed (attempt ${job.attemptsMade}/${job.opts?.attempts || 3}): ${err.message} — retrying`);
+
+        // Log the retry
+        try {
+            const run = await AutomationRun.findById(runId);
+            if (run) {
+                await logExecution({
+                    run,
+                    automation: automationId,
+                    lead: leadId,
+                    nodeId,
+                    nodeData,
+                    status: 'retrying',
+                    message: `Attempt ${job.attemptsMade} failed, retrying`,
+                    error: err.message,
+                    attempt: job.attemptsMade,
+                });
+            }
+        } catch (_) {
+            // Never crash the handler over logging
+        }
     }
 }
 
@@ -674,7 +895,7 @@ async function handleFailedExecuteJob(job, err) {
 // ═════════════════════════════════════════════════════════════════
 
 function startWorkers() {
-    const connection = getRedisConnection();
+    const connection = getRedisConfig();
 
     // ── Trigger Worker ──────────────────────────
     _triggerWorker = new Worker(
@@ -693,6 +914,10 @@ function startWorkers() {
 
     _triggerWorker.on('failed', (job, err) => {
         logger.error(`❌ Trigger job failed: ${job?.name} — ${err.message}`);
+    });
+
+    _triggerWorker.on('error', (err) => {
+        // Silently handle worker-level errors (Redis reconnection etc.)
     });
 
     // ── Execute Worker ──────────────────────────
@@ -716,6 +941,10 @@ function startWorkers() {
         handleFailedExecuteJob(job, err);
     });
 
+    _executeWorker.on('error', (err) => {
+        // Silently handle worker-level errors (Redis reconnection etc.)
+    });
+
     // ── Timeout Worker ──────────────────────────
     _timeoutWorker = new Worker(
         QUEUE_NAMES.TIMEOUT,
@@ -732,6 +961,10 @@ function startWorkers() {
 
     _timeoutWorker.on('failed', (job, err) => {
         logger.error(`❌ Timeout job failed: ${job?.name} — ${err.message}`);
+    });
+
+    _timeoutWorker.on('error', (err) => {
+        // Silently handle worker-level errors (Redis reconnection etc.)
     });
 
     logger.info(`🏭 BullMQ Workers started — trigger(${TRIGGER_CONCURRENCY}) execute(${EXECUTE_CONCURRENCY}) timeout(${TIMEOUT_CONCURRENCY})`);
