@@ -10,7 +10,7 @@ const axios = require('axios');
 const AWS_EMAIL_API_ENDPOINT = process.env.AWS_EMAIL_API_ENDPOINT;
 const AWS_EMAIL_API_KEY = process.env.AWS_EMAIL_API_KEY;
 const ADMIN_EMAIL = process.env.LEAD_NOTIFICATION_EMAIL;
-const COMPANY_NAME = process.env.COMPANY_NAME || 'JK Construction';
+const COMPANY_NAME = process.env.COMPANY_NAME || 'Our Company';
 
 /**
  * Check if AWS Email service is configured
@@ -55,7 +55,7 @@ async function sendEmail(payload) {
  * @param {Object} lead - Lead data
  * @param {string} adminEmail - Admin email (optional, defaults to env)
  */
-async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL) {
+async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL, tenantLabels = {}) {
     return sendEmail({
         type: 'NEW_LEAD',
         to: adminEmail,
@@ -72,7 +72,7 @@ async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL) {
             notes: lead.notes,
             createdAt: lead.createdAt || new Date()
         },
-        metadata: { companyName: COMPANY_NAME }
+        metadata: { companyName: COMPANY_NAME, ...tenantLabels }
     });
 }
 
@@ -83,7 +83,7 @@ async function sendNewLeadEmail(lead, adminEmail = ADMIN_EMAIL) {
  * @param {Object} property - Property data (optional)
  * @param {string} adminEmail - Admin email (optional)
  */
-async function sendSiteVisitEmail(lead, siteVisit, property = null, adminEmail = ADMIN_EMAIL) {
+async function sendSiteVisitEmail(lead, siteVisit, property = null, adminEmail = ADMIN_EMAIL, tenantLabels = {}) {
     return sendEmail({
         type: 'APPOINTMENT_SCHEDULED',
         to: adminEmail,
@@ -104,7 +104,7 @@ async function sendSiteVisitEmail(lead, siteVisit, property = null, adminEmail =
             address: property.address,
             location: property.location
         } : null,
-        metadata: { companyName: COMPANY_NAME }
+        metadata: { companyName: COMPANY_NAME, ...tenantLabels }
     });
 }
 
@@ -115,7 +115,7 @@ async function sendSiteVisitEmail(lead, siteVisit, property = null, adminEmail =
  * @param {string} toStatus - New status
  * @param {string} adminEmail - Admin email (optional)
  */
-async function sendStatusUpdateEmail(lead, fromStatus, toStatus, adminEmail = ADMIN_EMAIL) {
+async function sendStatusUpdateEmail(lead, fromStatus, toStatus, adminEmail = ADMIN_EMAIL, tenantLabels = {}) {
     return sendEmail({
         type: 'LEAD_STATUS_UPDATE',
         to: adminEmail,
@@ -128,7 +128,7 @@ async function sendStatusUpdateEmail(lead, fromStatus, toStatus, adminEmail = AD
             from: fromStatus,
             to: toStatus
         },
-        metadata: { companyName: COMPANY_NAME }
+        metadata: { companyName: COMPANY_NAME, ...tenantLabels }
     });
 }
 
@@ -153,7 +153,7 @@ async function sendTestEmail(to) {
  * @param {Object} siteVisit - Site visit data
  * @param {Object} property - Property data (optional)
  */
-async function sendReminderEmail(reminderType, lead, siteVisit, property = null) {
+async function sendReminderEmail(reminderType, lead, siteVisit, property = null, tenantLabels = {}) {
     return sendEmail({
         type: reminderType,
         lead: {
@@ -170,7 +170,7 @@ async function sendReminderEmail(reminderType, lead, siteVisit, property = null)
             address: property.address,
             location: property.location
         } : null,
-        metadata: { companyName: COMPANY_NAME }
+        metadata: { companyName: COMPANY_NAME, ...tenantLabels }
     });
 }
 

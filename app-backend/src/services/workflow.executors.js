@@ -25,6 +25,39 @@ const TenantConfig = require('../models/tenantConfig.model');
 const { evaluateCondition, interpolateTemplate, calculateDelay, normalizePhoneNumber } = require('./workflow.conditions');
 
 /**
+ * Build tenant variables object for template interpolation.
+ * Loads TenantConfig and optionally the assigned agent's info.
+ */
+async function buildTenantVars(lead) {
+    const tenantConfig = await TenantConfig.getOrCreate(lead.organizationId);
+    const vars = {
+        organizationName: tenantConfig?.companyName || process.env.COMPANY_NAME || 'Our Team',
+        companyName: tenantConfig?.companyName || process.env.COMPANY_NAME || 'Our Team',
+        appointmentLabel: tenantConfig?.appointmentFieldLabel || 'appointment',
+        appointmentFieldLabel: tenantConfig?.appointmentFieldLabel || 'appointment',
+        catalogLabel: tenantConfig?.catalogModuleLabel || 'catalog',
+        catalogModuleLabel: tenantConfig?.catalogModuleLabel || 'catalog',
+        locationLabel: tenantConfig?.locationFieldLabel || 'location',
+        locationFieldLabel: tenantConfig?.locationFieldLabel || 'location',
+        categoryLabel: tenantConfig?.categoryFieldLabel || 'category',
+        categoryFieldLabel: tenantConfig?.categoryFieldLabel || 'category'
+    };
+    // Load assigned agent info if available
+    const agentId = lead.assignedTo || lead.assignedAgent;
+    if (agentId) {
+        try {
+            const agent = await User.findById(agentId).select('name phone email');
+            if (agent) {
+                vars.agentName = agent.name || '';
+                vars.agentPhone = agent.phone || '';
+                vars.agentEmail = agent.email || '';
+            }
+        } catch (e) { /* ignore */ }
+    }
+    return vars;
+}
+
+/**
  * Execute WhatsApp action
  * Gracefully handles missing credentials
  */
@@ -64,7 +97,8 @@ async function executeWhatsApp(lead, config, context = {}) {
             console.log(`✅ WhatsApp template sent to ${lead.name}: ${result.messageId}`);
             return { success: true, messageId: result.messageId, method: 'meta' };
         } else {
-            const message = interpolateTemplate(config?.message || 'Hello {{name}}!', lead);
+            const tenantVars = await buildTenantVars(lead);
+            const message = interpolateTemplate(config?.message || 'Hello {{name}}!', lead, context, tenantVars);
             const result = await whatsappService.sendTextMessage(
                 lead.phone,
                 message,
@@ -523,8 +557,9 @@ async function executeEmail(lead, config) {
             return { success: false, error: 'Lead has no email address' };
         }
 
-        const subject = interpolateTemplate(config?.subject || 'Hello from JK Construction', lead);
-        const body = interpolateTemplate(config?.body || 'Hi {{name}}, thank you for your interest!', lead);
+        const tenantVars = await buildTenantVars(lead);
+        const subject = interpolateTemplate(config?.subject || 'Hello from {{organizationName}}', lead, {}, tenantVars);
+        const body = interpolateTemplate(config?.body || 'Hi {{name}}, thank you for your interest!', lead, {}, tenantVars);
 
         await emailService.sendEmail({
             to: lead.email,

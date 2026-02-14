@@ -153,8 +153,21 @@ function getNestedValue(obj, path) {
 
 /**
  * Interpolate template variables
+ * Supports: lead fields, context vars, and tenant config labels.
+ * 
+ * Lead vars:   {{name}}, {{firstName}}, {{lastName}}, {{email}}, {{phone}},
+ *              {{budget}}, {{propertyType}}, {{category}}, {{location}},
+ *              {{source}}, {{status}}, {{company}}
+ * 
+ * Tenant vars: {{organizationName}}, {{companyName}},
+ *              {{appointmentLabel}}, {{catalogLabel}}, {{locationLabel}},
+ *              {{categoryLabel}}
+ * 
+ * Agent vars:  {{agentName}}, {{agentPhone}}, {{agentEmail}}
+ * 
+ * Context vars: {{context.*}}
  */
-function interpolateTemplate(template, lead, context = {}) {
+function interpolateTemplate(template, lead, context = {}, tenantVars = {}) {
     let result = template
         .replace(/\{\{name\}\}/g, lead.name || '')
         .replace(/\{\{firstName\}\}/g, (lead.name || '').split(' ')[0])
@@ -169,7 +182,34 @@ function interpolateTemplate(template, lead, context = {}) {
         .replace(/\{\{status\}\}/g, lead.status || '')
         .replace(/\{\{company\}\}/g, lead.company || '');
     
-    // Context variables
+    // Tenant config variables (dynamic field labels + org info)
+    const tv = tenantVars || {};
+    result = result
+        .replace(/\{\{organizationName\}\}/g, tv.organizationName || tv.companyName || process.env.COMPANY_NAME || 'Our Team')
+        .replace(/\{\{companyName\}\}/g, tv.companyName || tv.organizationName || process.env.COMPANY_NAME || 'Our Team')
+        .replace(/\{\{appointmentLabel\}\}/g, tv.appointmentLabel || tv.appointmentFieldLabel || 'appointment')
+        .replace(/\{\{catalogLabel\}\}/g, tv.catalogLabel || tv.catalogModuleLabel || 'catalog')
+        .replace(/\{\{locationLabel\}\}/g, tv.locationLabel || tv.locationFieldLabel || 'location')
+        .replace(/\{\{categoryLabel\}\}/g, tv.categoryLabel || tv.categoryFieldLabel || 'category');
+
+    // Agent variables
+    result = result
+        .replace(/\{\{agentName\}\}/g, tv.agentName || '')
+        .replace(/\{\{agentPhone\}\}/g, tv.agentPhone || '')
+        .replace(/\{\{agentEmail\}\}/g, tv.agentEmail || '');
+
+    // Link & scheduling variables (from context or tenantVars)
+    result = result
+        .replace(/\{\{propertyLink\}\}/g, tv.propertyLink || context.propertyLink || '#')
+        .replace(/\{\{scheduleLink\}\}/g, tv.scheduleLink || context.scheduleLink || '#')
+        .replace(/\{\{brochureLink\}\}/g, tv.brochureLink || context.brochureLink || '#')
+        .replace(/\{\{documentsLink\}\}/g, tv.documentsLink || context.documentsLink || '#')
+        .replace(/\{\{bookingUrl\}\}/g, tv.bookingUrl || context.bookingUrl || '#')
+        .replace(/\{\{directionsLink\}\}/g, tv.directionsLink || context.directionsLink || '#')
+        .replace(/\{\{propertyAddress\}\}/g, tv.propertyAddress || context.propertyAddress || '')
+        .replace(/\{\{visitTime\}\}/g, tv.visitTime || context.visitTime || '');
+
+    // Context variables (catch-all for {{context.xxx}})
     if (context) {
         result = result
             .replace(/\{\{context\.(\w+)\}\}/g, (match, key) => context[key] || '');

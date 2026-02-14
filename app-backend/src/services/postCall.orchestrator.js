@@ -381,7 +381,7 @@ Your Team`;
             }
 
             const name = lead?.name || leadInfo.leadName || 'there';
-            const message = `Hi ${name}! 🏠
+            const message = `Hi ${name}! 📅
 
 Great to hear you're interested in scheduling an appointment!
 

@@ -44,7 +44,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hello {{firstName}}! 🏠 Thank you for your interest in {{organizationName}}. Are you interested in learning more about our offerings?',
+          message: 'Hello {{firstName}}! Thank you for your interest in {{organizationName}}. Are you interested in learning more about our offerings?',
           template: 'welcome_inquiry',
           buttons: [
             { text: 'Yes, Tell me more', payload: 'interested' },
@@ -78,12 +78,12 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 150, y: 380 },
       data: {
-        label: 'Send Casualty Link & WhatsApp Msg 2A',
+        label: 'Send Info & Schedule Link',
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Great! 🎉 Here\'s our latest brochure and a link to schedule a {{appointmentLabel}} at your convenience:\n\n📍 View {{catalogLabel}}: {{propertyLink}}\n📅 Schedule {{appointmentLabel}}: {{scheduleLink}}',
-          template: 'brochure'
+          message: 'Great! 🎉 Here\'s more details and a link to schedule a {{appointmentLabel}} at your convenience:\n\n📋 View {{catalogLabel}}: {{propertyLink}}\n📅 Schedule {{appointmentLabel}}: {{scheduleLink}}',
+          template: 'info_and_schedule'
         }
       }
     },
@@ -114,7 +114,7 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}, just following up on my earlier message. Would you be interested in scheduling a free {{appointmentLabel}} to see our offerings? We have exciting offers this month! 🏡',
+          message: 'Hi {{firstName}}, just following up on my earlier message. Would you be interested in scheduling a free {{appointmentLabel}} to learn more about our offerings? We have exciting options available! ✨',
           template: 'follow_up_1'
         }
       }
@@ -126,7 +126,7 @@ const defaultAutomationTemplate = {
       type: 'condition',
       position: { x: 400, y: 500 },
       data: {
-        label: 'Site Visit Booked?',
+        label: '{{appointmentLabel}} Booked?',
         type: 'condition',
         color: 'bg-yellow-500',
         config: {
@@ -196,12 +196,12 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 400, y: 1000 },
       data: {
-        label: 'Send Brochure',
+        label: 'Send Details',
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Thank you for speaking with us! 📋 As promised, here\'s our detailed brochure with plans, pricing, and details:\n\n{{brochureLink}}',
-          template: 'brochure_after_call'
+          message: 'Thank you for speaking with us! 📋 As promised, here are the details with pricing and options:\n\n{{documentsLink}}',
+          template: 'details_after_call'
         }
       }
     },
@@ -337,8 +337,8 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! 📅 Just a friendly reminder about your {{appointmentLabel}} tomorrow at {{visitTime}}.\n\n📍 Location: {{propertyAddress}}\n🚗 Directions: {{directionsLink}}\n\nLooking forward to meeting you!',
-          template: 'visit_reminder_24hr'
+          message: 'Hi {{firstName}}! 📅 Just a friendly reminder about your {{appointmentLabel}} tomorrow at {{visitTime}}.\n\n📍 {{locationLabel}}: {{propertyAddress}}\n🚗 Directions: {{directionsLink}}\n\nLooking forward to meeting you!',
+          template: 'appointment_reminder_24hr'
         }
       }
     },
@@ -354,7 +354,7 @@ const defaultAutomationTemplate = {
         color: 'bg-green-600',
         config: {
           message: 'Hi {{firstName}}! ⏰ Your {{appointmentLabel}} is in 2 hours at {{visitTime}}. Our representative {{agentName}} will meet you at the location. Call {{agentPhone}} if needed!',
-          template: 'visit_reminder_2hr'
+          template: 'appointment_reminder_2hr'
         }
       }
     },
@@ -451,8 +451,8 @@ const defaultAutomationTemplate = {
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! 🙏 Thank you for your time today. We hope you liked what you saw! If you have any questions about pricing or payment plans, feel free to reach out.\n\nBest regards,\n{{agentName}}',
-          template: 'post_visit_thankyou'
+          message: 'Hi {{firstName}}! 🙏 Thank you for your time today. We hope everything went well! If you have any questions about pricing or next steps, feel free to reach out.\n\nBest regards,\n{{agentName}}',
+          template: 'post_appointment_thankyou'
         }
       }
     },
@@ -513,12 +513,12 @@ const defaultAutomationTemplate = {
       type: 'action',
       position: { x: 650, y: 3310 },
       data: {
-        label: 'Day 5: WhatsApp Send Brochure/Plans',
+        label: 'Day 5: WhatsApp Send Documents',
         type: 'whatsapp',
         color: 'bg-green-600',
         config: {
-          message: 'Hi {{firstName}}! 📋 As discussed, here are the detailed floor plans and payment schedules for the units you were interested in:\n\n{{documentsLink}}\n\nLet me know if you\'d like to discuss further!',
-          template: 'detailed_plans'
+          message: 'Hi {{firstName}}! 📋 As discussed, here are the detailed documents and pricing information for the options you were interested in:\n\n{{documentsLink}}\n\nLet me know if you\'d like to discuss further!',
+          template: 'detailed_documents'
         }
       }
     },
@@ -632,7 +632,7 @@ const defaultAutomationTemplate = {
         type: 'createTask',
         color: 'bg-blue-500',
         config: {
-          task: 'Prepare booking documents and payment schedule',
+          task: 'Prepare booking documents and schedule',
           assignTo: 'documentation_team'
         }
       }
