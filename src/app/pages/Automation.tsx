@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ReactFlow,
   Controls,
@@ -183,6 +184,7 @@ function SavedWorkflowsPanel() {
   const loadWorkflow = useWorkflowStore((s) => s.loadWorkflow);
   const deleteWorkflow = useWorkflowStore((s) => s.deleteWorkflow);
   const toggleWorkflow = useWorkflowStore((s) => s.toggleWorkflow);
+  const navigate = useNavigate();
 
   return (
     <div className="w-72 bg-gray-50 border-l border-gray-200 flex flex-col">
@@ -240,6 +242,9 @@ function SavedWorkflowsPanel() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => loadWorkflow(w)}>Edit</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate(`/automation/${w.id}/monitor`)}>
+                          Monitor Runs
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem className="text-red-600" onClick={() => deleteWorkflow(w.id)}>
                           Delete

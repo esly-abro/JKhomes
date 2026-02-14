@@ -19,6 +19,7 @@ import Help from './pages/Help';
 import UserManagement from './pages/UserManagement';
 import Agents from './pages/Agents';
 import Automation from './pages/Automation';
+import AutomationMonitor from './pages/AutomationMonitor';
 import Broadcasts from './pages/Broadcasts';
 import MainLayout from './components/MainLayout';
 import ModuleGuard from './components/ModuleGuard';
@@ -93,6 +94,7 @@ function AppRoutes({ user, setUser, hasCompletedOnboarding, setHasCompletedOnboa
         <Route path="settings" element={<Settings />} />
         <Route path="settings/users" element={<UserManagement />} />
         <Route path="automation" element={<Automation />} />
+        <Route path="automation/:automationId/monitor" element={<AutomationMonitor />} />
         
         {/* Module-Gated Routes: Broadcasts */}
         <Route path="broadcasts" element={

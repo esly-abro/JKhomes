@@ -31,6 +31,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Redis (local dev binary)
+redis-win/
+
 # Test coverage
 coverage/
 

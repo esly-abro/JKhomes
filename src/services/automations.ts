@@ -54,23 +54,48 @@ export interface Automation {
 
 export interface AutomationRun {
   _id: string;
-  automation: { _id: string; name: string };
+  automation: { _id: string; name: string } | string;
   lead: { _id: string; name: string; email?: string; phone?: string };
-  status: 'running' | 'completed' | 'failed' | 'paused' | 'cancelled';
+  status: 'running' | 'completed' | 'failed' | 'paused' | 'cancelled' | 'waiting_for_response' | 'waiting_for_task';
   currentNodeId?: string;
   executionPath: Array<{
     nodeId: string;
     nodeType: string;
     nodeLabel: string;
-    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'waiting';
     startedAt?: string;
     completedAt?: string;
     result?: unknown;
     error?: string;
   }>;
+  waitingForResponse?: {
+    isWaiting: boolean;
+    nodeId?: string;
+    timeoutAt?: string;
+  };
+  waitingForCall?: {
+    isWaiting: boolean;
+    nodeId?: string;
+    timeoutAt?: string;
+  };
   error?: string;
   completedAt?: string;
   createdAt: string;
+}
+
+export interface ExecutionLogEntry {
+  _id: string;
+  automationRun: string;
+  nodeId: string;
+  nodeType: string;
+  nodeLabel: string;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'timeout' | 'waiting' | 'retrying' | 'dead-letter';
+  message?: string;
+  error?: string;
+  duration?: number;
+  attempt?: number;
+  workerId?: string;
+  timestamp: string;
 }
 
 interface ApiResponse<T> {
@@ -201,6 +226,14 @@ export async function cancelAutomationRun(runId: string): Promise<void> {
   await api.post(`/api/automations/runs/${runId}/cancel`);
 }
 
+/**
+ * Get execution logs for a specific run (Phase 3 structured logging)
+ */
+export async function getRunExecutionLogs(runId: string): Promise<ExecutionLogEntry[]> {
+  const response = await api.get<ApiResponse<ExecutionLogEntry[]>>(`/api/automations/runs/${runId}/logs`);
+  return response.data.data;
+}
+
 // ==========================================
 // TEMPLATE FUNCTIONS
 // ==========================================
@@ -266,6 +299,7 @@ export default {
   getAutomationRuns,
   getAutomationRun,
   cancelAutomationRun,
+  getRunExecutionLogs,
   // Template functions
   getTemplates,
   getTemplate,
