@@ -36,6 +36,16 @@ async function getLead(request, reply) {
 async function createLead(request, reply) {
     const leadData = request.body;
 
+    // Validate required fields — no empty leads allowed
+    const name = (leadData.name || '').trim();
+    if (!name || name === 'undefined') {
+        return reply.code(400).send({
+            success: false,
+            error: 'Lead name is required. Cannot create a lead without a name.'
+        });
+    }
+    leadData.name = name;
+
     // Inject user context for organization association
     if (request.user) {
         leadData.user = request.user;

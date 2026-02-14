@@ -91,10 +91,12 @@ async function syncAllPending(request, reply) {
  */
 async function importFromZoho(request, reply) {
   const { maxPages = 10, perPage = 200 } = request.query;
+  const organizationId = request.user?.organizationId;
 
   const result = await zohoSyncService.importLeadsFromZoho({
     maxPages: parseInt(maxPages),
-    perPage: parseInt(perPage)
+    perPage: parseInt(perPage),
+    organizationId
   });
 
   if (result.success) {
@@ -112,10 +114,46 @@ async function importFromZoho(request, reply) {
   }
 }
 
+/**
+ * Push local-only leads to Zoho CRM
+ */
+async function pushToZoho(request, reply) {
+  const organizationId = request.user?.organizationId;
+  const { limit = 200 } = request.query;
+
+  const result = await zohoSyncService.pushLeadsToZoho({
+    organizationId,
+    limit: parseInt(limit)
+  });
+
+  return reply.send({
+    success: result.success,
+    message: `Pushed ${result.pushed} leads to Zoho, ${result.failed} failed, ${result.skipped} skipped`,
+    data: result
+  });
+}
+
+/**
+ * Full bidirectional sync — clean empty leads, push local to Zoho, import Zoho to DB
+ */
+async function fullSync(request, reply) {
+  const organizationId = request.user?.organizationId;
+
+  const result = await zohoSyncService.fullLeadSync({ organizationId });
+
+  return reply.send({
+    success: result.success,
+    message: `Sync complete: ${result.totalLeadsInDB} leads in DB`,
+    data: result
+  });
+}
+
 module.exports = {
   syncCallLog,
   syncActivity,
   syncSiteVisit,
   syncAllPending,
-  importFromZoho
+  importFromZoho,
+  pushToZoho,
+  fullSync
 };

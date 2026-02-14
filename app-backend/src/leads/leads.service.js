@@ -336,6 +336,13 @@ async function getLeadsByOwner(ownerId) {
  * Create lead (proxy to ingestion service)
  */
 async function createLead(leadData) {
+    // Validate — reject empty/undefined names at the service level too
+    const leadName = (leadData.name || '').trim();
+    if (!leadName || leadName === 'undefined') {
+        return { success: false, error: 'Lead name is required' };
+    }
+    leadData.name = leadName;
+
     // Use mock data in demo mode
     if (isDemoMode) {
         // ... (mock implementation omitted for brevity, but would need orgId too)
@@ -676,7 +683,7 @@ function mapFrontendToZohoFields(data) {
 // ============================================================================
 
 const activityService = require('./activity.service');
-const taskService = require('./task.service');
+const taskService = require('../tasks/task.service');
 const siteVisitService = require('./siteVisit.service');
 const callLogService = require('./callLog.service');
 

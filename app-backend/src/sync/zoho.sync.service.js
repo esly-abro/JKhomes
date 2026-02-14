@@ -404,11 +404,19 @@ async function importLeadsFromZoho(options = {}) {
           // Map Zoho fields to our format
           const mapped = mapZohoLeadToFrontend(zohoLead);
 
+          // Skip leads without a valid name
+          const leadName = (mapped.name || '').trim();
+          if (!leadName || leadName === 'undefined' || leadName === 'Unknown') {
+            results.skipped++;
+            console.log(`[ZohoSync] Skipping lead ${zohoId} - no valid name`);
+            continue;
+          }
+
           // Build the upsert data — only update Zoho-owned fields
           // Local-only fields (assignedTo, notes, propertyId) are NOT overwritten
           const upsertData = {
             zohoId: zohoId,
-            name: mapped.name || 'Unknown',
+            name: leadName,
             email: mapped.email || undefined,
             phone: mapped.phone || undefined,
             company: mapped.company || undefined,
@@ -432,6 +440,20 @@ async function importLeadsFromZoho(options = {}) {
             await Lead.findByIdAndUpdate(existingLead._id, { $set: upsertData });
             results.updated++;
           } else {
+            // New lead — must include organizationId for multi-tenancy
+            if (organizationId) {
+              upsertData.organizationId = organizationId;
+            } else {
+              // Fallback: use org from any existing lead
+              const sampleLead = await Lead.findOne({ organizationId: { $exists: true, $ne: null } }).lean();
+              if (sampleLead?.organizationId) {
+                upsertData.organizationId = sampleLead.organizationId;
+              } else {
+                results.skipped++;
+                console.log(`[ZohoSync] Skipping lead ${zohoId} — no organizationId available`);
+                continue;
+              }
+            }
             await Lead.create(upsertData);
             results.created++;
           }
@@ -463,10 +485,156 @@ async function importLeadsFromZoho(options = {}) {
   }
 }
 
+/**
+ * Push local-only leads FROM MongoDB TO Zoho CRM
+ * Finds all leads with local_ prefix zohoId and creates them in Zoho,
+ * then updates MongoDB with the real Zoho ID.
+ *
+ * @param {Object} options
+ * @param {string} [options.organizationId] - Organization ID for multi-tenant
+ * @param {number} [options.limit] - Max leads to push (default: 200)
+ * @returns {Promise<Object>} Push results summary
+ */
+async function pushLeadsToZoho(options = {}) {
+  const { organizationId = null, limit = 200 } = options;
+
+  const results = {
+    pushed: 0,
+    failed: 0,
+    skipped: 0,
+    errors: [],
+    alreadySynced: 0
+  };
+
+  console.log('[ZohoSync] Starting push of local leads to Zoho CRM...');
+
+  try {
+    const query = { zohoId: /^local_/ };
+    if (organizationId) query.organizationId = organizationId;
+
+    const localLeads = await Lead.find(query).limit(limit).lean();
+    console.log(`[ZohoSync] Found ${localLeads.length} local-only leads to push`);
+
+    for (const lead of localLeads) {
+      // Skip leads without a name
+      if (!lead.name || lead.name === 'undefined' || lead.name.trim() === '') {
+        results.skipped++;
+        continue;
+      }
+
+      try {
+        const zohoData = {
+          Last_Name: lead.name,
+          ...(lead.email && { Email: lead.email }),
+          ...(lead.phone && { Phone: lead.phone }),
+          ...(lead.company && { Company: lead.company }),
+          Lead_Source: lead.source || 'Website',
+          Lead_Status: lead.status || 'New'
+        };
+
+        const result = await zohoClient.createLead(zohoData, organizationId);
+
+        if (result.success && result.leadId) {
+          await Lead.findByIdAndUpdate(lead._id, {
+            zohoId: result.leadId,
+            syncedWithZoho: true,
+            lastSyncedAt: new Date()
+          });
+          results.pushed++;
+          console.log(`[ZohoSync] ✓ Pushed "${lead.name}" → Zoho ID: ${result.leadId}`);
+        } else {
+          results.failed++;
+          results.errors.push(`Lead "${lead.name}": ${result.error || 'Unknown error'}`);
+        }
+      } catch (leadError) {
+        results.failed++;
+        results.errors.push(`Lead "${lead.name}": ${leadError.message}`);
+      }
+    }
+
+    // Count current sync status
+    const totalLeads = await Lead.countDocuments(organizationId ? { organizationId } : {});
+    const syncedCount = await Lead.countDocuments({
+      ...(organizationId ? { organizationId } : {}),
+      zohoId: { $not: /^local_/ }
+    });
+    const localCount = await Lead.countDocuments({
+      ...(organizationId ? { organizationId } : {}),
+      zohoId: /^local_/
+    });
+
+    console.log(`[ZohoSync] Push complete: ${results.pushed} pushed, ${results.failed} failed, ${results.skipped} skipped`);
+
+    return {
+      success: true,
+      ...results,
+      summary: {
+        totalInDB: totalLeads,
+        syncedWithZoho: syncedCount,
+        localOnly: localCount
+      }
+    };
+  } catch (error) {
+    console.error('[ZohoSync] Push failed:', error);
+    return {
+      success: false,
+      error: error.message,
+      ...results
+    };
+  }
+}
+
+/**
+ * Full bidirectional sync: push local leads to Zoho, then import Zoho leads to DB
+ * Ensures DB and Zoho have the same leads
+ *
+ * @param {Object} options
+ * @param {string} [options.organizationId] - Organization ID for multi-tenant
+ * @returns {Promise<Object>} Complete sync results
+ */
+async function fullLeadSync(options = {}) {
+  const { organizationId = null } = options;
+
+  console.log('[ZohoSync] === FULL BIDIRECTIONAL LEAD SYNC ===');
+
+  // Step 1: Clean up empty/undefined leads from DB
+  const emptyResult = await Lead.deleteMany({
+    $or: [
+      { name: { $exists: false } },
+      { name: '' },
+      { name: null },
+      { name: 'undefined' }
+    ]
+  });
+  console.log(`[ZohoSync] Cleaned up ${emptyResult.deletedCount} empty leads`);
+
+  // Step 2: Push local leads to Zoho
+  const pushResult = await pushLeadsToZoho({ organizationId });
+
+  // Step 3: Import Zoho leads to DB
+  const importResult = await importLeadsFromZoho({
+    organizationId,
+    maxPages: 10,
+    perPage: 200
+  });
+
+  const totalInDB = await Lead.countDocuments(organizationId ? { organizationId } : {});
+
+  return {
+    success: true,
+    cleaned: emptyResult.deletedCount,
+    pushed: pushResult,
+    imported: importResult,
+    totalLeadsInDB: totalInDB
+  };
+}
+
 module.exports = {
   syncCallLogToZoho,
   syncActivityToZoho,
   syncSiteVisitToZoho,
   syncPendingToZoho,
-  importLeadsFromZoho
+  importLeadsFromZoho,
+  pushLeadsToZoho,
+  fullLeadSync
 };

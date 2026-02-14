@@ -843,6 +843,16 @@ async function buildApp() {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
         }, syncController.importFromZoho);
 
+        // Push local-only leads to Zoho CRM
+        protectedApp.post('/api/sync/push-to-zoho', {
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
+        }, syncController.pushToZoho);
+
+        // Full bidirectional sync (clean + push + import)
+        protectedApp.post('/api/sync/full', {
+            preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]
+        }, syncController.fullSync);
+
         // Upload routes
         const uploadRoutes = require('./routes/upload');
         protectedApp.register(uploadRoutes, { prefix: '/api/upload' });
