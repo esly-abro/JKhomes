@@ -113,6 +113,7 @@ export async function getAutomation(id: string): Promise<Automation> {
 export async function createAutomation(data: {
   name: string;
   description?: string;
+  triggerType?: string;
   nodes: AutomationNode[];
   edges: AutomationEdge[];
   isActive?: boolean;
@@ -130,6 +131,7 @@ export async function updateAutomation(
   data: {
     name?: string;
     description?: string;
+    triggerType?: string;
     nodes?: AutomationNode[];
     edges?: AutomationEdge[];
     isActive?: boolean;

@@ -88,7 +88,7 @@ function ConditionNode({ data, selected }: NodeProps) {
                   'lessThan': '<',
                   'isEmpty': 'is empty',
                   'isNotEmpty': 'is not empty'
-                }[nodeData.config.operator] || nodeData.config.operator || '==='}</span>
+                }[nodeData.config.operator as string] || nodeData.config.operator || '==='}</span>
                 <span>{nodeData.config.value || '...'}</span>
               </div>
               {isConditionTimeout && nodeData.config.timeout && (
