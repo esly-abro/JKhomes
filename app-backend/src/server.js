@@ -14,6 +14,7 @@ const config = require('./config/env');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const { seedDefaultUsers, useDatabase } = require('./users/users.model');
 const workflowEngine = require('./services/workflow.engine');
+const { isRedisHealthy } = require('./config/redis');
 
 // Structured logging
 const logger = require('./utils/logger');
@@ -72,12 +73,17 @@ async function start() {
         logger.info(`Database: ${process.env.MONGODB_URI ? 'MongoDB' : 'In-Memory'}`);
         logger.info(`URL: http://localhost:${config.port}`);
         logger.info('');
+        // Check Redis health
+        const redisOk = await isRedisHealthy();
+        logger.info(`Redis: ${redisOk ? '✅ Connected' : '⚠️  Not connected (workflows will queue when available)'}`);
+        logger.info('');
         logger.info('Production Features:');
         logger.info('  ✓ Structured Logging (Winston)');
         logger.info('  ✓ Rate Limiting');
         logger.info('  ✓ Security Headers');
         logger.info('  ✓ Request Validation');
         logger.info('  ✓ Graceful Shutdown');
+        logger.info('  ✓ BullMQ Workflow Engine (Redis)');
         logger.info('');
         logger.info('Health Endpoints:');
         logger.info(`  GET http://localhost:${config.port}/api/health`);
@@ -114,9 +120,9 @@ async function start() {
             // Stop accepting new requests
             logger.info('Stopping new request acceptance...');
             
-            // Stop workflow engine
+            // Stop workflow engine (stops BullMQ workers + queues + Redis)
             logger.info('Stopping Workflow Engine...');
-            workflowEngine.stop();
+            await workflowEngine.stop();
 
             // Wait for active connections to complete (max 10 seconds)
             if (activeConnections.size > 0) {

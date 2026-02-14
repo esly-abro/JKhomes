@@ -7,6 +7,7 @@ const AutomationRun = require('../models/AutomationRun');
 const AutomationJob = require('../models/AutomationJob');
 const workflowEngine = require('../services/workflow.engine');
 const defaultAutomationTemplate = require('../config/defaultAutomationTemplate');
+const { getExecuteQueue, getTriggerQueue, getTimeoutQueue } = require('../services/workflow.queue');
 
 async function automationRoutes(fastify, options) {
   const { requireRole } = require('../middleware/roles');
@@ -782,6 +783,56 @@ async function automationRoutes(fastify, options) {
         success: false,
         error: error.message
       });
+    }
+  });
+
+  // =========================================================================
+  // BullMQ Queue Stats
+  // =========================================================================
+
+  /**
+   * GET /api/automations/queue/stats
+   * Get BullMQ queue statistics
+   */
+  fastify.get('/queue/stats', async (request, reply) => {
+    try {
+      const [executeQueue, triggerQueue, timeoutQueue] = [
+        getExecuteQueue(),
+        getTriggerQueue(),
+        getTimeoutQueue(),
+      ];
+
+      const [executeStats, triggerStats, timeoutStats] = await Promise.all([
+        executeQueue.getJobCounts('active', 'completed', 'failed', 'delayed', 'waiting'),
+        triggerQueue.getJobCounts('active', 'completed', 'failed', 'delayed', 'waiting'),
+        timeoutQueue.getJobCounts('active', 'completed', 'failed', 'delayed', 'waiting'),
+      ]);
+
+      return {
+        success: true,
+        data: {
+          execute: executeStats,
+          trigger: triggerStats,
+          timeout: timeoutStats,
+        },
+      };
+    } catch (error) {
+      console.error('Error getting queue stats:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
+  /**
+   * GET /api/automations/engine/health
+   * Get full engine health including Redis + workers + DB
+   */
+  fastify.get('/engine/health', async (request, reply) => {
+    try {
+      const health = await workflowEngine.getHealthStats();
+      return { success: true, data: health };
+    } catch (error) {
+      console.error('Error getting engine health:', error);
+      return reply.code(500).send({ success: false, error: error.message });
     }
   });
 }

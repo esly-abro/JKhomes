@@ -1,13 +1,36 @@
 /**
- * Workflow Engine
- * Core orchestration for workflow execution, job scheduling, and lifecycle management
+ * Workflow Engine (v2 — BullMQ)
  * 
- * Modular architecture:
- * - workflow.triggers.js    - Trigger matching and automation discovery
- * - workflow.conditions.js  - Condition evaluation and templating
- * - workflow.executors.js   - Node type execution handlers
- * - workflow.resume.js      - Response/timeout resumption logic
- * - workflow.recovery.js    - Error recovery and cleanup
+ * Core orchestration for workflow execution.
+ * 
+ * This version replaces setInterval + MongoDB polling with BullMQ queues.
+ * 
+ * How it works:
+ *   1. Trigger methods (triggerNewLead, etc.) enqueue events to the BullMQ trigger queue
+ *   2. Trigger worker picks them up → finds matching automations → creates execution instances
+ *   3. For each automation, the first nodes are enqueued to the execute queue
+ *   4. Execute worker processes nodes → updates state → enqueues next nodes
+ *   5. Delay nodes use BullMQ delayed jobs (not setTimeout, not scheduledFor polling)
+ *   6. Waiting nodes (WhatsApp, AI call) pause and schedule timeout checks
+ *   7. Failed nodes retry with exponential backoff (3 attempts) then go to DLQ
+ *
+ * Modular architecture preserved:
+ *   - workflow.triggers.js    - Trigger matching and automation discovery
+ *   - workflow.conditions.js  - Condition evaluation and templating
+ *   - workflow.executors.js   - Node type execution handlers
+ *   - workflow.resume.js      - Response/timeout resumption logic
+ *   - workflow.recovery.js    - Error recovery and cleanup
+ *   - workflow.queue.js       - BullMQ queue definitions and enqueue helpers
+ *   - workflow.worker.js      - BullMQ worker processes
+ *
+ * Public API (unchanged from v1 — drop-in replacement):
+ *   - start()                     → Starts BullMQ workers
+ *   - stop()                      → Gracefully stops workers + queues
+ *   - triggerNewLead(lead)        → Enqueues lead.created event
+ *   - triggerLeadUpdated(lead)    → Enqueues lead.updated event
+ *   - triggerSiteVisitScheduled() → Enqueues appointment.scheduled event
+ *   - manualTrigger(autoId, leadId) → Enqueues manual trigger
+ *   - resume* methods             → Enqueue next steps for waiting runs
  */
 
 const Automation = require('../models/Automation');
@@ -15,521 +38,280 @@ const AutomationRun = require('../models/AutomationRun');
 const AutomationJob = require('../models/AutomationJob');
 const Lead = require('../models/Lead');
 
-// Import modular components
+// Import modular components (unchanged)
 const triggers = require('./workflow.triggers');
 const conditions = require('./workflow.conditions');
 const executors = require('./workflow.executors');
 const resume = require('./workflow.resume');
 const recovery = require('./workflow.recovery');
 
+// BullMQ integration
+const { enqueueTriggerEvent, enqueueNodeExecution, closeQueues } = require('./workflow.queue');
+const { startWorkers, stopWorkers, getWorkerStatus } = require('./workflow.worker');
+const { closeRedis, isRedisHealthy } = require('../config/redis');
+
+const logger = require('../utils/logger');
+
 class WorkflowEngine {
     constructor() {
         this.isRunning = false;
-        this.jobInterval = null;
-        this.timeoutInterval = null;
-        this.callTimeoutInterval = null;
-        this.processIntervalMs = 5000; // Process jobs every 5 seconds
-        this.timeoutCheckIntervalMs = 60000; // Check timeouts every minute
+        this.useQueue = true; // Always true in v2
     }
 
     // =========================================================================
     // Lifecycle Management
     // =========================================================================
-    
-    start() {
+
+    /**
+     * Start the workflow engine.
+     * Initializes BullMQ workers that listen on Redis queues.
+     * @param {number} _interval - Ignored (kept for API compat with v1)
+     */
+    start(_interval) {
         if (this.isRunning) {
-            console.log('⚠️ Workflow engine already running');
+            logger.warn('⚠️ Workflow engine already running');
             return;
         }
-        
-        console.log('🚀 Starting workflow engine...');
-        this.isRunning = true;
-        
-        this.jobInterval = setInterval(
-            () => {
-                try {
-                    this.processJobs().catch(e => console.error('processJobs error:', e));
-                } catch (e) {
-                    console.error('processJobs exception:', e);
-                }
-            }, 
-            this.processIntervalMs
-        );
-        
-        this.timeoutInterval = setInterval(
-            () => {
-                try {
-                    this.processWaitingTimeouts().catch(e => console.error('timeouts error:', e));
-                } catch (e) {
-                    console.error('timeouts exception:', e);
-                }
-            }, 
-            this.timeoutCheckIntervalMs
-        );
-        
-        this.callTimeoutInterval = setInterval(
-            () => {
-                try {
-                    this.processCallTimeouts().catch(e => console.error('call timeouts error:', e));
-                } catch (e) {
-                    console.error('call timeouts exception:', e);
-                }
-            }, 
-            this.timeoutCheckIntervalMs
-        );
-        
-        console.log('✅ Workflow engine started');
+
+        logger.info('🚀 Starting workflow engine (BullMQ v2)...');
+
+        try {
+            startWorkers();
+            this.isRunning = true;
+            logger.info('✅ Workflow engine started (BullMQ mode)');
+        } catch (err) {
+            logger.error(`Failed to start workflow engine: ${err.message}`);
+            throw err;
+        }
     }
-    
-    stop() {
+
+    /**
+     * Gracefully stop the workflow engine.
+     * Closes workers, queues, and Redis connections.
+     */
+    async stop() {
         if (!this.isRunning) return;
-        
-        console.log('🛑 Stopping workflow engine...');
+
+        logger.info('🛑 Stopping workflow engine...');
         this.isRunning = false;
-        
-        if (this.jobInterval) clearInterval(this.jobInterval);
-        if (this.timeoutInterval) clearInterval(this.timeoutInterval);
-        if (this.callTimeoutInterval) clearInterval(this.callTimeoutInterval);
-        
-        this.jobInterval = null;
-        this.timeoutInterval = null;
-        this.callTimeoutInterval = null;
-        
-        console.log('✅ Workflow engine stopped');
+
+        try {
+            await stopWorkers();
+            await closeQueues();
+            await closeRedis();
+            logger.info('✅ Workflow engine stopped');
+        } catch (err) {
+            logger.error(`Error stopping workflow engine: ${err.message}`);
+        }
     }
 
     // =========================================================================
-    // Trigger Methods - Delegate to triggers module
+    // Trigger Methods — Enqueue to BullMQ trigger queue
     // =========================================================================
-    
+
+    /**
+     * Trigger automations for a new lead.
+     * Enqueues a lead.created event to the trigger queue.
+     */
     async triggerNewLead(lead) {
-        return triggers.triggerNewLead(lead, this.startAutomation.bind(this));
+        if (!lead || !lead._id) {
+            logger.warn('triggerNewLead called with invalid lead');
+            return { success: false, error: 'Invalid lead' };
+        }
+
+        try {
+            const job = await enqueueTriggerEvent(
+                'lead.created',
+                lead._id,
+                lead.organizationId,
+                { leadName: lead.name }
+            );
+            return { success: true, jobId: job.id, event: 'lead.created' };
+        } catch (err) {
+            logger.error(`Failed to enqueue triggerNewLead: ${err.message}`);
+            return { success: false, error: err.message };
+        }
     }
-    
+
+    /**
+     * Trigger automations for a lead update.
+     */
     async triggerLeadUpdated(lead, changes) {
-        return triggers.triggerLeadUpdated(lead, changes, this.startAutomation.bind(this));
+        if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
+
+        try {
+            const job = await enqueueTriggerEvent(
+                'lead.updated',
+                lead._id,
+                lead.organizationId,
+                { changes, leadName: lead.name }
+            );
+            return { success: true, jobId: job.id, event: 'lead.updated' };
+        } catch (err) {
+            logger.error(`Failed to enqueue triggerLeadUpdated: ${err.message}`);
+            return { success: false, error: err.message };
+        }
     }
-    
+
+    /**
+     * Trigger automations for a site visit / appointment scheduled.
+     */
     async triggerSiteVisitScheduled(lead, siteVisit) {
-        return triggers.triggerAppointmentScheduled(lead, siteVisit, this.startAutomation.bind(this));
+        if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
+
+        try {
+            const job = await enqueueTriggerEvent(
+                'appointment.scheduled',
+                lead._id,
+                lead.organizationId,
+                { siteVisit, leadName: lead.name }
+            );
+            return { success: true, jobId: job.id, event: 'appointment.scheduled' };
+        } catch (err) {
+            logger.error(`Failed to enqueue triggerSiteVisitScheduled: ${err.message}`);
+            return { success: false, error: err.message };
+        }
     }
 
     async triggerAppointmentScheduled(lead, appointment) {
-        return triggers.triggerAppointmentScheduled(lead, appointment, this.startAutomation.bind(this));
-    }
-    
-    async triggerStatusChange(lead, oldStatus, newStatus) {
-        return triggers.triggerStatusChange(lead, oldStatus, newStatus, this.startAutomation.bind(this));
+        return this.triggerSiteVisitScheduled(lead, appointment);
     }
 
-    // =========================================================================
-    // Automation Execution
-    // =========================================================================
-    
-    async startAutomation(automation, lead, context = {}) {
+    async triggerStatusChange(lead, oldStatus, newStatus) {
+        if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
+
         try {
-            // Duplicate prevention
-            if (automation.preventDuplicates || automation.runOncePerLead) {
-                const existingRun = await AutomationRun.findOne({
-                    automation: automation._id,
-                    lead: lead._id,
-                    status: { $in: ['running', 'waiting_for_response', 'pending'] }
-                });
-                
-                if (existingRun) {
-                    console.log(`⚠️ Skipping duplicate run for lead ${lead.name} on automation ${automation.name}`);
-                    return { skipped: true, reason: 'duplicate', existingRunId: existingRun._id };
+            const job = await enqueueTriggerEvent(
+                'lead.updated',
+                lead._id,
+                lead.organizationId,
+                {
+                    changes: { status: { old: oldStatus, new: newStatus } },
+                    leadName: lead.name,
                 }
-            }
-            
-            // Cooldown period check
-            if (automation.cooldownPeriod) {
-                const cooldownMs = automation.cooldownPeriod * 60 * 1000;
-                const recentRun = await AutomationRun.findOne({
-                    automation: automation._id,
-                    lead: lead._id,
-                    startedAt: { $gt: new Date(Date.now() - cooldownMs) }
-                });
-                
-                if (recentRun) {
-                    console.log(`⚠️ Lead ${lead.name} in cooldown for automation ${automation.name}`);
-                    return { skipped: true, reason: 'cooldown' };
-                }
-            }
-            
-            console.log(`▶️ Starting automation: ${automation.name} for lead: ${lead.name}`);
-            
-            // Create automation run
-            const run = new AutomationRun({
-                automation: automation._id,
-                lead: lead._id,
-                status: 'running',
-                startedAt: new Date(),
-                context: context,
-                executionPath: []
-            });
-            await run.save();
-            
-            // Update automation stats
-            automation.runCount = (automation.runCount || 0) + 1;
-            automation.lastRunAt = new Date();
-            await automation.save();
-            
-            // Find and schedule trigger/start nodes
-            const startNodes = automation.findNodesByType('trigger').length > 0 
-                ? automation.findNodesByType('trigger')
-                : automation.findNodesByType('start');
-            
-            if (startNodes.length === 0) {
-                throw new Error('No trigger or start node found in automation');
-            }
-            
-            for (const startNode of startNodes) {
-                const nextNodes = automation.getNextNodes(startNode.id);
-                for (const { node, edge } of nextNodes) {
-                    let delay = 0;
-                    if (node.data?.type === 'delay' || node.data?.type === 'wait') {
-                        delay = conditions.calculateDelay(node.data.config);
-                    }
-                    await this.scheduleNode(run, automation, lead, node, edge, delay);
-                }
-            }
-            
-            return { success: true, runId: run._id };
-            
-        } catch (error) {
-            console.error(`Error starting automation: ${error.message}`);
-            return { success: false, error: error.message };
+            );
+            return { success: true, jobId: job.id, event: 'lead.updated' };
+        } catch (err) {
+            logger.error(`Failed to enqueue triggerStatusChange: ${err.message}`);
+            return { success: false, error: err.message };
         }
     }
 
     // =========================================================================
     // Manual Trigger
     // =========================================================================
-    
+
     async manualTrigger(automationId, leadId, context = {}) {
         try {
             const automation = await Automation.findById(automationId);
-            if (!automation) {
-                throw new Error('Automation not found');
-            }
-            
+            if (!automation) throw new Error('Automation not found');
+
             const lead = await Lead.findById(leadId);
-            if (!lead) {
-                throw new Error('Lead not found');
-            }
-            
-            return await this.startAutomation(automation, lead, { 
-                ...context, 
-                manualTrigger: true,
-                triggeredAt: new Date()
-            });
-            
-        } catch (error) {
-            console.error('Manual trigger error:', error);
-            return { success: false, error: error.message };
-        }
-    }
+            if (!lead) throw new Error('Lead not found');
 
-    // =========================================================================
-    // Job Scheduling
-    // =========================================================================
-    
-    async scheduleNode(run, automation, lead, node, edge, delay = 0) {
-        const scheduledFor = new Date(Date.now() + delay);
-        
-        console.log(`📋 Scheduling node: ${node.data?.label || node.id} for ${scheduledFor.toISOString()}`);
-        
-        const job = new AutomationJob({
-            automation: automation._id,
-            automationRun: run._id,
-            lead: lead._id,
-            nodeId: node.id,
-            nodeType: node.data?.type || node.type,
-            nodeData: node.data,
-            edgeId: edge?.id,
-            status: 'pending',
-            scheduledFor,
-            attempts: 0,
-            maxAttempts: node.data?.config?.maxRetries || 3
-        });
-        
-        await job.save();
-        
-        run.executionPath.push({
-            nodeId: node.id,
-            nodeType: node.data?.type || node.type,
-            label: node.data?.label || node.id,
-            status: 'pending',
-            scheduledFor
-        });
-        await run.save();
-        
-        return job;
-    }
-
-    // =========================================================================
-    // Job Processing
-    // =========================================================================
-    
-    async processJobs() {
-        if (!this.isRunning) return;
-        
-        try {
-            const jobs = await AutomationJob.find({
-                status: 'pending',
-                scheduledFor: { $lte: new Date() }
-            })
-            .sort({ scheduledFor: 1 })
-            .limit(10);
-            
-            if (jobs.length > 0) {
-                console.log(`✅ Found ${jobs.length} job(s) ready for execution`);
-                for (const job of jobs) {
-                    console.log(`   - Job ${job._id} type=${job.nodeType}`);
+            // For manual triggers, we enqueue directly to ensure it runs
+            const job = await enqueueTriggerEvent(
+                automation.triggerType || 'manual',
+                lead._id,
+                lead.organizationId,
+                {
+                    context: { ...context, manualTrigger: true, triggeredAt: new Date() },
+                    leadName: lead.name,
+                    forceAutomationId: String(automation._id), // Force this specific automation
                 }
-            }
-            
-            for (const job of jobs) {
-                await this.executeJob(job);
-            }
-        } catch (error) {
-            console.error('❌ processJobs error:', error.message);
-        }
-    }
-    
-    async executeJob(job) {
-        try {
-            console.log(`⚙️ Executing: ${job.nodeData?.label || job.nodeId} (${job.nodeType})`);
-            
-            job.status = 'processing';
-            job.attempts += 1;
-            job.lastAttemptAt = new Date();
-            await job.save();
-            
-            const [run, automation, lead] = await Promise.all([
-                AutomationRun.findById(job.automationRun),
-                Automation.findById(job.automation),
-                Lead.findById(job.lead)
-            ]);
-            
-            if (!run || run.status === 'cancelled' || run.status === 'completed') {
-                job.status = 'cancelled';
-                job.result = { reason: 'Run cancelled or completed' };
-                await job.save();
-                return;
-            }
-            
-            if (!automation || !lead) {
-                throw new Error('Missing automation or lead');
-            }
-            
-            // Update execution path to running
-            this.updateExecutionPathStatus(run, job.nodeId, 'running');
-            run.currentNodeId = job.nodeId;
-            await run.save();
-            
-            console.log(`⚙️ Executing node: ${job.nodeData?.label || job.nodeId} (${job.nodeType})`);
-            
-            // Execute the node using executors module
-            const result = await executors.executeNode(
-                job.nodeData, 
-                lead, 
-                run, 
-                automation, 
-                job
             );
-            
-            // Handle waiting nodes
-            if (result.waiting) {
-                job.status = 'waiting';
-                job.result = result;
-                await job.save();
-                return;
-            }
-            
-            // Handle conditions
-            if (executors.isConditionNodeType(job.nodeType)) {
-                await this.handleConditionResult(job, run, automation, lead, result);
-                return;
-            }
-            
-            // Handle delays
-            if (result.delayed) {
-                job.status = 'completed';
-                job.result = result;
-                job.completedAt = new Date();
-                await job.save();
-                
-                this.updateExecutionPathStatus(run, job.nodeId, 'completed', result);
-                await run.save();
-                
-                // Schedule next nodes with delay
-                const delay = conditions.calculateDelay(job.nodeData?.config);
-                await this.scheduleNextNodes(run, automation, lead, job.nodeId, null, delay);
-                return;
-            }
-            
-            // Handle success
-            if (result.success || result.skipped) {
-                job.status = 'completed';
-                job.result = result;
-                job.completedAt = new Date();
-                await job.save();
-                
-                this.updateExecutionPathStatus(run, job.nodeId, 'completed', result);
-                await run.save();
-                
-                await this.scheduleNextNodes(run, automation, lead, job.nodeId);
-            } else {
-                await this.handleJobFailure(job, run, new Error(result.error || 'Unknown error'));
-            }
-            
-        } catch (error) {
-            console.error(`Error executing job ${job._id}:`, error);
-            await this.handleJobFailure(job, await AutomationRun.findById(job.automationRun), error);
+
+            return { success: true, jobId: job.id };
+        } catch (err) {
+            logger.error(`Manual trigger error: ${err.message}`);
+            return { success: false, error: err.message };
         }
     }
 
     // =========================================================================
-    // Condition Handling
+    // Resume Methods — Delegate to resume module, route through BullMQ
     // =========================================================================
-    
-    async handleConditionResult(job, run, automation, lead, result) {
-        job.status = 'completed';
-        job.result = result;
-        job.completedAt = new Date();
-        await job.save();
-        
-        this.updateExecutionPathStatus(run, job.nodeId, 'completed', result);
-        await run.save();
-        
-        const handle = result.passed ? 'true' : 'false';
-        await this.scheduleNextNodes(run, automation, lead, job.nodeId, handle);
+
+    /**
+     * Create a BullMQ-compatible scheduleNode function for resume handlers.
+     * The resume module expects: scheduleNode(run, automation, lead, node, edge, delay)
+     */
+    _makeScheduleNodeFn() {
+        return async (run, automation, lead, node, edge, delay = 0) => {
+            // Record in execution path
+            run.executionPath.push({
+                nodeId: node.id,
+                nodeType: node.data?.type || node.type,
+                nodeLabel: node.data?.label || node.id,
+                label: node.data?.label || node.id,
+                status: 'pending',
+                scheduledFor: new Date(Date.now() + delay),
+            });
+            await run.save();
+
+            // Record in AutomationJob for monitoring
+            const jobRecord = new AutomationJob({
+                automation: automation._id,
+                automationRun: run._id,
+                lead: lead._id,
+                organizationId: run.organizationId,
+                nodeId: node.id,
+                nodeType: node.data?.type || node.type,
+                nodeData: node.data,
+                edgeId: edge?.id,
+                status: 'pending',
+                scheduledFor: new Date(Date.now() + delay),
+                attempts: 0,
+                maxAttempts: 3,
+            });
+            await jobRecord.save();
+
+            // Enqueue in BullMQ
+            await enqueueNodeExecution({
+                runId: run._id,
+                automationId: automation._id,
+                leadId: lead._id,
+                nodeId: node.id,
+                nodeData: node.data,
+                edgeId: edge?.id,
+                organizationId: run.organizationId,
+                delay,
+            });
+        };
     }
 
-    // =========================================================================
-    // Failure Handling
-    // =========================================================================
-    
-    async handleJobFailure(job, run, error) {
-        console.error(`❌ Job failed: ${job.nodeData?.label || job.nodeId}`, error.message);
-        
-        if (job.attempts < job.maxAttempts) {
-            // Retry with exponential backoff
-            const retryDelay = Math.pow(2, job.attempts) * 1000;
-            job.status = 'pending';
-            job.scheduledFor = new Date(Date.now() + retryDelay);
-            job.error = error.message;
-            await job.save();
-            console.log(`🔄 Retrying job in ${retryDelay}ms (attempt ${job.attempts}/${job.maxAttempts})`);
-            return;
-        }
-        
-        // Max retries exceeded
-        job.status = 'failed';
-        job.error = error.message;
-        job.completedAt = new Date();
-        await job.save();
-        
-        // Try failure path
-        const failureResult = await recovery.takeFailurePath(
-            job, 
-            error, 
-            this.scheduleNode.bind(this)
-        );
-        
-        if (!failureResult.success) {
-            // No failure path - notify admin and fail run
-            await recovery.notifyAdminOfFailure(job, error);
-            
-            if (run) {
-                run.status = 'failed';
-                run.error = error.message;
-                this.updateExecutionPathStatus(run, job.nodeId, 'failed', { error: error.message });
-                await run.save();
-            }
-        }
-    }
-
-    // =========================================================================
-    // Timeout Processing
-    // =========================================================================
-    
-    async processWaitingTimeouts() {
-        if (!this.isRunning) return;
-        
-        try {
-            const timedOutRuns = await AutomationRun.find({
-                status: 'waiting_for_response',
-                'waitingForResponse.isWaiting': true,
-                'waitingForResponse.timeoutAt': { $lte: new Date() }
-            }).populate('lead').populate('automation');
-            
-            for (const run of timedOutRuns) {
-                console.log(`⏰ Processing timeout for run ${run._id}`);
-                await resume.resumeFromTimeout(run, this.scheduleNode.bind(this));
-            }
-        } catch (error) {
-            console.error('Error processing waiting timeouts:', error);
-        }
-    }
-    
-    async processCallTimeouts() {
-        if (!this.isRunning) return;
-        
-        try {
-            const timedOutRuns = await AutomationRun.find({
-                status: 'waiting_for_response',
-                'waitingForCall.isWaiting': true,
-                'waitingForCall.timeoutAt': { $lte: new Date() }
-            }).populate('lead').populate('automation');
-            
-            for (const run of timedOutRuns) {
-                console.log(`⏰ Processing call timeout for run ${run._id}`);
-                await resume.resumeFromCallTimeout(run, this.scheduleNode.bind(this));
-            }
-        } catch (error) {
-            console.error('Error processing call timeouts:', error);
-        }
-    }
-
-    // =========================================================================
-    // Resume Methods - Delegate to resume module
-    // =========================================================================
-    
     async resumeFromResponse(run, parsedMessage) {
-        return resume.resumeFromResponse(run, parsedMessage, this.scheduleNode.bind(this));
+        return resume.resumeFromResponse(run, parsedMessage, this._makeScheduleNodeFn());
     }
-    
+
     async resumeFromTimeout(run) {
-        return resume.resumeFromTimeout(run, this.scheduleNode.bind(this));
+        return resume.resumeFromTimeout(run, this._makeScheduleNodeFn());
     }
-    
+
     async resumeFromCallResult(run, callResult) {
-        return resume.resumeFromCallResult(run, callResult, this.scheduleNode.bind(this));
+        return resume.resumeFromCallResult(run, callResult, this._makeScheduleNodeFn());
     }
-    
+
     async resumeFromCallTimeout(run) {
-        return resume.resumeFromCallTimeout(run, this.scheduleNode.bind(this));
+        return resume.resumeFromCallTimeout(run, this._makeScheduleNodeFn());
     }
-    
+
     async resumeFromTaskCompletion(task) {
-        return resume.resumeFromTaskCompletion(task, this.scheduleNode.bind(this));
+        return resume.resumeFromTaskCompletion(task, this._makeScheduleNodeFn());
     }
 
     // =========================================================================
-    // Recovery & Cleanup - Delegate to recovery module
+    // Recovery & Cleanup — Delegate to recovery module
     // =========================================================================
-    
+
     async cleanupOldRuns(daysToKeep, failedDaysToKeep) {
         return recovery.cleanupOldRuns(daysToKeep, failedDaysToKeep);
     }
-    
+
     async getCleanupStats(daysToKeep, failedDaysToKeep) {
         return recovery.getCleanupStats(daysToKeep, failedDaysToKeep);
     }
-    
+
     async recoverStuckAutomations(stuckThresholdHours) {
         return recovery.recoverStuckAutomations(
             stuckThresholdHours,
@@ -537,88 +319,24 @@ class WorkflowEngine {
             this.resumeFromCallTimeout.bind(this)
         );
     }
-    
+
     async getHealthStats() {
-        return recovery.getHealthStats();
-    }
+        const dbStats = await recovery.getHealthStats();
+        const redisHealthy = await isRedisHealthy();
+        const workerStatus = getWorkerStatus();
 
-    // =========================================================================
-    // Helper Methods
-    // =========================================================================
-    
-    updateExecutionPathStatus(run, nodeId, status, result = null) {
-        const pathIndex = run.executionPath.findIndex(
-            p => p.nodeId === nodeId && (p.status === 'pending' || p.status === 'running')
-        );
-        if (pathIndex >= 0) {
-            run.executionPath[pathIndex].status = status;
-            if (status === 'completed' || status === 'failed') {
-                run.executionPath[pathIndex].completedAt = new Date();
-            }
-            if (result) {
-                run.executionPath[pathIndex].result = result;
-            }
-        }
-    }
-    
-    async scheduleNextNodes(run, automation, lead, currentNodeId, handle = null, delay = 0) {
-        let nextNodes = automation.getNextNodes(currentNodeId, handle);
-        
-        if (nextNodes.length === 0 && handle) {
-            nextNodes = automation.getNextNodes(currentNodeId);
-        }
-        
-        if (nextNodes.length === 0) {
-            // Check for other pending jobs
-            const pendingJobs = await AutomationJob.countDocuments({
-                automationRun: run._id,
-                status: 'pending'
-            });
-            
-            if (pendingJobs === 0) {
-                run.status = 'completed';
-                run.completedAt = new Date();
-                await run.save();
-                
-                automation.successCount = (automation.successCount || 0) + 1;
-                await automation.save();
-                
-                console.log(`✅ Automation run completed: ${automation.name}`);
-            }
-            return 0;
-        }
-        
-        for (const { node, edge } of nextNodes) {
-            let nodeDelay = delay;
-            if (node.data?.type === 'delay' || node.data?.type === 'wait') {
-                nodeDelay = conditions.calculateDelay(node.data.config);
-            }
-            await this.scheduleNode(run, automation, lead, node, edge, nodeDelay);
-        }
-        
-        return nextNodes.length;
-    }
-
-    // =========================================================================
-    // Execute with Recovery Wrapper
-    // =========================================================================
-    
-    async executeJobWithRecovery(job, options = {}) {
-        const { skipOnFailure = false, useFailurePath = true } = options;
-        
-        try {
-            await this.executeJob(job);
-        } catch (error) {
-            console.error(`Job execution failed with recovery: ${error.message}`);
-            
-            if (skipOnFailure) {
-                await recovery.skipFailedNode(job, error, this.scheduleNode.bind(this));
-            } else if (useFailurePath) {
-                await recovery.takeFailurePath(job, error, this.scheduleNode.bind(this));
-            } else {
-                throw error;
-            }
-        }
+        return {
+            ...dbStats,
+            redis: {
+                connected: redisHealthy,
+            },
+            workers: workerStatus,
+            engine: {
+                version: 2,
+                mode: 'bullmq',
+                running: this.isRunning,
+            },
+        };
     }
 }
 
