@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 */node_modules/
+**/node_modules/
 
 # Build outputs
 dist/
@@ -9,9 +10,11 @@ build/
 
 # Environment files (contain secrets)
 .env
+.env.*
 .env.local
 .env.*.local
 *.env
+!.env.example
 
 # Logs
 logs/
@@ -38,7 +41,70 @@ coverage/
 
 # Uploads (user data)
 uploads/
+app-backend/uploads/
 
 # Server logs
 server.log
 server-err.log
+
+# Deprecated backends
+zoho-lead-backend/
+
+# Documentation (non-essential)
+ARCHITECTURE_*.md
+AUTOMATION_*.md
+AWS_EMAIL_SETUP.md
+DYNAMIC_CREDENTIALS_SETUP.md
+END_TO_END_TESTING_ALL_INDUSTRIES.md
+GOOGLE_SHEETS_SETUP.md
+IMPLEMENTATION_*.md
+INVESTOR_DEMO_GUIDE.md
+MANUAL_TESTING_GUIDE.md
+PHASE_1_COMPLETION_SUMMARY.md
+QUICK_STATUS.md
+SOLUTION_EXPLANATION.md
+ATTRIBUTIONS.md
+
+# Test/debug scripts
+test-system.cjs
+http-test.js
+production-test.js
+get-elevenlabs-phone-id.js
+GOOGLE_APPS_SCRIPT.js
+app-backend/check-lead.js
+app-backend/fix-agents.js
+app-backend/generate-hashes.js
+app-backend/http-test.js
+app-backend/production-test.js
+app-backend/reset-agent-status.js
+app-backend/test-google-sheets-sync.js
+app-backend/src/MIGRATION_GUIDE.js
+
+# Misc non-essential
+business-process-outsourcing.jpg
+guidelines/
+history_output.json
+JKH/
+
+# One-off scripts
+create_sow.py
+aws-lambda/
+app-backend/scripts/fix-agents-org.js
+app-backend/scripts/migrate-category-field.js
+app-backend/scripts/sync-elevenlabs.js
+
+# Old/backup service files
+app-backend/src/leads/leads.service.hybrid.js
+app-backend/src/leads/leads.service.original.js
+app-backend/src/services/workflow.engine.old.js
+app-backend/src/leads/task.service.js
+
+# Deployment configs (server-specific)
+deploy.sh
+deploy-server-setup.sh
+nginx-config.conf
+ecosystem.config.cjs
+
+# Extra docs not needed in repo
+README-QUICK-START.md
+app-backend/PRODUCTION_CONFIG.md
