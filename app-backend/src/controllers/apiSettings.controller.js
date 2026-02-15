@@ -239,10 +239,83 @@ async function saveWhatsappCredentials(request, reply) {
         const userId = request.user.id || request.user._id;
         const { accessToken, phoneNumberId, businessAccountId, appId, appSecret, verifyToken, webhookUrl } = request.body;
         
-        if (!accessToken || !phoneNumberId) {
+        if (!accessToken) {
             return reply.status(400).send({
                 success: false,
-                error: 'Access Token and Phone Number ID are required'
+                error: 'Access Token is required'
+            });
+        }
+
+        // Auto-discover Phone Number ID and WABA ID if not provided
+        let resolvedPhoneNumberId = phoneNumberId || '';
+        let resolvedBusinessAccountId = businessAccountId || '';
+        let discoveredPhoneDisplay = '';
+        let discoveredBusinessName = '';
+
+        if (!resolvedPhoneNumberId || !resolvedBusinessAccountId) {
+            // Check existing org data first (may already have IDs from previous save)
+            const existingOrg = await Organization.findOne({ ownerId: userId });
+            if (existingOrg?.whatsapp) {
+                if (!resolvedPhoneNumberId && existingOrg.whatsapp.phoneNumberId) {
+                    resolvedPhoneNumberId = existingOrg.whatsapp.phoneNumberId;
+                }
+                if (!resolvedBusinessAccountId && existingOrg.whatsapp.businessAccountId) {
+                    resolvedBusinessAccountId = existingOrg.whatsapp.businessAccountId;
+                }
+            }
+
+            // Check env vars as fallback
+            if (!resolvedPhoneNumberId) resolvedPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
+            if (!resolvedBusinessAccountId) resolvedBusinessAccountId = process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '';
+
+            // Try Meta API discovery if still missing
+            if (!resolvedPhoneNumberId || !resolvedBusinessAccountId) {
+                try {
+                    const axios = require('axios');
+                    if (resolvedBusinessAccountId && !resolvedPhoneNumberId) {
+                        const phoneRes = await axios.get(
+                            `https://graph.facebook.com/v18.0/${resolvedBusinessAccountId}/phone_numbers`,
+                            { headers: { Authorization: `Bearer ${accessToken}` }, params: { fields: 'id,display_phone_number,verified_name' } }
+                        );
+                        if (phoneRes.data?.data?.length > 0) {
+                            resolvedPhoneNumberId = phoneRes.data.data[0].id;
+                            discoveredPhoneDisplay = phoneRes.data.data[0].display_phone_number || '';
+                            console.log('📱 Auto-discovered Phone Number ID:', resolvedPhoneNumberId, discoveredPhoneDisplay);
+                        }
+                    }
+                } catch (discoverErr) {
+                    console.warn('⚠️ Could not auto-discover WhatsApp IDs:', discoverErr.response?.data?.error?.message || discoverErr.message);
+                }
+            }
+
+            // Get display names for discovered IDs
+            if (resolvedBusinessAccountId) {
+                try {
+                    const axios = require('axios');
+                    const wabaInfo = await axios.get(
+                        `https://graph.facebook.com/v18.0/${resolvedBusinessAccountId}`,
+                        { headers: { Authorization: `Bearer ${accessToken}` }, params: { fields: 'id,name' } }
+                    );
+                    discoveredBusinessName = wabaInfo.data?.name || '';
+                } catch (e) { /* ignore */ }
+            }
+            if (resolvedPhoneNumberId && !discoveredPhoneDisplay) {
+                try {
+                    const axios = require('axios');
+                    const phoneInfo = await axios.get(
+                        `https://graph.facebook.com/v18.0/${resolvedPhoneNumberId}`,
+                        { headers: { Authorization: `Bearer ${accessToken}` }, params: { fields: 'display_phone_number,verified_name' } }
+                    );
+                    discoveredPhoneDisplay = phoneInfo.data?.display_phone_number || '';
+                    discoveredBusinessName = discoveredBusinessName || phoneInfo.data?.verified_name || '';
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        if (!resolvedPhoneNumberId) {
+            return reply.status(400).send({
+                success: false,
+                error: 'Could not determine Phone Number ID. Please provide it manually or check your access token permissions.'
             });
         }
         
@@ -259,8 +332,8 @@ async function saveWhatsappCredentials(request, reply) {
         // Update WhatsApp credentials (automatically encrypted via schema)
         organization.whatsapp = {
             accessToken,
-            phoneNumberId,
-            businessAccountId: businessAccountId || '',
+            phoneNumberId: resolvedPhoneNumberId,
+            businessAccountId: resolvedBusinessAccountId,
             appId: appId || '',
             appSecret: appSecret || '',
             verifyToken: verifyToken || '',
@@ -275,7 +348,13 @@ async function saveWhatsappCredentials(request, reply) {
         
         return reply.send({
             success: true,
-            message: 'WhatsApp credentials saved (encrypted)'
+            message: 'WhatsApp credentials saved (encrypted)',
+            discovered: {
+                phoneNumberId: resolvedPhoneNumberId,
+                businessAccountId: resolvedBusinessAccountId,
+                phoneDisplay: discoveredPhoneDisplay,
+                businessName: discoveredBusinessName
+            }
         });
     } catch (error) {
         console.error('Error saving WhatsApp credentials:', error);

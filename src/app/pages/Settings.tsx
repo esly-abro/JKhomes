@@ -7,7 +7,7 @@ import { Label } from '../components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
-import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical, Key } from 'lucide-react';
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, CategoryItem, AppointmentType } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
@@ -787,13 +787,13 @@ export default function Settings() {
   };
 
   const handleSaveWhatsappSettings = async () => {
-    if (!whatsappSettings.accessToken || !whatsappSettings.phoneNumberId) {
-      alert('Please fill in Access Token and Phone Number ID');
+    if (!whatsappSettings.accessToken) {
+      alert('Please enter your Meta Access Token');
       return;
     }
     setSavingWhatsappSettings(true);
     try {
-      // API call to save WhatsApp settings (encrypted)
+      // API call to save WhatsApp settings (encrypted) — backend auto-discovers IDs from token
       const api = await import('../../services/api');
       const response = await api.default.post('/api/settings/api/whatsapp', {
         accessToken: whatsappSettings.accessToken,
@@ -806,7 +806,19 @@ export default function Settings() {
       });
       
       if (response.data.success) {
-        alert('WhatsApp configuration saved! Click "Test Connection" to verify.');
+        // Auto-fill discovered IDs
+        const disc = response.data.discovered;
+        if (disc) {
+          setWhatsappSettings(prev => ({
+            ...prev,
+            phoneNumberId: disc.phoneNumberId || prev.phoneNumberId,
+            businessAccountId: disc.businessAccountId || prev.businessAccountId
+          }));
+        }
+        alert(disc?.phoneDisplay
+          ? `WhatsApp connected! Phone: ${disc.phoneDisplay}${disc.businessName ? ` (${disc.businessName})` : ''}`
+          : 'WhatsApp configuration saved! Click "Test Connection" to verify.'
+        );
         handleLoadWhatsappSettings();
       } else {
         throw new Error(response.data.error || 'Failed to save settings');
@@ -1570,109 +1582,39 @@ export default function Settings() {
                 />
               </div>
 
-              {/* Meta Business API Configuration */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-gray-900 border-b pb-2">Meta Business API Credentials</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="accessToken">Access Token *</Label>
-                    <Input
-                      id="accessToken"
-                      type="password"
-                      placeholder="Enter your WhatsApp Business API access token"
-                      value={whatsappSettings.accessToken}
-                      onChange={(e) => handleWhatsappSettingChange('accessToken', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Permanent access token from Meta Developer Console
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumberId">Phone Number ID *</Label>
-                    <Input
-                      id="phoneNumberId"
-                      placeholder="123456789012345"
-                      value={whatsappSettings.phoneNumberId}
-                      onChange={(e) => handleWhatsappSettingChange('phoneNumberId', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      WhatsApp Business phone number ID from Meta
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="businessAccountId">Business Account ID *</Label>
-                    <Input
-                      id="businessAccountId"
-                      placeholder="123456789012345"
-                      value={whatsappSettings.businessAccountId}
-                      onChange={(e) => handleWhatsappSettingChange('businessAccountId', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      WhatsApp Business Account ID from Meta
-                    </p>
-                  </div>
+              {/* Main Key — Access Token */}
+              <div className="space-y-3 p-5 bg-white rounded-xl border-2 border-green-200 shadow-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <Key className="h-5 w-5 text-green-600" />
+                  <h3 className="font-semibold text-gray-900">Meta Access Token</h3>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Required</span>
                 </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-semibold text-gray-900 border-b pb-2">Webhook Configuration</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="webhookUrl">Webhook URL</Label>
-                    <Input
-                      id="webhookUrl"
-                      placeholder="https://your-domain.com/webhook/whatsapp"
-                      value={whatsappSettings.webhookUrl}
-                      onChange={(e) => handleWhatsappSettingChange('webhookUrl', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      URL where Meta will send webhook events
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="verifyToken">Verify Token</Label>
-                    <Input
-                      id="verifyToken"
-                      placeholder="your-webhook-verify-token"
-                      value={whatsappSettings.verifyToken}
-                      onChange={(e) => handleWhatsappSettingChange('verifyToken', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Token for webhook verification
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="appId">App ID</Label>
-                    <Input
-                      id="appId"
-                      placeholder="123456789012345"
-                      value={whatsappSettings.appId}
-                      onChange={(e) => handleWhatsappSettingChange('appId', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Meta App ID (optional)
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="appSecret">App Secret</Label>
-                    <Input
-                      id="appSecret"
-                      type="password"
-                      placeholder="Enter your app secret"
-                      value={whatsappSettings.appSecret}
-                      onChange={(e) => handleWhatsappSettingChange('appSecret', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      Meta App Secret (optional)
-                    </p>
-                  </div>
-                </div>
+                <p className="text-sm text-gray-500">
+                  Paste your permanent access token from the <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-green-600 underline hover:text-green-800">Meta Business Suite → System Users</a>. Phone Number ID and Business Account ID will be auto-discovered.
+                </p>
+                <Input
+                  id="accessToken"
+                  type="password"
+                  placeholder="EAASNRLjB2uE..."
+                  className="font-mono text-sm h-11"
+                  value={whatsappSettings.accessToken}
+                  onChange={(e) => handleWhatsappSettingChange('accessToken', e.target.value)}
+                />
               </div>
+
+              {/* Auto-discovered IDs (read-only display when populated) */}
+              {(whatsappSettings.phoneNumberId || whatsappSettings.businessAccountId) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase tracking-wide">Phone Number ID</Label>
+                    <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.phoneNumberId || '—'}</div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500 uppercase tracking-wide">Business Account ID</Label>
+                    <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.businessAccountId || '—'}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Connection Status */}
               {whatsappSettings.isConnected && (
@@ -1713,21 +1655,88 @@ export default function Settings() {
               <div className="flex justify-end pt-4">
                 <Button 
                   onClick={handleSaveWhatsappSettings}
-                  disabled={savingWhatsappSettings || !whatsappSettings.accessToken || !whatsappSettings.phoneNumberId}
+                  disabled={savingWhatsappSettings || !whatsappSettings.accessToken}
+                  className="bg-green-600 hover:bg-green-700"
                 >
                   {savingWhatsappSettings ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
+                      Connecting...
                     </>
                   ) : (
                     <>
                       <Save className="h-4 w-4 mr-2" />
-                      Save WhatsApp Settings
+                      Save &amp; Connect WhatsApp
                     </>
                   )}
                 </Button>
               </div>
+
+              {/* Advanced / Optional Settings (collapsible) */}
+              <details className="border rounded-lg">
+                <summary className="cursor-pointer p-4 text-sm font-medium text-gray-600 hover:text-gray-900 select-none">
+                  Advanced Settings (optional)
+                </summary>
+                <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phoneNumberId" className="text-sm text-gray-600">Phone Number ID</Label>
+                    <Input
+                      id="phoneNumberId"
+                      placeholder="Auto-discovered from token"
+                      value={whatsappSettings.phoneNumberId}
+                      onChange={(e) => handleWhatsappSettingChange('phoneNumberId', e.target.value)}
+                    />
+                    <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="businessAccountId" className="text-sm text-gray-600">Business Account ID</Label>
+                    <Input
+                      id="businessAccountId"
+                      placeholder="Auto-discovered from token"
+                      value={whatsappSettings.businessAccountId}
+                      onChange={(e) => handleWhatsappSettingChange('businessAccountId', e.target.value)}
+                    />
+                    <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="webhookUrl" className="text-sm text-gray-600">Webhook URL</Label>
+                    <Input
+                      id="webhookUrl"
+                      placeholder="https://your-domain.com/webhook/whatsapp"
+                      value={whatsappSettings.webhookUrl}
+                      onChange={(e) => handleWhatsappSettingChange('webhookUrl', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="verifyToken" className="text-sm text-gray-600">Verify Token</Label>
+                    <Input
+                      id="verifyToken"
+                      placeholder="your-webhook-verify-token"
+                      value={whatsappSettings.verifyToken}
+                      onChange={(e) => handleWhatsappSettingChange('verifyToken', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="appId" className="text-sm text-gray-600">App ID</Label>
+                    <Input
+                      id="appId"
+                      placeholder="Meta App ID"
+                      value={whatsappSettings.appId}
+                      onChange={(e) => handleWhatsappSettingChange('appId', e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="appSecret" className="text-sm text-gray-600">App Secret</Label>
+                    <Input
+                      id="appSecret"
+                      type="password"
+                      placeholder="Meta App Secret"
+                      value={whatsappSettings.appSecret}
+                      onChange={(e) => handleWhatsappSettingChange('appSecret', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </details>
 
               {/* Testing Section */}
               <div className="border-t pt-6">
