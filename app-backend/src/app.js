@@ -965,9 +965,12 @@ async function buildApp() {
         await taskProtectedApp.register(taskRoutes, { prefix: '/api/tasks' });
     });
 
-    // WhatsApp routes (outside protected for now - allows unauthenticated access in dev)
-    const whatsappRoutes = require('./routes/whatsapp.routes');
-    await app.register(whatsappRoutes, { prefix: '/api/whatsapp' });
+    // WhatsApp routes (requires auth for template/send operations)
+    app.register(async function (whatsappProtectedApp) {
+        whatsappProtectedApp.addHook('onRequest', requireAuth);
+        const whatsappRoutes = require('./routes/whatsapp.routes');
+        await whatsappProtectedApp.register(whatsappRoutes, { prefix: '/api/whatsapp' });
+    });
 
     // Zoho CRM Integration routes (requires auth)
     app.register(async function (zohoProtectedApp) {

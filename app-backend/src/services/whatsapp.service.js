@@ -6,6 +6,7 @@
 
 const axios = require('axios');
 const Settings = require('../models/settings.model');
+const Organization = require('../models/organization.model');
 
 // Meta WhatsApp API Configuration
 const WHATSAPP_API_VERSION = 'v18.0';
@@ -39,17 +40,18 @@ async function getUserWhatsappSettings(userId) {
 
 /**
  * Get WhatsApp credentials - tries database first, then falls back to env vars
+ * Checks: Settings model → Organization model → env vars
  * @param {string} userId - User ID for database lookup (optional)
  * @returns {Object} - { accessToken, phoneNumberId, businessAccountId }
  */
 async function getCredentials(userId) {
-  // Try to get credentials from database first
+  // Try to get credentials from Settings model first
   if (userId) {
     try {
       const settings = await Settings.findOne({ userId });
       
       if (settings?.whatsapp?.enabled && settings?.whatsapp?.accessToken && settings?.whatsapp?.phoneNumberId) {
-        console.log('📱 Using WhatsApp credentials from database for user:', userId);
+        console.log('📱 Using WhatsApp credentials from Settings for user:', userId);
         return {
           accessToken: settings.whatsapp.accessToken,
           phoneNumberId: settings.whatsapp.phoneNumberId,
@@ -57,8 +59,40 @@ async function getCredentials(userId) {
         };
       }
     } catch (error) {
-      console.warn('Could not fetch WhatsApp settings from database:', error.message);
+      console.warn('Could not fetch WhatsApp settings from Settings model:', error.message);
     }
+  }
+
+  // Try to get credentials from Organization model (encrypted, auto-decrypted via getters)
+  try {
+    let org = null;
+    if (userId) {
+      org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
+    }
+    if (!org) {
+      org = await Organization.findOne({ 'whatsapp.enabled': true, 'whatsapp.isConnected': true });
+    }
+    
+    if (org?.whatsapp?.phoneNumberId) {
+      // Access accessToken in a try/catch since decryption may fail if encryption key changed
+      let token;
+      try {
+        token = org.whatsapp.accessToken;
+      } catch (decryptErr) {
+        console.warn('⚠️ Could not decrypt Organization WhatsApp token, falling back to env vars');
+        token = null;
+      }
+      if (token) {
+        console.log('📱 Using WhatsApp credentials from Organization:', org.name);
+        return {
+          accessToken: token,
+          phoneNumberId: org.whatsapp.phoneNumberId,
+          businessAccountId: org.whatsapp.businessAccountId || getBusinessAccountId()
+        };
+      }
+    }
+  } catch (error) {
+    console.warn('Could not fetch WhatsApp settings from Organization model:', error.message);
   }
   
   // Fallback to environment variables

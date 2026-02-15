@@ -104,7 +104,7 @@ function ActionNode({ data, selected }: NodeProps) {
                 Max: {nodeData.config.maxDuration || 300}s
               </div>
               <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded mt-1">
-                ⚡ ~5s pipeline overhead after delay
+                ⚡ ~15s pipeline overhead after delay
               </div>
             </>
           )}

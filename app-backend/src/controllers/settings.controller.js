@@ -1,4 +1,5 @@
 const Settings = require('../models/settings.model');
+const Organization = require('../models/organization.model');
 const axios = require('axios');
 
 /**
@@ -10,35 +11,62 @@ async function getWhatsappSettings(request, reply) {
     
     let settings = await Settings.findOne({ userId });
     
-    if (!settings) {
-      // Return empty defaults without saving to database
-      // Settings will be created when user actually configures them
-      return reply.send({
-        success: true,
-        data: {
-          accessToken: '',
-          phoneNumberId: '',
-          businessAccountId: '',
-          webhookUrl: '',
-          verifyToken: '',
-          appId: '',
-          appSecret: '',
-          enabled: false,
-          testingEnabled: false
-        }
-      });
+    if (settings?.whatsapp?.enabled) {
+      // Don't send sensitive data in response
+      const safeSettings = {
+        ...settings.whatsapp.toObject(),
+        accessToken: settings.whatsapp.accessToken ? '••••••••••••' : '',
+        appSecret: settings.whatsapp.appSecret ? '••••••••••••' : ''
+      };
+      return reply.send({ success: true, data: safeSettings });
     }
 
-    // Don't send sensitive data in response
-    const safeSettings = {
-      ...settings.whatsapp.toObject(),
-      accessToken: settings.whatsapp.accessToken ? '••••••••••••' : '',
-      appSecret: settings.whatsapp.appSecret ? '••••••••••••' : ''
-    };
+    // Check Organization model (with safe decryption)
+    let org = null;
+    try {
+      org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
+      if (!org) {
+        org = await Organization.findOne({ 'whatsapp.enabled': true, 'whatsapp.isConnected': true });
+      }
+    } catch (e) {
+      // ignore
+    }
 
+    if (org?.whatsapp) {
+      let hasToken = false;
+      let hasSecret = false;
+      try { hasToken = !!org.whatsapp.accessToken; } catch(e) { hasToken = true; }
+      try { hasSecret = !!org.whatsapp.appSecret; } catch(e) { hasSecret = true; }
+      
+      const safeSettings = {
+        accessToken: hasToken ? '••••••••••••' : '',
+        phoneNumberId: org.whatsapp.phoneNumberId || '',
+        businessAccountId: org.whatsapp.businessAccountId || '',
+        webhookUrl: org.whatsapp.webhookUrl || '',
+        verifyToken: '••••••••••••',
+        appId: org.whatsapp.appId || '',
+        appSecret: hasSecret ? '••••••••••••' : '',
+        enabled: org.whatsapp.enabled || false,
+        testingEnabled: org.whatsapp.testingEnabled || false,
+        isConnected: org.whatsapp.isConnected || false
+      };
+      return reply.send({ success: true, data: safeSettings });
+    }
+
+    // Return empty defaults
     return reply.send({
       success: true,
-      data: safeSettings
+      data: {
+        accessToken: '',
+        phoneNumberId: '',
+        businessAccountId: '',
+        webhookUrl: '',
+        verifyToken: '',
+        appId: '',
+        appSecret: '',
+        enabled: false,
+        testingEnabled: false
+      }
     });
   } catch (error) {
     console.error('Error getting WhatsApp settings:', error);
@@ -223,35 +251,16 @@ async function getAllSettings(request, reply) {
 
 /**
  * Get WhatsApp templates for a user using their saved credentials
+ * Delegates to whatsapp.service which checks: Settings → Organization → env vars
  */
 async function getWhatsappTemplates(request, reply) {
   try {
     const userId = request.user.id;
     
-    const settings = await Settings.findOne({ userId });
-    
-    if (!settings || !settings.whatsapp || !settings.whatsapp.enabled) {
-      return reply.code(400).send({
-        success: false,
-        error: 'WhatsApp is not configured or enabled. Please configure in Settings.'
-      });
-    }
-
-    if (!settings.whatsapp.accessToken || !settings.whatsapp.phoneNumberId) {
-      return reply.code(400).send({
-        success: false,
-        error: 'WhatsApp credentials are incomplete. Please check Settings.'
-      });
-    }
-
-    // Use the WhatsApp service to get templates - pass userId for dynamic credential lookup
+    // The whatsapp service handles all credential resolution (Settings → Organization → env)
     const whatsappService = require('../services/whatsapp.service');
     const templates = await whatsappService.getTemplates(userId);
-
-    return reply.send({
-      success: true,
-      data: templates
-    });
+    return reply.send({ success: true, data: templates });
   } catch (error) {
     console.error('Error getting WhatsApp templates:', error);
     return reply.code(500).send({
@@ -263,6 +272,7 @@ async function getWhatsappTemplates(request, reply) {
 
 /**
  * Send WhatsApp template message using user's saved credentials
+ * Checks: Settings model → Organization model → env vars
  */
 async function sendWhatsappTemplate(request, reply) {
   try {
@@ -276,23 +286,14 @@ async function sendWhatsappTemplate(request, reply) {
       });
     }
 
-    const settings = await Settings.findOne({ userId });
-    
-    if (!settings || !settings.whatsapp || !settings.whatsapp.enabled) {
-      return reply.code(400).send({
-        success: false,
-        error: 'WhatsApp is not configured or enabled'
-      });
-    }
-
+    // The whatsapp.service.js getCredentials() now checks Settings → Organization → env vars
     const whatsappService = require('../services/whatsapp.service');
-    // Pass userId for dynamic credential lookup (new signature)
     const result = await whatsappService.sendTemplateMessage(
       phoneNumber,
       templateName,
       languageCode || 'en',
       components,
-      userId // Pass userId instead of accessToken
+      userId
     );
 
     return reply.send({
