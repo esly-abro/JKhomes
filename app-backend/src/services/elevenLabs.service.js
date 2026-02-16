@@ -58,8 +58,60 @@ class ElevenLabsService {
      * @param {string} phoneNumber - Phone number to call
      * @param {object} options - Call options including userId for credential lookup
      */
+    /**
+     * Validate if a phone number is potentially real and callable
+     * Rejects obviously fake numbers, too-short numbers, and test patterns
+     */
+    validatePhoneNumber(phoneNumber) {
+        if (!phoneNumber) return { valid: false, reason: 'No phone number provided' };
+        
+        // Strip all non-digits
+        const digits = phoneNumber.replace(/\D/g, '');
+        
+        if (digits.length < 7) {
+            return { valid: false, reason: `Phone number too short (${digits.length} digits, need at least 7)` };
+        }
+        
+        // Reject North American 555 test numbers (555-01xx pattern)
+        const last10 = digits.slice(-10);
+        if (/^555\d{7}$/.test(last10) || /^\d*5550[01]\d{2}$/.test(digits)) {
+            return { valid: false, reason: 'Test/fake number detected (555-xxxx pattern)' };
+        }
+        
+        // Reject all-same-digit numbers (e.g., 0000000000, 1111111111)
+        if (/^(\d)\1+$/.test(digits)) {
+            return { valid: false, reason: 'Invalid number (all same digits)' };
+        }
+        
+        // Reject sequential numbers (1234567890)
+        if (digits === '1234567890' || digits === '0987654321' || digits.endsWith('1234567890')) {
+            return { valid: false, reason: 'Invalid number (sequential digits)' };
+        }
+
+        // After adding country code, Indian numbers should be 12 digits (91 + 10)
+        // International numbers should be 10-15 digits total
+        if (digits.length > 15) {
+            return { valid: false, reason: `Phone number too long (${digits.length} digits)` };
+        }
+        
+        return { valid: true };
+    }
+
     async makeCall(phoneNumber, options = {}) {
         console.log(`📞 Initiating AI call to ${phoneNumber}...`);
+        
+        // Validate phone number BEFORE making any API call
+        const validation = this.validatePhoneNumber(phoneNumber);
+        if (!validation.valid) {
+            console.log(`⚠️ AI Call SKIPPED for ${phoneNumber}: ${validation.reason}`);
+            return {
+                success: false,
+                callId: null,
+                status: 'skipped',
+                error: validation.reason,
+                message: `Call skipped: ${validation.reason}`
+            };
+        }
         
         // Get credentials - prioritize user-specific config
         const userId = options.userId || options.leadData?.assignedTo;
@@ -74,9 +126,10 @@ class ElevenLabsService {
         if (!apiKey) {
             console.log('⚠️ ElevenLabs API key not configured - simulating call');
             return {
-                success: true,
+                success: false,
                 callId: `simulated-${Date.now()}`,
                 status: 'simulated',
+                error: 'ElevenLabs not configured',
                 message: `Would call ${phoneNumber} (ElevenLabs not configured)`
             };
         }
@@ -84,9 +137,10 @@ class ElevenLabsService {
         if (!agentId || !phoneNumberId) {
             console.log('⚠️ ElevenLabs Agent/Phone not configured - simulating call');
             return {
-                success: true,
+                success: false,
                 callId: `simulated-${Date.now()}`,
                 status: 'simulated',
+                error: 'Agent/Phone ID not configured',
                 message: `Would call ${phoneNumber} (Agent/Phone ID not configured)`
             };
         }

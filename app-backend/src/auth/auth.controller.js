@@ -176,6 +176,17 @@ async function register(request, reply) {
             }
         }
         
+        // Determine organizationId from the requesting user's JWT token
+        let organizationId = null;
+        const authHeader2 = request.headers.authorization;
+        if (authHeader2 && authHeader2.startsWith('Bearer ')) {
+            try {
+                const { verifyToken: vt } = require('./jwt');
+                const decoded2 = vt(authHeader2.substring(7));
+                organizationId = decoded2?.organizationId || null;
+            } catch (_e) { /* ignore */ }
+        }
+
         // Create new user - requires admin approval unless created by owner
         const newUser = await usersModel.createUser({
             email: email.toLowerCase(),
@@ -183,6 +194,7 @@ async function register(request, reply) {
             name,
             phone,
             role: userRole,
+            organizationId,
             // Auto-approve if created by owner, otherwise pending
             isActive: autoApprove,
             approvalStatus: autoApprove ? 'approved' : 'pending'

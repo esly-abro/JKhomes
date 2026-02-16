@@ -76,8 +76,7 @@ export default function Agents() {
     try {
       // Register the agent with createdByOwner flag - auto-approves them
       const token = localStorage.getItem('accessToken');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const registerResponse = await fetch(`${API_URL}/auth/register`, {
+      const registerResponse = await fetch(`/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -132,8 +131,7 @@ export default function Agents() {
     setDeletingAgent(agentId);
     try {
       const token = localStorage.getItem('accessToken');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${API_URL}/api/users/${agentId}`, {
+      const response = await fetch(`/api/users/${agentId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -161,8 +159,7 @@ export default function Agents() {
     
     try {
       const token = localStorage.getItem('accessToken');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-      const response = await fetch(`${API_URL}/api/users`, {
+      const response = await fetch(`/api/users`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -194,9 +191,8 @@ export default function Agents() {
     setLoadingLeads(agentId);
     try {
       const token = localStorage.getItem('accessToken');
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
       // Fetch all leads and filter by assignedTo on the frontend
-      const response = await fetch(`${API_URL}/api/leads?limit=200`, {
+      const response = await fetch(`/api/leads?limit=200`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

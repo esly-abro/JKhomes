@@ -106,7 +106,7 @@ async function createUser(userData) {
 
     if (useDatabase()) {
         const { User } = getModels();
-        const user = new User({
+        const userDoc = {
             email: userData.email,
             passwordHash: hashedPassword,
             name: userData.name,
@@ -114,7 +114,12 @@ async function createUser(userData) {
             phone: userData.phone,
             isActive: userData.isActive !== undefined ? userData.isActive : false,
             approvalStatus: userData.approvalStatus || 'pending'
-        });
+        };
+        // Assign organizationId if provided
+        if (userData.organizationId) {
+            userDoc.organizationId = userData.organizationId;
+        }
+        const user = new User(userDoc);
         await user.save();
         return user;
     }
@@ -128,6 +133,7 @@ async function createUser(userData) {
         name: userData.name,
         role: userData.role || 'agent',
         phone: userData.phone,
+        organizationId: userData.organizationId || null,
         isActive: userData.isActive !== undefined ? userData.isActive : true, // Default to active in memory mode for easy testing
         approvalStatus: userData.approvalStatus || 'approved' // Default to approved in memory mode for easy testing
     };

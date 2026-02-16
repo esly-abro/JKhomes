@@ -97,6 +97,11 @@ async function buildApp() {
             if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
                 return cb(null, true);
             }
+
+            // Allow Cloudflare Tunnel and ngrok origins
+            if (origin.endsWith('.trycloudflare.com') || origin.endsWith('.ngrok-free.dev') || origin.endsWith('.ngrok-free.app') || origin.endsWith('.ngrok.io')) {
+                return cb(null, true);
+            }
             
             // Check against configured origins
             const allowedOrigins = Array.isArray(config.cors.origin) ? config.cors.origin : [config.cors.origin];
@@ -1087,6 +1092,27 @@ async function buildApp() {
             ]
         });
     });
+
+    // ── Production: Serve built frontend from dist/ ──
+    const fs = require('fs');
+    const distPath = path.join(__dirname, '../../dist');
+    if (fs.existsSync(distPath)) {
+        await app.register(require('@fastify/static'), {
+            root: distPath,
+            prefix: '/',
+            decorateReply: false,
+            wildcard: false
+        });
+
+        // SPA fallback: serve index.html for all non-API routes
+        app.setNotFoundHandler((request, reply) => {
+            if (request.url.startsWith('/api') || request.url.startsWith('/auth') || request.url.startsWith('/uploads') || request.url.startsWith('/webhook')) {
+                return reply.code(404).send({ error: 'Not found' });
+            }
+            return reply.sendFile('index.html', distPath);
+        });
+        logger.info('📦 Serving built frontend from dist/');
+    }
 
     return app;
 }

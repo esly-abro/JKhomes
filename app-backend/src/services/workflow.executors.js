@@ -95,6 +95,17 @@ async function executeWhatsApp(lead, config, context = {}) {
             );
             
             console.log(`✅ WhatsApp template sent to ${lead.name}: ${result.messageId}`);
+            try {
+                await Activity.create({
+                    leadId: lead._id?.toString(),
+                    organizationId: lead.organizationId,
+                    type: 'whatsapp',
+                    title: `WhatsApp Template Sent`,
+                    description: `Template "${config.template}" sent to ${lead.name}`,
+                    userName: 'Automation',
+                    metadata: { messageId: result.messageId, template: config.template, automated: true }
+                });
+            } catch (e) { /* ignore */ }
             return { success: true, messageId: result.messageId, method: 'meta' };
         } else {
             const tenantVars = await buildTenantVars(lead);
@@ -106,6 +117,17 @@ async function executeWhatsApp(lead, config, context = {}) {
             );
             
             console.log(`✅ WhatsApp text sent to ${lead.name}: ${result.messageId}`);
+            try {
+                await Activity.create({
+                    leadId: lead._id?.toString(),
+                    organizationId: lead.organizationId,
+                    type: 'whatsapp',
+                    title: `WhatsApp Message Sent`,
+                    description: `Text message sent to ${lead.name}`,
+                    userName: 'Automation',
+                    metadata: { messageId: result.messageId, automated: true }
+                });
+            } catch (e) { /* ignore */ }
             return { success: true, messageId: result.messageId, method: 'meta' };
         }
     } catch (error) {
@@ -238,7 +260,7 @@ async function executeAICall(lead, config, run = null) {
     try {
         if (!lead.phone) {
             console.log(`⚠️ AI Call: No phone for ${lead.name}`);
-            return { success: false, error: 'Lead has no phone number' };
+            return { success: false, error: 'Lead has no phone number', status: 'skipped' };
         }
 
         let userId = lead.assignedTo || lead.assignedAgent;
@@ -262,6 +284,35 @@ async function executeAICall(lead, config, run = null) {
             }
         });
 
+        // Handle skipped/simulated calls — these are NOT successful completions
+        if (result?.status === 'skipped' || result?.status === 'simulated') {
+            console.log(`⚠️ AI Call ${result.status}: ${lead.name} — ${result.error || result.message}`);
+            if (run) {
+                if (!run.context) run.context = {};
+                run.context.lastCallStatus = result.status;
+                run.context.lastCallError = result.error || result.message;
+                await run.save();
+            }
+            // Log activity so it shows in the lead timeline
+            try {
+                await Activity.create({
+                    leadId: lead._id?.toString(),
+                    organizationId: lead.organizationId,
+                    type: 'call',
+                    title: `AI Call ${result.status}`,
+                    description: `AI Call ${result.status}: ${result.error || result.message}`,
+                    userName: 'Automation',
+                    metadata: { status: result.status, reason: result.error, automated: true }
+                });
+            } catch (e) { /* ignore activity log errors */ }
+            return {
+                success: false,
+                error: result.error || result.message,
+                status: result.status,
+                automationRunId: run?._id
+            };
+        }
+
         if (run && result?.callId) {
             if (!run.context) run.context = {};
             run.context.lastCallId = result.callId;
@@ -269,7 +320,20 @@ async function executeAICall(lead, config, run = null) {
             await run.save();
         }
         
-        console.log(`✅ AI Call success: callId=${result?.callId} status=${result?.status}`);
+        // Log activity for the actual call
+        try {
+            await Activity.create({
+                leadId: lead._id?.toString(),
+                organizationId: lead.organizationId,
+                type: 'call',
+                title: 'AI Call Initiated',
+                description: `IVR Call Attempted to ${lead.name || 'lead'}`,
+                userName: 'Automation',
+                metadata: { callId: result?.callId, status: result?.status, automated: true }
+            });
+        } catch (e) { /* ignore activity log errors */ }
+        
+        console.log(`✅ AI Call initiated: callId=${result?.callId} status=${result?.status}`);
         return {
             success: true,
             callId: result?.callId,
@@ -278,7 +342,7 @@ async function executeAICall(lead, config, run = null) {
         };
     } catch (error) {
         console.error('❌ AI Call error:', error.message);
-        return { success: false, error: error.message };
+        return { success: false, error: error.message, status: 'error' };
     }
 }
 
@@ -288,7 +352,7 @@ async function executeAICall(lead, config, run = null) {
 async function executeAICallWithResponse(lead, config, run) {
     try {
         if (!lead.phone) {
-            return { success: false, error: 'Lead has no phone number' };
+            return { success: false, error: 'Lead has no phone number', status: 'skipped' };
         }
 
         console.log(`📞 Executing AI call with response for lead ${lead.name}`);
@@ -312,6 +376,12 @@ async function executeAICallWithResponse(lead, config, run) {
                 nodeId: run.currentNodeId
             }
         });
+
+        // Handle skipped/simulated calls — don't proceed to waiting state
+        if (result?.status === 'skipped' || result?.status === 'simulated') {
+            console.log(`⚠️ AI Call ${result.status}: ${lead.name} — ${result.error || result.message}`);
+            return { success: false, error: result.error || result.message, status: result.status };
+        }
         
         if (!result?.success && !result?.callId) {
             return { success: false, error: result?.error || 'Failed to initiate call' };
@@ -446,6 +516,19 @@ async function executeHumanCall(lead, config, run = null) {
 
         console.log(`✅ Task created: ${task._id} for agent ${assignedAgent?.name || 'unassigned'}`);
 
+        // Log activity
+        try {
+            await Activity.create({
+                leadId: lead._id?.toString(),
+                organizationId: lead.organizationId,
+                type: 'task_created',
+                title: `Call Task Created`,
+                description: `Call task assigned to ${assignedAgent?.name || 'unassigned agent'} — ${config?.title || 'Call lead'}`,
+                userName: 'Automation',
+                metadata: { taskId: task._id?.toString(), assignedTo: assignedAgent?.name, automated: true }
+            });
+        } catch (e) { /* ignore */ }
+
         // Load tenant config for dynamic field labels
         const tenantConfig = await TenantConfig.getOrCreate(lead.organizationId);
         const locationLabel = tenantConfig?.locationFieldLabel || 'Location';
@@ -502,15 +585,19 @@ async function executeHumanCall(lead, config, run = null) {
         // Log activity on the lead
         try {
             await Activity.create({
-                lead: lead._id,
+                leadId: lead._id?.toString(),
+                organizationId: lead.organizationId,
                 type: 'task_created',
+                title: `Task Created: ${taskType}`,
                 description: `Call task created and assigned to ${assignedAgent?.name || 'unassigned agent'}`,
+                userName: 'Automation',
                 metadata: {
                     taskId: task._id,
                     taskType,
                     priority,
                     assignedTo: assignedAgent?.name,
-                    automationRunId: run?._id
+                    automationRunId: run?._id,
+                    automated: true
                 }
             });
         } catch (actErr) {
@@ -567,6 +654,18 @@ async function executeEmail(lead, config) {
             html: body
         });
 
+        try {
+            await Activity.create({
+                leadId: lead._id?.toString(),
+                organizationId: lead.organizationId,
+                type: 'email',
+                title: `Email Sent`,
+                description: `Email "${subject}" sent to ${lead.email}`,
+                userName: 'Automation',
+                metadata: { to: lead.email, subject, automated: true }
+            });
+        } catch (e) { /* ignore */ }
+
         return {
             success: true,
             to: lead.email,
@@ -609,10 +708,12 @@ async function executeUpdateStatus(lead, config, run = null) {
 
         // Log activity
         await new Activity({
-            lead: lead._id,
+            leadId: lead._id?.toString(),
+            organizationId: lead.organizationId,
             type: 'status_change',
             title: `Status changed to ${newStatus}`,
             description: `Automation updated status from ${oldStatus} to ${newStatus}`,
+            userName: 'Automation',
             metadata: {
                 oldStatus,
                 newStatus,
@@ -693,11 +794,12 @@ async function executeAssignAgent(lead, config, run = null) {
 
         // Log activity
         await new Activity({
-            lead: lead._id,
+            leadId: lead._id?.toString(),
+            organizationId: lead.organizationId,
             type: 'assignment',
             title: `Assigned to ${agent?.name || 'agent'}`,
             description: config?.reason || 'Automation assigned lead',
-            assignedTo: assigneeId,
+            userName: 'Automation',
             metadata: {
                 oldAssignee: oldAssignee?.toString(),
                 newAssignee: assigneeId.toString(),
@@ -781,10 +883,12 @@ async function executeAnalytics(lead, config, run = null) {
 
         // Log activity for analytics
         await new Activity({
-            lead: lead._id,
+            leadId: lead._id?.toString(),
+            organizationId: lead.organizationId,
             type: 'analytics',
             title: config?.title || `Analytics: ${eventType}`,
-            description: config?.description,
+            description: config?.description || `Analytics event: ${eventType}`,
+            userName: 'Automation',
             metadata: {
                 eventType,
                 eventData,
@@ -793,7 +897,8 @@ async function executeAnalytics(lead, config, run = null) {
                 nodeId: run?.currentNodeId,
                 timestamp: new Date(),
                 leadStatus: lead.status,
-                leadSource: lead.source
+                leadSource: lead.source,
+                automated: true
             }
         }).save();
 
