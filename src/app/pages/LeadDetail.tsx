@@ -95,7 +95,7 @@ export default function LeadDetail() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(phoneNumber)}`, {
+      const response = await fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(phoneNumber)}?leadId=${encodeURIComponent(id || '')}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -107,6 +107,13 @@ export default function LeadDetail() {
         // Save to localStorage for persistence
         localStorage.setItem(`lead_ai_summary_${id}`, data.data.summary);
         addLeadActivity('note', 'AI Call Summary received', 'bg-purple-500');
+        
+        // If backend auto-updated the lead status, reflect it in the UI
+        if (data.data.statusUpdated && data.data.newStatus && id) {
+          updateLead(id, { status: data.data.newStatus });
+          setSelectedStatus(data.data.newStatus);
+          addLeadActivity('status_change', `Status auto-updated to: ${data.data.newStatus}`, 'bg-green-500');
+        }
       }
     } catch (error) {
       console.error('Error fetching AI summary:', error);
@@ -320,30 +327,37 @@ export default function LeadDetail() {
     }
   };
 
-  // Load saved AI summary from localStorage or fetch from API on mount
+  // Load saved AI summary from localStorage and always fetch from API on mount (for status update)
   useEffect(() => {
     if (id && lead?.phone) {
+      // Show cached summary immediately for fast UX
       const savedSummary = localStorage.getItem(`lead_ai_summary_${id}`);
       if (savedSummary) {
         setAiCallSummary(savedSummary);
-      } else {
-        // Try to fetch from API if not in local storage (e.g. existing conversation)
-        // Don't show loading state on initial load to avoid flickering if nothing exists
-        const token = localStorage.getItem('accessToken');
-        fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(lead.phone)}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
+      }
+
+      // Always call API to check for status updates (even if we have cached summary)
+      const token = localStorage.getItem('accessToken');
+      fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(lead.phone)}?leadId=${encodeURIComponent(id || '')}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.data?.summary) {
+            setAiCallSummary(data.data.summary);
+            localStorage.setItem(`lead_ai_summary_${id}`, data.data.summary);
+            
+            // If backend auto-updated the lead status, reflect it in the UI
+            if (data.data.statusUpdated && data.data.newStatus && id) {
+              updateLead(id, { status: data.data.newStatus });
+              setSelectedStatus(data.data.newStatus);
+              addLeadActivity('status_change', `Status auto-updated to: ${data.data.newStatus}`, 'bg-green-500');
+            }
           }
         })
-          .then(res => res.json())
-          .then(data => {
-            if (data.success && data.data?.summary) {
-              setAiCallSummary(data.data.summary);
-              localStorage.setItem(`lead_ai_summary_${id}`, data.data.summary);
-            }
-          })
-          .catch(err => console.error('Error fetching initial AI summary:', err));
-      }
+        .catch(err => console.error('Error fetching initial AI summary:', err));
     }
   }, [id, lead?.phone]);
 

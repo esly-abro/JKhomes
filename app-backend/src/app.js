@@ -918,6 +918,80 @@ async function buildApp() {
                         // Don't fail the call because of activity logging
                     }
                     
+                    // START BACKGROUND POLLING: Poll ElevenLabs for call result
+                    // Since webhooks can't reach localhost, we poll the API after the call
+                    if (result.conversationId && leadId) {
+                        const conversationId = result.conversationId;
+                        const PostCallOrchestrator = require('./services/postCall.orchestrator');
+                        const elevenLabsWebhookService = require('./services/elevenlabs.webhook.service');
+                        
+                        console.log('\u{1F504} Starting background poll for conversation ' + conversationId);
+                        
+                        let pollCount = 0;
+                        const maxPolls = 20;
+                        const pollInterval = 15000;
+                        
+                        const pollTimer = setInterval(async () => {
+                            pollCount++;
+                            try {
+                                console.log('\u{1F504} Poll attempt ' + pollCount + '/' + maxPolls + ' for ' + conversationId);
+                                
+                                const details = await elevenLabsWebhookService.fetchConversationDetails(conversationId);
+                                
+                                if (!details) {
+                                    if (pollCount >= maxPolls) {
+                                        console.log('\u23F0 Polling timed out for ' + conversationId);
+                                        clearInterval(pollTimer);
+                                    }
+                                    return;
+                                }
+                                
+                                const callStatus = details.status ? details.status.toLowerCase() : '';
+                                console.log('   Conversation status: ' + callStatus);
+                                
+                                if (callStatus === 'done' || callStatus === 'completed' || callStatus === 'failed' || callStatus === 'ended') {
+                                    clearInterval(pollTimer);
+                                    console.log('\u2705 Call completed! Processing results for ' + conversationId);
+                                    
+                                    const payload = {
+                                        type: 'post_call_transcription',
+                                        data: {
+                                            conversation_id: conversationId,
+                                            status: details.status,
+                                            call_duration_secs: details.call_duration_secs || (details.metadata && details.metadata.call_duration_secs),
+                                            transcript: details.transcript,
+                                            analysis: details.analysis,
+                                            conversation_initiation_client_data: details.conversation_initiation_client_data || {
+                                                dynamic_variables: {
+                                                    lead_id: leadId,
+                                                    lead_name: leadName || 'Customer'
+                                                }
+                                            },
+                                            metadata: {
+                                                leadId: leadId,
+                                                source: 'polling'
+                                            }
+                                        }
+                                    };
+                                    
+                                    const orchestratorResult = await PostCallOrchestrator.processPostCallWebhook(payload);
+                                    console.log('\u2705 Post-call auto-status update complete:', JSON.stringify({
+                                        conversationId,
+                                        leadId,
+                                        actionsExecuted: (orchestratorResult.actionsExecuted || []).length,
+                                        intents: (orchestratorResult.analysis || {}).intents || []
+                                    }));
+                                } else if (pollCount >= maxPolls) {
+                                    clearInterval(pollTimer);
+                                    console.log('\u23F0 Polling timed out for ' + conversationId);
+                                }
+                            } catch (pollError) {
+                                console.error('\u274C Poll error for ' + conversationId + ':', pollError.message);
+                                if (pollCount >= maxPolls) clearInterval(pollTimer);
+                            }
+                        }, pollInterval);
+                    }
+                    
                     return { 
                         success: true, 
                         callId: result.callId,
@@ -932,7 +1006,7 @@ async function buildApp() {
                     });
                 }
             } catch (error) {
-                console.error('âŒ ElevenLabs call error:', error);
+                console.error('ElevenLabs call error:', error);
                 return reply.code(500).send({ 
                     success: false, 
                     error: error.message || 'Failed to initiate call' 
@@ -944,10 +1018,224 @@ async function buildApp() {
         protectedApp.get('/api/elevenlabs/summary/:phoneNumber', async (request, reply) => {
             try {
                 const { phoneNumber } = request.params;
+                const leadId = request.query.leadId;
                 const summary = await elevenLabsService.getConversationSummary(phoneNumber);
+                
+                // Auto-update lead status if we have a completed call
+                if (summary.conversationId) {
+                    try {
+                        const Lead = require('./models/Lead');
+                        const mongoose = require('mongoose');
+                        const { LEAD_STATUSES } = require('./constants');
+                        
+                        // Build query - try leadId first, fall back to phone number
+                        let lead = null;
+                        
+                        if (leadId) {
+                            const query = { $or: [{ zohoId: leadId }, { zohoLeadId: leadId }] };
+                            if (mongoose.Types.ObjectId.isValid(leadId)) {
+                                query.$or.push({ _id: leadId });
+                            }
+                            lead = await Lead.findOne(query);
+                        }
+                        
+                        // Fallback: find by phone number (strip non-digits, match last 10)
+                        if (!lead && phoneNumber) {
+                            const phoneDigits = phoneNumber.replace(/\D/g, '').slice(-10);
+                            lead = await Lead.findOne({
+                                $or: [
+                                    { phone: { $regex: phoneDigits } },
+                                    { mobile: { $regex: phoneDigits } }
+                                ]
+                            });
+                            if (lead) {
+                                console.log('[Summary] Found lead by phone number:', lead._id.toString(), lead.name);
+                            }
+                        }
+                        
+                        if (lead) {
+                            // Check if status already updated by this conversation
+                            // Allow re-processing if status is still the default "Call Attended"
+                            // (means text analysis wasn't available or didn't run properly before)
+                            const alreadyProcessed = lead.notes && lead.notes.includes(summary.conversationId);
+                            const isDefaultStatus = lead.status === 'Call Attended';
+                            
+                            if (!alreadyProcessed || isDefaultStatus) {
+                                // Determine status from evaluation criteria OR by analyzing summary text
+                                const evaluation = summary.evaluation || {};
+                                const hasEvaluation = Object.keys(evaluation).length > 0;
+                                let newStatus = (LEAD_STATUSES && LEAD_STATUSES.CALL_ATTENDED) || 'Call Attended';
+                                
+                                if (hasEvaluation) {
+                                    // Use evaluation criteria if available
+                                    if (evaluation.site_visit_requested === 'success' || evaluation.book_site_visit === true || evaluation.book_appointment === true) {
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.APPOINTMENT_BOOKED) || 'Appointment Booked';
+                                    } else if (evaluation.user_interested === 'success' || evaluation.interested === true || evaluation.interested === 'true') {
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                    } else if (evaluation.not_interested === 'success' || evaluation.not_interested === true || evaluation.not_interested === 'true') {
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                    }
+                                } else if (summary.summary) {
+                                    // No evaluation criteria — analyze the summary text for intent signals
+                                    const summaryLower = (summary.summary || '').toLowerCase();
+                                    
+                                    // Not interested signals (check first — stronger negative signal)
+                                    const notInterestedSignals = [
+                                        'not interested',
+                                        'no interest',
+                                        'don\'t want',
+                                        'doesn\'t want',
+                                        'do not want',
+                                        'does not want',
+                                        'declined',
+                                        'refused',
+                                        'not looking',
+                                        'not in the market',
+                                        'hung up',
+                                        'disconnected the call',
+                                        'did not engage'
+                                    ];
+                                    
+                                    // Appointment / site visit signals
+                                    const appointmentSignals = [
+                                        'schedule a visit',
+                                        'scheduled a visit',
+                                        'book a visit',
+                                        'booked a visit',
+                                        'site visit',
+                                        'book appointment',
+                                        'booked appointment',
+                                        'schedule appointment',
+                                        'scheduled appointment',
+                                        'agreed to visit',
+                                        'wants to visit',
+                                        'come and see',
+                                        'visit the property',
+                                        'visit the site'
+                                    ];
+                                    
+                                    // Interested signals
+                                    const interestedSignals = [
+                                        'interested in',
+                                        'showed interest',
+                                        'shows interest',
+                                        'expressed interest',
+                                        'wants to know more',
+                                        'wanted more details',
+                                        'requested details',
+                                        'requested information',
+                                        'asked for details',
+                                        'asked for more',
+                                        'send details',
+                                        'send information',
+                                        'send via whatsapp',
+                                        'details via whatsapp',
+                                        'information via whatsapp',
+                                        'agreed to receive',
+                                        'looking for',
+                                        'wants to buy',
+                                        'keen on',
+                                        'positive response',
+                                        'responded positively',
+                                        'discussing budget',
+                                        'discussed preferences'
+                                    ];
+                                    
+                                    const isNotInterested = notInterestedSignals.some(function(s) { return summaryLower.includes(s); });
+                                    const isAppointment = appointmentSignals.some(function(s) { return summaryLower.includes(s); });
+                                    const isInterested = interestedSignals.some(function(s) { return summaryLower.includes(s); });
+                                    
+                                    console.log('[Summary] Text analysis:', {
+                                        isNotInterested, isAppointment, isInterested,
+                                        summaryPreview: summaryLower.substring(0, 150)
+                                    });
+                                    
+                                    if (isAppointment) {
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.APPOINTMENT_BOOKED) || 'Appointment Booked';
+                                    } else if (isNotInterested && !isInterested) {
+                                        // Clearly not interested
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                    } else if (isNotInterested && isInterested) {
+                                        // Mixed signals — "initially responded positively but then stated not interested"
+                                        // The final sentiment wins — check if "not interested" appears after interested signals
+                                        const lastNotInterested = summaryLower.lastIndexOf('not interested');
+                                        const lastInterested = Math.max(
+                                            summaryLower.lastIndexOf('interested in'),
+                                            summaryLower.lastIndexOf('requested details'),
+                                            summaryLower.lastIndexOf('responded positively')
+                                        );
+                                        if (lastNotInterested > lastInterested) {
+                                            newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                        } else {
+                                            newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                        }
+                                    } else if (isInterested) {
+                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                    }
+                                    // else: no clear signals, stays as "Call Attended"
+                                }
+                                
+                                console.log('[Summary] Final status:', newStatus, '| alreadyProcessed:', alreadyProcessed, '| isDefaultStatus:', isDefaultStatus);
+                                
+                                // If re-processing, only update if status improved (not still Call Attended)
+                                if (alreadyProcessed && isDefaultStatus && newStatus === 'Call Attended') {
+                                    console.log('[Summary] Re-processing but no status improvement, skipping update');
+                                } else {
+                                    // Update lead in MongoDB
+                                    const noteDate = new Date().toLocaleString();
+                                    const newNote = '\n\n--- AI Call Auto-Update (' + noteDate + ') ---\n' +
+                                        'Conversation: ' + summary.conversationId + '\n' +
+                                        'Status: ' + newStatus + '\n' +
+                                        'Summary: ' + (summary.summary || 'No summary');
+                                    
+                                    lead.status = newStatus;
+                                    // If re-processing, replace the old note for this conversation
+                                    if (alreadyProcessed && lead.notes) {
+                                        const convMarker = 'Conversation: ' + summary.conversationId;
+                                        const noteStart = lead.notes.indexOf('--- AI Call Auto-Update');
+                                        if (noteStart > 0) {
+                                            // Find the section for this specific conversation
+                                            const sections = lead.notes.split('\n\n--- AI Call Auto-Update');
+                                            const filtered = sections.filter(function(s) { return s.indexOf(convMarker) === -1 || s === sections[0]; });
+                                            lead.notes = filtered.join('\n\n--- AI Call Auto-Update') + newNote;
+                                        } else {
+                                            lead.notes = (lead.notes || '') + newNote;
+                                        }
+                                    } else {
+                                        lead.notes = (lead.notes || '') + newNote;
+                                    }
+                                    lead.lastCallAt = new Date();
+                                    lead.statusUpdatedAt = new Date();
+                                    await lead.save();
+                                
+                                    console.log('\u2705 Auto-updated lead status from AI call summary:', {
+                                        leadId: lead._id.toString(),
+                                        newStatus,
+                                        conversationId: summary.conversationId
+                                    });
+                                
+                                    // Sync to Zoho in background
+                                    if (lead.zohoId) {
+                                        const zohoClient = require('./clients/zoho.client');
+                                        zohoClient.updateLead(lead.zohoId, { Lead_Status: newStatus })
+                                            .then(function(r) { return r.success ? console.log('Zoho synced') : console.warn('Zoho sync failed'); })
+                                            .catch(function(e) { console.warn('Zoho sync error:', e.message); });
+                                    }
+                                
+                                    // Add the updated status to the response
+                                    summary.statusUpdated = true;
+                                    summary.newStatus = newStatus;
+                                }
+                            }
+                        }
+                    } catch (statusError) {
+                        console.error('Auto-status update error (non-blocking):', statusError.message);
+                    }
+                }
+                
                 return { success: true, data: summary };
             } catch (error) {
-                console.error('âŒ ElevenLabs summary error:', error);
+                console.error('ElevenLabs summary error:', error);
                 return reply.code(500).send({ 
                     success: false, 
                     error: error.message || 'Failed to fetch summary' 
