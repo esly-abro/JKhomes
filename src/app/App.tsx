@@ -21,6 +21,7 @@ import Agents from './pages/Agents';
 import Automation from './pages/Automation';
 import AutomationMonitor from './pages/AutomationMonitor';
 import Broadcasts from './pages/Broadcasts';
+import AIAgents from './pages/AIAgents';
 import MainLayout from './components/MainLayout';
 import ModuleGuard from './components/ModuleGuard';
 import { getStoredUser, User } from '../services/auth';
@@ -95,6 +96,7 @@ function AppRoutes({ user, setUser, hasCompletedOnboarding, setHasCompletedOnboa
         <Route path="settings/users" element={<UserManagement />} />
         <Route path="automation" element={<Automation />} />
         <Route path="automation/:automationId/monitor" element={<AutomationMonitor />} />
+        <Route path="ai-agents" element={<AIAgents />} />
         
         {/* Module-Gated Routes: Broadcasts */}
         <Route path="broadcasts" element={

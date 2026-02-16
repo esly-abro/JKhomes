@@ -24,7 +24,8 @@ import {
   UserCheck,
   Zap,
   Megaphone,
-  ClipboardList
+  ClipboardList,
+  Bot
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -72,6 +73,7 @@ export default function MainLayout() {
     { name: 'Analytics', href: '/analytics', icon: BarChart3, showFor: 'admin' },
     { name: 'Settings', href: '/settings', icon: Settings, showFor: 'admin' },
     { name: 'Automation', href: '/automation', icon: Zap, showFor: 'admin' },
+    { name: 'AI Agents', href: '/ai-agents', icon: Bot, showFor: 'admin' },
   ].filter(item => {
     // Check module enablement
     if (item.module && !isModuleEnabled(item.module)) return false;

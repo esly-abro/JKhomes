@@ -4,9 +4,14 @@
  */
 
 const elevenLabsController = require('../controllers/elevenLabs.integration.controller');
+const agentsController = require('../controllers/elevenLabs.agents.controller');
 
 async function elevenLabsRoutes(fastify, options) {
     const { requireRole } = require('../middleware/roles');
+
+    // ==========================================
+    // Config Routes (existing)
+    // ==========================================
 
     /**
      * GET /api/integrations/elevenlabs/config
@@ -50,6 +55,66 @@ async function elevenLabsRoutes(fastify, options) {
     fastify.delete('/disconnect', {
         preHandler: requireRole(['owner', 'admin'])
     }, elevenLabsController.disconnectElevenLabs);
+
+    // ==========================================
+    // Agent Management Routes (CRUD)
+    // ==========================================
+
+    /**
+     * GET /api/integrations/elevenlabs/agents
+     * List all ElevenLabs conversational AI agents
+     */
+    fastify.get('/agents', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.listAgents);
+
+    /**
+     * POST /api/integrations/elevenlabs/agents
+     * Create a new ElevenLabs AI agent
+     */
+    fastify.post('/agents', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.createAgent);
+
+    /**
+     * GET /api/integrations/elevenlabs/agents/:agentId
+     * Get details of a specific agent
+     */
+    fastify.get('/agents/:agentId', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.getAgent);
+
+    /**
+     * PATCH /api/integrations/elevenlabs/agents/:agentId
+     * Update an existing agent
+     */
+    fastify.patch('/agents/:agentId', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.updateAgent);
+
+    /**
+     * DELETE /api/integrations/elevenlabs/agents/:agentId
+     * Delete an agent
+     */
+    fastify.delete('/agents/:agentId', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.deleteAgent);
+
+    /**
+     * GET /api/integrations/elevenlabs/voices
+     * List available ElevenLabs voices
+     */
+    fastify.get('/voices', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.listVoices);
+
+    /**
+     * GET /api/integrations/elevenlabs/usage
+     * Get AI agent usage stats for billing
+     */
+    fastify.get('/usage', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.getUsage);
 }
 
 module.exports = elevenLabsRoutes;

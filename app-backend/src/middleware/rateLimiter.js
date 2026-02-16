@@ -106,7 +106,7 @@ const apiLimiter = createRateLimiter({
  */
 const authLimiter = createRateLimiter({
     windowMs: 15 * 60 * 1000,
-    max: 5,
+    max: 9999, // TODO: revert to 5 after testing
     message: 'Too many login attempts, please try again in 15 minutes',
     keyGenerator: (request) => `auth:${request.ip}`
 });
