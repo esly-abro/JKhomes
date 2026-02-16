@@ -47,7 +47,8 @@ function generateTokenPair(user) {
         userId: user._id?.toString() || user.id, // Support both MongoDB _id and plain id
         email: user.email,
         name: user.name,
-        role: user.role
+        role: user.role,
+        organizationId: user.organizationId?.toString() || null
     };
 
     return {

@@ -693,6 +693,35 @@ async function processExecuteJob(job) {
         return { success: true, nodeId };
     }
 
+    // ── Handle skipped nodes (invalid phone, simulated call, etc.) ──
+    // These should NOT retry — they are permanent failures, not transient errors
+    if (result.status === 'skipped' || result.status === 'simulated') {
+        const reason = result.error || result.message || `Node ${result.status}`;
+        logger.warn(`⚠️ Node "${nodeLabel}" ${result.status}: ${reason} [run ${runId}]`);
+
+        updateExecutionPathStatus(run, nodeId, 'skipped', result);
+        await run.save();
+
+        await logExecution({
+            run, automation, lead, nodeId, nodeData,
+            status: 'skipped',
+            message: reason,
+            duration: elapsed,
+            attempt: job.attemptsMade + 1,
+            metadata: { skipReason: result.status },
+        });
+
+        // Update AutomationJob
+        await AutomationJob.findOneAndUpdate(
+            { automationRun: run._id, nodeId, status: 'processing' },
+            { status: 'skipped', lastError: reason, completedAt: new Date() }
+        );
+
+        // Still continue the workflow — enqueue next nodes so other steps can run
+        await scheduleNextNodes(run, automation, lead, nodeId);
+        return { skipped: true, reason, nodeId };
+    }
+
     // ── Handle explicit failure from executor ───
     const errMsg = result.error || 'Unknown executor error';
     logger.error(`❌ Node "${nodeLabel}" failed: ${errMsg} [run ${runId}]`);

@@ -13,10 +13,36 @@ import { useOrganization } from '../hooks/useOrganization';
 import AvailabilitySettingsDialog from '../components/AvailabilitySettingsDialog';
 
 export default function Properties() {
-  const { categories, categoryFieldLabel, isModuleEnabled } = useTenantConfig();
+  const { categories, categoryFieldLabel, locationFieldLabel, isModuleEnabled } = useTenantConfig();
   const { catalogModuleLabel, industry } = useOrganization();
   const navigate = useNavigate();
   const isRealEstate = industry === 'real_estate';
+  const isAutomotive = industry === 'automotive';
+  const showPriceRange = isRealEstate || isAutomotive;
+  const showSize = isRealEstate || isAutomotive;
+
+  // Industry-specific field labels
+  const getFieldLabels = () => {
+    switch (industry) {
+      case 'real_estate':
+        return { priceLabel: 'Price', sizeLabel: 'Size (sq ft)', statusOptions: ['Available', 'Sold', 'Reserved', 'Under Construction'], currency: '₹' };
+      case 'automotive':
+        return { priceLabel: 'Price', sizeLabel: 'Engine (cc)', statusOptions: ['Available', 'Sold', 'Reserved', 'In Transit'], currency: '₹' };
+      case 'insurance':
+        return { priceLabel: 'Premium', sizeLabel: '', statusOptions: ['Available', 'Active', 'Discontinued', 'Coming Soon'], currency: '₹' };
+      case 'healthcare':
+        return { priceLabel: 'Fee', sizeLabel: '', statusOptions: ['Available', 'Fully Booked', 'Discontinued', 'Coming Soon'], currency: '₹' };
+      case 'education':
+        return { priceLabel: 'Fee', sizeLabel: '', statusOptions: ['Available', 'Closed', 'Waitlisted', 'Coming Soon'], currency: '₹' };
+      case 'saas':
+        return { priceLabel: 'Price', sizeLabel: '', statusOptions: ['Available', 'Deprecated', 'Coming Soon', 'Beta'], currency: '$' };
+      case 'finance':
+        return { priceLabel: 'Value', sizeLabel: '', statusOptions: ['Available', 'Closed', 'Suspended', 'Coming Soon'], currency: '₹' };
+      default:
+        return { priceLabel: 'Price', sizeLabel: '', statusOptions: ['Available', 'Sold', 'Reserved', 'Inactive'], currency: '₹' };
+    }
+  };
+  const fieldLabels = getFieldLabels();
 
   // Redirect if module is disabled
   useEffect(() => {
@@ -96,15 +122,22 @@ export default function Properties() {
         return;
       }
       if (!formData.location || !formData.location.trim()) {
-        alert('❌ Location is required\n\nCurrent value: "' + (formData.location || 'empty') + '"');
+        alert(`❌ ${locationFieldLabel} is required\n\nCurrent value: "` + (formData.location || 'empty') + '"');
         return;
       }
-      if (!formData.price?.min || !formData.price?.max) {
-        alert('❌ Min and Max price are required');
-        return;
+      if (showPriceRange) {
+        if (!formData.price?.min || !formData.price?.max) {
+          alert(`❌ Min and Max ${fieldLabels.priceLabel.toLowerCase()} are required`);
+          return;
+        }
+      } else {
+        if (!formData.price?.min) {
+          alert(`❌ ${fieldLabels.priceLabel} is required`);
+          return;
+        }
       }
-      if (!formData.size?.value) {
-        alert('❌ Size is required');
+      if (showSize && !formData.size?.value) {
+        alert(`❌ ${fieldLabels.sizeLabel} is required`);
         return;
       }
 
@@ -188,7 +221,7 @@ export default function Properties() {
 
         // Use the returned server URL (assuming backend is on port 4000)
         // In production, this should be a full URL or properly proxied
-        const serverUrl = `http://localhost:4000${result.url}`;
+        const serverUrl = result.url;
 
         setFormData(prev => ({
           ...prev,
@@ -261,10 +294,9 @@ export default function Properties() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Available">Available</SelectItem>
-              <SelectItem value="Sold">Sold</SelectItem>
-              <SelectItem value="Reserved">Reserved</SelectItem>
-              <SelectItem value="Under Construction">Under Construction</SelectItem>
+              {fieldLabels.statusOptions.map(opt => (
+                <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -350,13 +382,18 @@ export default function Properties() {
                     <span className="font-medium text-gray-900">{property.category || property.propertyType}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Price</span>
-                    <span className="font-medium text-gray-900">{formatPrice(property.price)}</span>
+                    <span className="text-gray-600">{fieldLabels.priceLabel}</span>
+                    <span className="font-medium text-gray-900">
+                      {showPriceRange ? formatPrice(property.price) : `${fieldLabels.currency}${(property.price?.min || 0).toLocaleString()}`}
+                      {industry === 'insurance' && '/mo'}
+                    </span>
                   </div>
+                  {showSize && property.size?.value > 0 && (
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">Size</span>
+                    <span className="text-gray-600">{fieldLabels.sizeLabel}</span>
                     <span className="font-medium text-gray-900">{property.size.value} {property.size.unit}</span>
                   </div>
+                  )}
                   {isRealEstate && property.bedrooms && property.bathrooms && (
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-600">Config</span>
@@ -464,10 +501,9 @@ export default function Properties() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Available">Available</SelectItem>
-                    <SelectItem value="Sold">Sold</SelectItem>
-                    <SelectItem value="Reserved">Reserved</SelectItem>
-                    <SelectItem value="Under Construction">Under Construction</SelectItem>
+                    {fieldLabels.statusOptions.map(opt => (
+                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -503,7 +539,7 @@ export default function Properties() {
               </div>
 
               <div className="col-span-2">
-                <Label htmlFor="location">Location *</Label>
+                <Label htmlFor="location">{locationFieldLabel} *</Label>
                 <Input
                   id="location"
                   value={formData.location}
@@ -513,14 +549,16 @@ export default function Properties() {
                     setFormData({ ...formData, location: newLocation });
                   }}
                   onBlur={() => console.log('Location onBlur, current value:', formData.location)}
-                  placeholder="Whitefield, Bangalore"
+                  placeholder={locationFieldLabel === 'Location' ? 'Whitefield, Bangalore' : `Enter ${locationFieldLabel.toLowerCase()}`}
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">Current: {formData.location || '(empty)'}</p>
               </div>
 
+              {showPriceRange ? (
+              <>
               <div>
-                <Label htmlFor="minPrice">Min Price (₹) *</Label>
+                <Label htmlFor="minPrice">Min {fieldLabels.priceLabel} ({fieldLabels.currency}) *</Label>
                 <Input
                   id="minPrice"
                   type="number"
@@ -535,7 +573,7 @@ export default function Properties() {
               </div>
 
               <div>
-                <Label htmlFor="maxPrice">Max Price (₹) *</Label>
+                <Label htmlFor="maxPrice">Max {fieldLabels.priceLabel} ({fieldLabels.currency}) *</Label>
                 <Input
                   id="maxPrice"
                   type="number"
@@ -548,9 +586,33 @@ export default function Properties() {
                   placeholder="8000000"
                 />
               </div>
+              </>
+              ) : (
+              <div className="col-span-2">
+                <Label htmlFor="price">{fieldLabels.priceLabel} ({fieldLabels.currency}) *</Label>
+                <Input
+                  id="price"
+                  type="number"
+                  min="0"
+                  value={formData.price?.min || ''}
+                  onChange={(e) => {
+                    const val = Math.max(0, e.target.value === '' ? 0 : Number(e.target.value));
+                    setFormData({
+                      ...formData,
+                      price: { ...formData.price!, min: val, max: val }
+                    });
+                  }}
+                  placeholder={industry === 'insurance' ? '500' : '10000'}
+                />
+                {industry === 'insurance' && (
+                  <p className="text-xs text-gray-500 mt-1">Monthly premium amount</p>
+                )}
+              </div>
+              )}
 
+              {showSize && (
               <div>
-                <Label htmlFor="size">Size (sq ft) *</Label>
+                <Label htmlFor="size">{fieldLabels.sizeLabel} *</Label>
                 <Input
                   id="size"
                   type="number"
@@ -560,9 +622,10 @@ export default function Properties() {
                     ...formData,
                     size: { ...formData.size!, value: Math.max(0, e.target.value === '' ? 0 : Number(e.target.value)) }
                   })}
-                  placeholder="2000"
+                  placeholder={isRealEstate ? '2000' : '1500'}
                 />
               </div>
+              )}
 
               {isRealEstate && (
               <>
