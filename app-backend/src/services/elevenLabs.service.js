@@ -361,11 +361,11 @@ class ElevenLabsService {
                 return { summary: 'ElevenLabs not configured', conversations: [] };
             }
             
-            // Normalize phone number
+            // Normalize phone number - extract last 10 digits for matching
             let normalizedPhone = phoneNumber.replace(/\D/g, '');
-            if (!normalizedPhone.startsWith('+')) {
-                normalizedPhone = '+' + normalizedPhone;
-            }
+            const last10 = normalizedPhone.slice(-10);
+            
+            console.log('[Summary] Looking for conversations with phone:', last10);
             
             // Fetch recent conversations
             const response = await axios.get(this.baseUrl, {
@@ -375,54 +375,71 @@ class ElevenLabsService {
             
             const conversations = response.data.conversations || [];
             
-            // Filter by phone number (check metadata or to_number)
-            const relevantConvs = conversations.filter(conv => {
-                const toNumber = conv.to_number || conv.metadata?.to_number || '';
-                return toNumber.includes(normalizedPhone.slice(-10)) || 
-                       normalizedPhone.includes(toNumber.slice(-10));
-            });
+            // The list API doesn't include phone numbers, so we need to check details
+            // for completed outbound calls to find the matching phone number
+            const doneConversations = conversations.filter(conv => 
+                (conv.status === 'done' || conv.status === 'completed') && 
+                conv.direction === 'outbound' &&
+                conv.call_duration_secs > 0
+            );
             
-            if (relevantConvs.length === 0) {
+            console.log('[Summary] Found', doneConversations.length, 'completed outbound conversations to check');
+            
+            // Check details of recent done conversations to find phone match
+            // Limit to 10 most recent to avoid too many API calls
+            let matchedConv = null;
+            let matchedDetails = null;
+            
+            for (const conv of doneConversations.slice(0, 10)) {
+                try {
+                    const detailsResponse = await axios.get(
+                        `${this.baseUrl}/${conv.conversation_id}`,
+                        { headers: { 'xi-api-key': apiKey } }
+                    );
+                    const details = detailsResponse.data;
+                    
+                    // Check phone number in multiple locations
+                    const externalNumber = details.metadata?.phone_call?.external_number || '';
+                    const userId = details.user_id || '';
+                    const calledNumber = details.conversation_initiation_client_data?.dynamic_variables?.system__called_number || '';
+                    
+                    const allNumbers = [externalNumber, userId, calledNumber].join(' ');
+                    
+                    if (allNumbers.includes(last10)) {
+                        console.log('[Summary] Matched conversation:', conv.conversation_id, 'phone:', externalNumber);
+                        matchedConv = conv;
+                        matchedDetails = details;
+                        break;
+                    }
+                } catch (detailErr) {
+                    console.warn('[Summary] Could not fetch details for', conv.conversation_id, detailErr.message);
+                }
+            }
+            
+            if (!matchedConv || !matchedDetails) {
+                console.log('[Summary] No matching conversation found for phone:', last10);
                 return { 
                     summary: 'No AI calls found for this number yet',
                     conversations: [] 
                 };
             }
             
-            // Get the most recent conversation details
-            const latestConv = relevantConvs[0];
+            const analysis = matchedDetails.analysis || {};
+            const evaluation = analysis.evaluation_criteria_results || {};
             
-            try {
-                const detailsResponse = await axios.get(
-                    `${this.baseUrl}/${latestConv.conversation_id}`,
-                    { headers: { 'xi-api-key': apiKey } }
-                );
-                
-                const details = detailsResponse.data;
-                const analysis = details.analysis || {};
-                
-                return {
-                    summary: analysis.transcript_summary || 'Call completed - no summary available',
-                    transcript: details.transcript || [],
-                    duration: latestConv.call_duration_secs,
-                    status: latestConv.status,
-                    conversationId: latestConv.conversation_id,
-                    timestamp: latestConv.start_time_unix_secs 
-                        ? new Date(latestConv.start_time_unix_secs * 1000).toISOString() 
-                        : null,
-                    evaluation: analysis.evaluation_criteria_results || {},
-                    totalCalls: relevantConvs.length
-                };
-            } catch (detailError) {
-                console.error('Error fetching conversation details:', detailError.message);
-                return {
-                    summary: `Last call: ${latestConv.status}`,
-                    duration: latestConv.call_duration_secs,
-                    status: latestConv.status,
-                    conversationId: latestConv.conversation_id,
-                    totalCalls: relevantConvs.length
-                };
-            }
+            return {
+                summary: analysis.transcript_summary || 'Call completed - no summary available',
+                transcript: matchedDetails.transcript || [],
+                duration: matchedConv.call_duration_secs,
+                status: matchedConv.status,
+                conversationId: matchedConv.conversation_id,
+                callSuccessful: analysis.call_successful || matchedConv.call_successful,
+                timestamp: matchedConv.start_time_unix_secs 
+                    ? new Date(matchedConv.start_time_unix_secs * 1000).toISOString() 
+                    : null,
+                evaluation: evaluation,
+                totalCalls: doneConversations.length
+            };
         } catch (error) {
             console.error('Error fetching conversation summary:', error);
             throw new Error('Failed to fetch AI call summary');
