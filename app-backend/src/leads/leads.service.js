@@ -9,6 +9,7 @@
 const zohoClient = require('../clients/zoho.client');
 const ingestionClient = require('../clients/ingestion.client');
 const { mapZohoLeadToFrontend, mapZohoNoteToActivity } = require('./zoho.mapper');
+const mongoose = require('mongoose');
 const { filterLeadsByPermission, canAccessLead } = require('../middleware/roles');
 const { NotFoundError } = require('../utils/errors');
 
@@ -264,36 +265,77 @@ async function getLead(user, leadId) {
         return { ...lead, activities: [] };
     }
 
-    // Fetch lead from Zoho
-    const zohoResponse = await zohoClient.getLead(leadId);
-
-    if (!zohoResponse.data || zohoResponse.data.length === 0) {
-        throw new NotFoundError('Lead not found');
-    }
-
-    const lead = mapZohoLeadToFrontend(zohoResponse.data[0]);
-
-    // Check permissions
-    if (!canAccessLead(user, lead)) {
-        throw new NotFoundError('Lead not found');
-    }
-
-    // Fetch activities/notes
-    try {
-        const notesResponse = await zohoClient.getLeadNotes(leadId);
-        lead.activities = (notesResponse.data || []).map(mapZohoNoteToActivity);
-    } catch (error) {
-        lead.activities = [];
-    }
-
-    // Merge local-only fields from MongoDB (notes, propertyId, etc.)
-    // Status comes from Zoho - MongoDB is NOT source of truth for status
+    // Try MongoDB first
     if (useDatabase()) {
-        const mergedLead = await dataLayer.mergeWithLocalData(lead);
-        return mergedLead;
+        try {
+            // Build query - only include _id if leadId is valid ObjectId
+            const query = { $or: [{ zohoId: leadId }, { zohoLeadId: leadId }] };
+            if (mongoose.Types.ObjectId.isValid(leadId)) {
+                query.$or.push({ _id: leadId });
+            }
+            
+            const mongoLead = await Lead.findOne(query);
+            if (mongoLead) {
+                const lead = {
+                    id: mongoLead.zohoId || mongoLead._id.toString(),
+                    _id: mongoLead._id.toString(),
+                    zohoId: mongoLead.zohoId,
+                    name: mongoLead.name,
+                    email: mongoLead.email,
+                    phone: mongoLead.phone,
+                    status: mongoLead.status,
+                    source: mongoLead.source,
+                    company: mongoLead.company,
+                    propertyId: mongoLead.propertyId,
+                    notes: mongoLead.notes,
+                    createdAt: mongoLead.createdAt,
+                    updatedAt: mongoLead.updatedAt,
+                    activities: []
+                };
+                
+                if (canAccessLead(user, lead)) {
+                    return lead;
+                }
+            }
+        } catch (error) {
+            console.warn('MongoDB lookup failed, trying Zoho:', error.message);
+        }
     }
 
-    return lead;
+    // Fallback to Zoho if MongoDB fails or lead not found
+    try {
+        const zohoResponse = await zohoClient.getLead(leadId);
+
+        if (!zohoResponse.data || zohoResponse.data.length === 0) {
+            throw new NotFoundError('Lead not found');
+        }
+
+        const lead = mapZohoLeadToFrontend(zohoResponse.data[0]);
+
+        // Check permissions
+        if (!canAccessLead(user, lead)) {
+            throw new NotFoundError('Lead not found');
+        }
+
+        // Fetch activities/notes
+        try {
+            const notesResponse = await zohoClient.getLeadNotes(leadId);
+            lead.activities = (notesResponse.data || []).map(mapZohoNoteToActivity);
+        } catch (error) {
+            lead.activities = [];
+        }
+
+        // Merge local-only fields from MongoDB (notes, propertyId, etc.)
+        if (useDatabase()) {
+            const mergedLead = await dataLayer.mergeWithLocalData(lead);
+            return mergedLead;
+        }
+
+        return lead;
+    } catch (zohoError) {
+        console.error('Zoho lookup failed:', zohoError.message);
+        throw new NotFoundError('Lead not found');
+    }
 }
 
 /**
@@ -492,45 +534,85 @@ async function updateLead(user, leadId, updateData) {
         return mockLeads[index];
     }
 
-    // Update lead in Zoho CRM
-    const zohoUpdateData = mapFrontendToZohoFields(updateData);
-    const result = await zohoClient.updateLead(leadId, zohoUpdateData);
-
-    if (!result.success) {
-        const { ExternalServiceError } = require('../utils/errors');
-        throw new ExternalServiceError('Zoho CRM', new Error(result.error));
-    }
-
-    // Fetch updated lead to return
-    const updatedLead = await getLead(user, leadId);
-
-    // Trigger automation workflows for lead update
-    try {
-        if (useDatabase()) {
-            const mongoLead = await Lead.findOne({ zohoId: leadId });
-            if (mongoLead) {
-                workflowEngine.triggerLeadUpdated(mongoLead, updateData).catch(err => {
-                    console.error('Error triggering lead updated automations:', err);
-                });
-
-                // Check for task auto-completion on status change
-                if (updateData.status) {
-                    const { taskService } = require('../tasks');
-                    taskService.checkAutoCompleteForStatusChange(mongoLead._id, updateData.status)
-                        .then(count => {
-                            if (count > 0) {
-                                console.log(`✅ Auto-completed ${count} task(s) from status change: ${updateData.status}`);
-                            }
-                        })
-                        .catch(err => console.error('Task auto-complete failed:', err.message));
-                }
+    // Update MongoDB first (primary source of truth)
+    let mongoLead = null;
+    if (useDatabase()) {
+        try {
+            // Build query - only include _id if leadId is valid ObjectId
+            const query = { $or: [{ zohoId: leadId }, { zohoLeadId: leadId }] };
+            if (mongoose.Types.ObjectId.isValid(leadId)) {
+                query.$or.push({ _id: leadId });
             }
+            
+            mongoLead = await Lead.findOneAndUpdate(
+                query,
+                { $set: { ...updateData, updatedAt: new Date() } },
+                { new: true, upsert: false }
+            );
+
+            if (!mongoLead) {
+                throw new NotFoundError('Lead not found in database');
+            }
+
+            console.log('✅ MongoDB update successful for lead:', leadId);
+
+            // Trigger automation workflows
+            workflowEngine.triggerLeadUpdated(mongoLead, updateData).catch(err => {
+                console.error('Error triggering lead updated automations:', err);
+            });
+
+            // Check for task auto-completion on status change
+            if (updateData.status) {
+                const { taskService } = require('../tasks');
+                taskService.checkAutoCompleteForStatusChange(mongoLead._id, updateData.status)
+                    .then(count => {
+                        if (count > 0) {
+                            console.log(`✅ Auto-completed ${count} task(s) from status change: ${updateData.status}`);
+                        }
+                    })
+                    .catch(err => console.error('Task auto-complete failed:', err.message));
+            }
+        } catch (dbError) {
+            console.error('MongoDB update failed:', dbError.message);
+            throw dbError;
         }
-    } catch (automationError) {
-        console.error('Failed to trigger lead update automations:', automationError);
     }
 
-    return updatedLead;
+    // Try to sync to Zoho in background (don't block on failure)
+    const zohoUpdateData = mapFrontendToZohoFields(updateData);
+    zohoClient.updateLead(leadId, zohoUpdateData)
+        .then(result => {
+            if (result.success) {
+                console.log('✅ Zoho CRM sync successful for lead:', leadId);
+            } else {
+                console.warn('⚠️ Zoho CRM sync failed (non-blocking):', result.error);
+            }
+        })
+        .catch(err => {
+            console.warn('⚠️ Zoho CRM sync error (non-blocking):', err.message);
+        });
+
+    // Return the updated MongoDB lead immediately
+    if (mongoLead) {
+        return {
+            id: mongoLead.zohoId || mongoLead._id.toString(),
+            _id: mongoLead._id.toString(),
+            zohoId: mongoLead.zohoId,
+            name: mongoLead.name,
+            email: mongoLead.email,
+            phone: mongoLead.phone,
+            status: mongoLead.status,
+            source: mongoLead.source,
+            company: mongoLead.company,
+            propertyId: mongoLead.propertyId,
+            notes: mongoLead.notes,
+            createdAt: mongoLead.createdAt,
+            updatedAt: mongoLead.updatedAt,
+            activities: []
+        };
+    }
+
+    throw new NotFoundError('Lead not found');
 }
 
 /**

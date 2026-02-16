@@ -450,47 +450,63 @@ Your Team`;
                 status = LEAD_STATUS.NOT_INTERESTED;
             }
 
-            // Get the lead to find zohoId
+            // Get the lead
             const lead = await Lead.findById(leadInfo.leadId);
             
-            // Update status via data layer - syncs to Zoho FIRST
-            if (lead?.zohoId) {
-                try {
-                    await dataLayer.updateLeadStatus(lead.zohoId, status, {
-                        reason: 'post_call_analysis'
-                    });
-                    console.log('✅ Status synced to Zoho via data layer');
-                } catch (statusError) {
-                    console.error('Data layer status update failed:', statusError.message);
-                }
+            if (!lead) {
+                console.warn('Lead not found in MongoDB:', leadInfo.leadId);
+                return;
             }
 
-            // Update local-only fields via data layer
-            if (lead?.zohoId) {
-                const noteDate = new Date().toLocaleString();
-                const newNote = `\n\n--- AI Call Summary (${noteDate}) ---\n` +
-                    `Status: ${status}\n` +
-                    `Intents: ${intentTypes.join(', ') || 'None detected'}\n` +
-                    `Summary: ${analysis.summary || 'No summary'}\n` +
-                    `Actions: ${actionsExecuted.map(a => a.type).join(', ') || 'None'}`;
-                
-                await dataLayer.updateLocalFields(lead.zohoId, {
-                    notes: (lead.notes || '') + newNote,
-                    lastCallAt: new Date(),
-                    callCount: (lead.callCount || 0) + 1
+            // STEP 1: Update MongoDB FIRST (primary database - immediate update)
+            const noteDate = new Date().toLocaleString();
+            const newNote = `\n\n--- AI Call Summary (${noteDate}) ---\n` +
+                `Status: ${status}\n` +
+                `Intents: ${intentTypes.join(', ') || 'None detected'}\n` +
+                `Summary: ${analysis.summary || 'No summary'}\n` +
+                `Actions: ${actionsExecuted.map(a => a.type).join(', ') || 'None'}`;
+            
+            lead.status = status;
+            lead.notes = (lead.notes || '') + newNote;
+            lead.lastCallAt = new Date();
+            lead.callCount = (lead.callCount || 0) + 1;
+            lead.callStatus = 'answered';
+            lead.callAttempts = (lead.callAttempts || 0) + 1;
+            lead.statusUpdatedAt = new Date();
+            
+            await lead.save();
+            console.log('✅ MongoDB updated immediately:', { leadId: leadInfo.leadId, status });
+
+            // STEP 2: Sync to Zoho CRM in background (non-blocking)
+            if (lead.zohoId) {
+                // Update status in Zoho (background, non-blocking)
+                zohoClient.updateLead(lead.zohoId, {
+                    Lead_Status: status
+                })
+                .then(result => {
+                    if (result.success) {
+                        console.log('✅ Zoho CRM sync successful (background):', lead.zohoId);
+                    } else {
+                        console.warn('⚠️ Zoho CRM sync failed (non-blocking):', result.error);
+                    }
+                })
+                .catch(err => {
+                    console.warn('⚠️ Zoho CRM sync error (non-blocking):', err.message);
+                });
+
+                // Update local-only fields via data layer
+                dataLayer.updateLocalFields(lead.zohoId, {
+                    notes: lead.notes,
+                    lastCallAt: lead.lastCallAt,
+                    callCount: lead.callCount
+                }).catch(err => {
+                    console.warn('Local fields sync failed:', err.message);
                 });
             }
 
-            // Also update MongoDB-only fields directly
-            if (lead) {
-                lead.callStatus = 'answered';
-                lead.callAttempts = (lead.callAttempts || 0) + 1;
-                await lead.save();
-            }
-
-            console.log('✅ CRM updated', { leadId: leadInfo.leadId, status });
+            console.log('✅ CRM update complete', { leadId: leadInfo.leadId, status });
         } catch (error) {
-            console.error('CRM update failed:', error);
+            console.error('❌ CRM update failed:', error);
         }
     }
 
