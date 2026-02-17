@@ -28,6 +28,7 @@ const campaignSchema = new mongoose.Schema({
     organizationId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Organization',
+        required: true,
         index: true
     },
 

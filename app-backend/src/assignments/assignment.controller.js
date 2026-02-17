@@ -58,7 +58,8 @@ async function assignLeads(req, reply) {
       leadIds,
       agentId,
       assignedBy,
-      autoAssign
+      autoAssign,
+      organizationId
     );
 
     // Send email notification to agents (non-blocking)
@@ -78,7 +79,7 @@ async function assignLeads(req, reply) {
 
 async function getAgentWorkload(req, reply) {
   try {
-    const workload = await assignmentService.getAgentWorkload();
+    const workload = await assignmentService.getAgentWorkload(req.user?.organizationId);
     return reply.code(200).send(workload);
   } catch (error) {
     console.error('Get agent workload controller error:', error);

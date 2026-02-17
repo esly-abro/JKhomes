@@ -403,9 +403,13 @@ Your Team`;
 
             const Activity = require('../models/Activity');
             
+            // Resolve organizationId from the lead
+            const lead = await Lead.findById(leadInfo.leadId).select('organizationId');
+            
             // Create callback task
             const callbackTask = new Activity({
                 leadId: leadInfo.leadId,
+                organizationId: lead?.organizationId || null,
                 type: 'task',
                 title: 'Callback requested from AI call',
                 description: `Customer requested callback. Summary: ${analysis.summary || 'No summary available'}`,

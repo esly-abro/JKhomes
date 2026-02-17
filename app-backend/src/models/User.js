@@ -68,7 +68,8 @@ const userSchema = new mongoose.Schema({
     // For team/organization support
     organizationId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Organization'
+        ref: 'Organization',
+        index: true
     }
 }, {
     timestamps: true // Adds createdAt and updatedAt

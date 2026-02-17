@@ -12,6 +12,11 @@ const loginHistorySchema = new mongoose.Schema({
         required: true,
         index: true
     },
+    organizationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        index: true
+    },
     loginAt: {
         type: Date,
         required: true,
@@ -49,15 +54,19 @@ loginHistorySchema.index({ isActive: 1 });
 /**
  * Record a new login
  */
-loginHistorySchema.statics.recordLogin = async function(userId, ipAddress, userAgent, sessionId) {
-    return this.create({
+loginHistorySchema.statics.recordLogin = async function(userId, ipAddress, userAgent, sessionId, organizationId = null) {
+    const data = {
         userId,
         loginAt: new Date(),
         ipAddress,
         userAgent,
         sessionId,
         isActive: true
-    });
+    };
+    if (organizationId) {
+        data.organizationId = organizationId;
+    }
+    return this.create(data);
 };
 
 /**

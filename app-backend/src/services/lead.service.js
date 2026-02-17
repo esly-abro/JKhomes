@@ -26,11 +26,17 @@ class LeadService {
             sortBy = 'createdAt',
             sortOrder = 'desc',
             startDate,
-            endDate
+            endDate,
+            organizationId
         } = params;
 
         // Build filter
         const filter = { isDeleted: { $ne: true } };
+        
+        // Multi-tenancy: ALWAYS scope by organization
+        if (organizationId) {
+            filter.organizationId = organizationId;
+        }
         
         if (status) filter.status = status;
         if (source) filter.source = source;
@@ -87,9 +93,10 @@ class LeadService {
     /**
      * Get lead by ID
      * @param {string} id - Lead ID
+     * @param {string} organizationId - Optional org scope for verification
      * @returns {Promise<Object>} Lead
      */
-    async getLeadById(id) {
+    async getLeadById(id, organizationId = null) {
         const lead = await leadRepository.findById(id, {
             populate: [
                 { path: 'assignedTo', select: 'name email phone' }
@@ -97,6 +104,11 @@ class LeadService {
         });
         
         if (!lead) {
+            throw new NotFoundError('Lead');
+        }
+        
+        // Verify org ownership if organizationId provided
+        if (organizationId && lead.organizationId && String(lead.organizationId) !== String(organizationId)) {
             throw new NotFoundError('Lead');
         }
         
@@ -110,17 +122,21 @@ class LeadService {
      * @returns {Promise<Object>} Created lead
      */
     async createLead(leadData, createdBy = null) {
-        // Check for duplicate phone
+        // Check for duplicate phone (scoped to organization)
         if (leadData.phone) {
-            const existingLead = await leadRepository.findByPhone(leadData.phone);
+            const phoneFilter = { phone: leadData.phone };
+            if (leadData.organizationId) phoneFilter.organizationId = leadData.organizationId;
+            const existingLead = await leadRepository.findOne(phoneFilter);
             if (existingLead) {
                 throw new ConflictError('Lead with this phone number already exists');
             }
         }
 
-        // Check for duplicate email
+        // Check for duplicate email (scoped to organization)
         if (leadData.email) {
-            const existingLead = await leadRepository.findByEmail(leadData.email);
+            const emailFilter = { email: leadData.email };
+            if (leadData.organizationId) emailFilter.organizationId = leadData.organizationId;
+            const existingLead = await leadRepository.findOne(emailFilter);
             if (existingLead) {
                 throw new ConflictError('Lead with this email already exists');
             }
@@ -153,19 +169,23 @@ class LeadService {
      * @returns {Promise<Object>} Updated lead
      */
     async updateLead(id, updates, updatedBy = null) {
-        const existingLead = await this.getLeadById(id);
+        const existingLead = await this.getLeadById(id, updatedBy?.organizationId);
         
-        // Check for duplicate phone if updating
+        // Check for duplicate phone if updating (scoped to org)
         if (updates.phone && updates.phone !== existingLead.phone) {
-            const duplicateLead = await leadRepository.findByPhone(updates.phone);
+            const phoneFilter = { phone: updates.phone };
+            if (existingLead.organizationId) phoneFilter.organizationId = existingLead.organizationId;
+            const duplicateLead = await leadRepository.findOne(phoneFilter);
             if (duplicateLead && duplicateLead._id.toString() !== id) {
                 throw new ConflictError('Lead with this phone number already exists');
             }
         }
 
-        // Check for duplicate email if updating
+        // Check for duplicate email if updating (scoped to org)
         if (updates.email && updates.email !== existingLead.email) {
-            const duplicateLead = await leadRepository.findByEmail(updates.email);
+            const emailFilter = { email: updates.email };
+            if (existingLead.organizationId) emailFilter.organizationId = existingLead.organizationId;
+            const duplicateLead = await leadRepository.findOne(emailFilter);
             if (duplicateLead && duplicateLead._id.toString() !== id) {
                 throw new ConflictError('Lead with this email already exists');
             }
@@ -334,8 +354,10 @@ class LeadService {
      * @param {string} phone - Phone number
      * @returns {Promise<Object|null>} Lead or null
      */
-    async findByPhone(phone) {
-        return await leadRepository.findByPhone(phone);
+    async findByPhone(phone, organizationId = null) {
+        const filter = { phone };
+        if (organizationId) filter.organizationId = organizationId;
+        return await leadRepository.findOne(filter);
     }
 
     /**
@@ -345,7 +367,8 @@ class LeadService {
      * @returns {Promise<Object>} { lead, isNew }
      */
     async getOrCreateByPhone(phone, leadData) {
-        let lead = await leadRepository.findByPhone(phone);
+        const orgId = leadData?.organizationId || null;
+        let lead = await this.findByPhone(phone, orgId);
         
         if (lead) {
             return { lead, isNew: false };

@@ -45,7 +45,7 @@ function generateAccessToken(identity = 'agent') {
 }
 
 // Make an outbound call
-async function makeCall(toNumber, fromNumber = TWILIO_PHONE_NUMBER, userId = null, leadId = null, leadName = null) {
+async function makeCall(toNumber, fromNumber = TWILIO_PHONE_NUMBER, userId = null, leadId = null, leadName = null, organizationId = null) {
   try {
     // Clean the phone number
     let cleanNumber = toNumber.replace(/[\s\-\(\)]/g, '');
@@ -72,6 +72,7 @@ async function makeCall(toNumber, fromNumber = TWILIO_PHONE_NUMBER, userId = nul
     const callLog = await CallLog.create({
       callSid: call.sid,
       userId: userId,
+      organizationId: organizationId,
       leadId: leadId,
       leadName: leadName,
       phoneNumber: cleanNumber,
@@ -85,6 +86,7 @@ async function makeCall(toNumber, fromNumber = TWILIO_PHONE_NUMBER, userId = nul
     if (userId) {
       await Activity.create({
         userId: userId,
+        organizationId: organizationId,
         leadId: leadId,
         leadName: leadName,
         type: 'call',

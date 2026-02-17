@@ -42,17 +42,29 @@ async function createCallLog(callData) {
 
 /**
  * Get call log by ID
+ * @param {string} callLogId - CallLog ID
+ * @param {string} organizationId - Optional org verification
  */
-async function getCallLogById(callLogId) {
-    return CallLog.findById(callLogId)
+async function getCallLogById(callLogId, organizationId = null) {
+    const callLog = await CallLog.findById(callLogId)
         .populate('agentId', 'name email');
+    
+    if (organizationId && callLog && callLog.organizationId && String(callLog.organizationId) !== String(organizationId)) {
+        return null;
+    }
+    return callLog;
 }
 
 /**
  * Update call log
+ * @param {string} callLogId - CallLog ID
+ * @param {Object} updates - Fields to update
+ * @param {string} organizationId - Optional org verification
  */
-async function updateCallLog(callLogId, updates) {
-    return CallLog.findByIdAndUpdate(callLogId, updates, { new: true });
+async function updateCallLog(callLogId, updates, organizationId = null) {
+    const query = { _id: callLogId };
+    if (organizationId) query.organizationId = organizationId;
+    return CallLog.findOneAndUpdate(query, updates, { new: true });
 }
 
 module.exports = {

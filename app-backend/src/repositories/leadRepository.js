@@ -219,7 +219,9 @@ class LeadRepository {
      */
     async findByAgentId(agentId, options = {}) {
         try {
-            return await this.findMany({ assignedTo: agentId }, options);
+            const filter = { assignedTo: agentId };
+            if (options.organizationId) filter.organizationId = options.organizationId;
+            return await this.findMany(filter, options);
         } catch (error) {
             throw error;
         }
@@ -233,7 +235,9 @@ class LeadRepository {
      */
     async findByStatus(status, options = {}) {
         try {
-            return await this.findMany({ status }, options);
+            const filter = { status };
+            if (options.organizationId) filter.organizationId = options.organizationId;
+            return await this.findMany(filter, options);
         } catch (error) {
             throw error;
         }
@@ -292,6 +296,11 @@ class LeadRepository {
                     { notes: searchRegex }
                 ]
             };
+            
+            // Scope to organization if provided
+            if (options.organizationId) {
+                filter.organizationId = options.organizationId;
+            }
             
             return await this.findMany(filter, options);
         } catch (error) {

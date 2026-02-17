@@ -268,8 +268,12 @@ async function syncAllSiteVisitsToGoogleSheets() {
 
 /**
  * Update site visit status
+ * @param {string} visitId - SiteVisit ID
+ * @param {string} status - New status
+ * @param {string} notes - Optional notes
+ * @param {string} organizationId - Optional org verification
  */
-async function updateSiteVisitStatus(visitId, status, notes = null) {
+async function updateSiteVisitStatus(visitId, status, notes = null, organizationId = null) {
     const update = { status };
     if (notes) {
         update.notes = notes;
@@ -278,16 +282,25 @@ async function updateSiteVisitStatus(visitId, status, notes = null) {
         update.completedAt = new Date();
     }
     
-    return SiteVisit.findByIdAndUpdate(visitId, update, { new: true });
+    const query = { _id: visitId };
+    if (organizationId) query.organizationId = organizationId;
+    return SiteVisit.findOneAndUpdate(query, update, { new: true });
 }
 
 /**
  * Get site visit by ID
+ * @param {string} visitId - SiteVisit ID
+ * @param {string} organizationId - Optional org verification
  */
-async function getSiteVisitById(visitId) {
-    return SiteVisit.findById(visitId)
+async function getSiteVisitById(visitId, organizationId = null) {
+    const siteVisit = await SiteVisit.findById(visitId)
         .populate('propertyId', 'name location')
         .populate('agentId', 'name email');
+    
+    if (organizationId && siteVisit && siteVisit.organizationId && String(siteVisit.organizationId) !== String(organizationId)) {
+        return null;
+    }
+    return siteVisit;
 }
 
 module.exports = {

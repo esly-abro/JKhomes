@@ -263,22 +263,36 @@ async function getUnassignedTasks(organizationId) {
 
 /**
  * Get task by ID with full details
+ * @param {string} taskId - Task ID
+ * @param {string} organizationId - Optional org scope for verification  
  */
-async function getTaskById(taskId) {
-  return Task.findById(taskId)
+async function getTaskById(taskId, organizationId = null) {
+  const task = await Task.findById(taskId)
     .populate('lead')
     .populate('assignedTo', 'name email phone')
     .populate('createdBy', 'name email')
     .populate('automation', 'name')
     .populate('automationRun');
+  
+  // Verify org ownership if organizationId provided
+  if (organizationId && task && task.organizationId && String(task.organizationId) !== String(organizationId)) {
+    return null;
+  }
+  
+  return task;
 }
 
 /**
  * Mark task as complete and trigger automation resume
  */
-async function completeTask(taskId, userId, notes = null, result = 'success') {
+async function completeTask(taskId, userId, notes = null, result = 'success', organizationId = null) {
   const task = await Task.findById(taskId);
   if (!task) {
+    throw new Error('Task not found');
+  }
+  
+  // Verify org ownership if organizationId provided
+  if (organizationId && task.organizationId && String(task.organizationId) !== String(organizationId)) {
     throw new Error('Task not found');
   }
 
@@ -308,9 +322,14 @@ async function completeTask(taskId, userId, notes = null, result = 'success') {
 /**
  * Assign task to a user
  */
-async function assignTask(taskId, assigneeId, assignedBy) {
+async function assignTask(taskId, assigneeId, assignedBy, organizationId = null) {
   const task = await Task.findById(taskId);
   if (!task) {
+    throw new Error('Task not found');
+  }
+  
+  // Verify org ownership if organizationId provided
+  if (organizationId && task.organizationId && String(task.organizationId) !== String(organizationId)) {
     throw new Error('Task not found');
   }
 

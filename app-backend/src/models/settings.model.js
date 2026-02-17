@@ -72,6 +72,12 @@ const settingsSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization',
+    index: true
+  },
+  // Legacy field — kept for backward compatibility
   organization: {
     type: String,
     default: 'default'

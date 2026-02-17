@@ -212,8 +212,10 @@ class UserRepository {
      */
     async findActiveAgents(options = {}) {
         try {
+            const filter = { role: { $in: ['agent', 'manager'] }, status: 'active' };
+            if (options.organizationId) filter.organizationId = options.organizationId;
             return await this.findMany(
-                { role: { $in: ['agent', 'manager'] }, status: 'active' },
+                filter,
                 options
             );
         } catch (error) {
@@ -258,16 +260,21 @@ class UserRepository {
      * Get user statistics
      * @returns {Promise<Object>} Statistics
      */
-    async getStats() {
+    async getStats(organizationId = null) {
         try {
-            const pipeline = [
-                {
+            const pipeline = [];
+            
+            // Scope to organization if provided
+            if (organizationId) {
+                pipeline.push({ $match: { organizationId } });
+            }
+            
+            pipeline.push({
                     $group: {
                         _id: { role: '$role', status: '$status' },
                         count: { $sum: 1 }
                     }
-                }
-            ];
+            });
 
             const results = await User.aggregate(pipeline);
             
@@ -327,6 +334,11 @@ class UserRepository {
                     { phone: searchRegex }
                 ]
             };
+            
+            // Scope to organization if provided
+            if (options.organizationId) {
+                filter.organizationId = options.organizationId;
+            }
             
             return await this.findMany(filter, options);
         } catch (error) {

@@ -42,9 +42,10 @@ async function getUserWhatsappSettings(userId) {
  * Get WhatsApp credentials - tries database first, then falls back to env vars
  * Checks: Settings model → Organization model → env vars
  * @param {string} userId - User ID for database lookup (optional)
+ * @param {string} organizationId - Organization ID for multi-tenant lookup (optional)
  * @returns {Object} - { accessToken, phoneNumberId, businessAccountId }
  */
-async function getCredentials(userId) {
+async function getCredentials(userId, organizationId = null) {
   // Try to get credentials from Settings model first
   if (userId) {
     try {
@@ -66,11 +67,12 @@ async function getCredentials(userId) {
   // Try to get credentials from Organization model (encrypted, auto-decrypted via getters)
   try {
     let org = null;
-    if (userId) {
-      org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
+    if (organizationId) {
+      // Use the caller's org directly (most reliable for multi-tenant)
+      org = await Organization.findOne({ _id: organizationId, 'whatsapp.enabled': true });
     }
-    if (!org) {
-      org = await Organization.findOne({ 'whatsapp.enabled': true, 'whatsapp.isConnected': true });
+    if (!org && userId) {
+      org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
     }
     
     if (org?.whatsapp?.phoneNumberId) {

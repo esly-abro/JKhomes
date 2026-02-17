@@ -87,6 +87,14 @@ async function approveUser(req, reply) {
       });
     }
 
+    // Multi-tenancy: ensure user belongs to same organization
+    if (currentUser.organizationId && user.organizationId?.toString() !== currentUser.organizationId.toString()) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     if (user.approvalStatus === 'approved') {
       return reply.status(400).send({
         success: false,
@@ -139,6 +147,14 @@ async function rejectUser(req, reply) {
 
     const user = await User.findById(id);
     if (!user) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Multi-tenancy: ensure user belongs to same organization
+    if (currentUser.organizationId && user.organizationId?.toString() !== currentUser.organizationId.toString()) {
       return reply.status(404).send({
         success: false,
         message: 'User not found'
@@ -200,6 +216,14 @@ async function updateUserRole(req, reply) {
       });
     }
 
+    // Multi-tenancy: ensure user belongs to same organization
+    if (req.user.organizationId && user.organizationId?.toString() !== req.user.organizationId.toString()) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     // Prevent changing own role
     if (user._id.toString() === req.user.id) {
       return reply.status(403).send({
@@ -239,6 +263,14 @@ async function deleteUser(req, reply) {
 
     const user = await User.findById(id);
     if (!user) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Multi-tenancy: ensure user belongs to same organization
+    if (req.user.organizationId && user.organizationId?.toString() !== req.user.organizationId.toString()) {
       return reply.status(404).send({
         success: false,
         message: 'User not found'
@@ -325,6 +357,14 @@ async function getUserById(req, reply) {
       });
     }
 
+    // Multi-tenancy: ensure user belongs to same organization
+    if (req.user.organizationId && user.organizationId?.toString() !== req.user.organizationId.toString()) {
+      return reply.status(404).send({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
     return reply.send({
       success: true,
       data: user
@@ -359,6 +399,14 @@ async function getAgentActivity(req, reply) {
       });
     }
 
+    // Multi-tenancy: ensure agent belongs to same organization
+    if (req.user.organizationId && agent.organizationId?.toString() !== req.user.organizationId.toString()) {
+      return reply.status(404).send({
+        success: false,
+        message: 'Agent not found'
+      });
+    }
+
     // Get date ranges
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -381,8 +429,8 @@ async function getAgentActivity(req, reply) {
       leadStats.byStatus[status] = (leadStats.byStatus[status] || 0) + 1;
     });
 
-    // Fetch activities by this agent
-    const activities = await Activity.find({ userId: id })
+    // Fetch activities by this agent (scoped to org)
+    const activities = await Activity.find({ userId: id, ...orgFilter })
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -399,8 +447,8 @@ async function getAgentActivity(req, reply) {
       activityStats.byType[type] = (activityStats.byType[type] || 0) + 1;
     });
 
-    // Fetch call logs by this agent
-    const callLogs = await CallLog.find({ agentId: id })
+    // Fetch call logs by this agent (scoped to org)
+    const callLogs = await CallLog.find({ agentId: id, ...orgFilter })
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -418,8 +466,8 @@ async function getAgentActivity(req, reply) {
       callStats.byStatus[status] = (callStats.byStatus[status] || 0) + 1;
     });
 
-    // Fetch appointments by this agent
-    const siteVisits = await SiteVisit.find({ agentId: id })
+    // Fetch appointments by this agent (scoped to org)
+    const siteVisits = await SiteVisit.find({ agentId: id, ...orgFilter })
       .sort({ scheduledAt: -1 })
       .limit(100);
 

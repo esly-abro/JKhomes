@@ -3,7 +3,7 @@ const leadsService = require('../leads/leads.service');
 const propertiesService = require('../properties/properties.service');
 
 class AssignmentService {
-  async assignLeads(leadIds, agentId, assignedBy, autoAssign = false) {
+  async assignLeads(leadIds, agentId, assignedBy, autoAssign = false, organizationId = null) {
     try {
       const results = [];
 
@@ -14,7 +14,7 @@ class AssignmentService {
           // If auto-assign is enabled and no specific agent provided
           if (autoAssign && !agentId) {
             const lead = await leadsService.getLeadById(leadId);
-            targetAgentId = await this.findBestAgent(lead);
+            targetAgentId = await this.findBestAgent(lead, organizationId);
           }
 
           // Use the new assignLeadToAgent function that properly updates MongoDB
@@ -42,7 +42,7 @@ class AssignmentService {
     }
   }
 
-  async findBestAgent(lead) {
+  async findBestAgent(lead, organizationId = null) {
     try {
       console.log('\n========== AUTO-ASSIGN DEBUG ==========');
       console.log('Lead being assigned:', {
@@ -53,10 +53,16 @@ class AssignmentService {
         location: lead.location
       });
 
-      // Get all active agents (role: agent or bpo)
-      const agents = await User.find({
+      // Get all active agents (role: agent or bpo) — scoped to organization
+      const agentFilter = {
         role: { $in: ['agent', 'bpo'] }
-      });
+      };
+      // Multi-tenancy: scope to lead's or caller's organization
+      const orgId = organizationId || lead?.organizationId;
+      if (orgId) {
+        agentFilter.organizationId = orgId;
+      }
+      const agents = await User.find(agentFilter);
 
       console.log(`Found ${agents.length} agents:`, agents.map(a => ({ id: a._id, name: a.name || a.email })));
 
@@ -159,7 +165,11 @@ class AssignmentService {
     } catch (error) {
       console.error('❌ Find best agent error:', error);
       // Fallback: return first available agent
-      const agents = await User.find({ role: { $in: ['agent', 'bpo'] } }).limit(1);
+      const fallbackFilter = { role: { $in: ['agent', 'bpo'] } };
+      if (organizationId || lead?.organizationId) {
+        fallbackFilter.organizationId = organizationId || lead.organizationId;
+      }
+      const agents = await User.find(fallbackFilter).limit(1);
       if (!agents || agents.length === 0) {
         console.error('❌ CRITICAL: No agents available even for fallback');
         throw new Error('No agents available for assignment');
@@ -169,11 +179,16 @@ class AssignmentService {
     }
   }
 
-  async getAgentWorkload() {
+  async getAgentWorkload(organizationId = null) {
     try {
-      const agents = await User.find({
+      const agentFilter = {
         role: { $in: ['agent', 'bpo', 'manager'] }
-      });
+      };
+      // Multi-tenancy: scope to organization
+      if (organizationId) {
+        agentFilter.organizationId = organizationId;
+      }
+      const agents = await User.find(agentFilter);
 
       const workload = await Promise.all(
         agents.map(async (agent) => {
