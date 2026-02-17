@@ -821,6 +821,143 @@ async function buildApp() {
             }
         });
 
+        // ============================================
+        // Email (SMTP) Settings routes (owner/admin only)
+        // ============================================
+
+        // GET - Fetch current SMTP settings (password masked)
+        protectedApp.get('/api/organization/email-settings', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const org = await Organization.findById(request.user.organizationId);
+                if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+
+                const smtp = org.smtp || {};
+                return reply.send({
+                    success: true,
+                    emailSettings: {
+                        host: smtp.host || '',
+                        port: smtp.port || 587,
+                        secure: smtp.secure || false,
+                        user: smtp.user || '',
+                        pass: smtp.pass ? '••••••••' : '',
+                        fromName: smtp.fromName || '',
+                        isConfigured: smtp.isConfigured || false
+                    }
+                });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // PUT - Save SMTP settings
+        protectedApp.put('/api/organization/email-settings', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const { host, port, secure, user, pass, fromName } = request.body || {};
+
+                if (!host || !user || !pass) {
+                    return reply.status(400).send({ success: false, error: 'SMTP host, email, and password are required' });
+                }
+
+                const updateFields = {
+                    'smtp.host': host,
+                    'smtp.port': port || 587,
+                    'smtp.secure': secure || false,
+                    'smtp.user': user,
+                    'smtp.fromName': fromName || '',
+                    'smtp.isConfigured': true
+                };
+
+                // Only update password if it's not the masked placeholder
+                if (pass !== '••••••••') {
+                    updateFields['smtp.pass'] = pass;
+                }
+
+                const org = await Organization.findByIdAndUpdate(
+                    request.user.organizationId,
+                    { $set: updateFields },
+                    { new: true }
+                );
+
+                if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+
+                return reply.send({
+                    success: true,
+                    message: 'Email settings saved successfully',
+                    emailSettings: {
+                        host: org.smtp.host,
+                        port: org.smtp.port,
+                        secure: org.smtp.secure,
+                        user: org.smtp.user,
+                        pass: '••••••••',
+                        fromName: org.smtp.fromName,
+                        isConfigured: org.smtp.isConfigured
+                    }
+                });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // POST - Test SMTP connection by sending a test email
+        protectedApp.post('/api/organization/email-settings/test', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const nodemailer = require('nodemailer');
+                const { host, port, secure, user, pass, fromName } = request.body || {};
+
+                if (!host || !user || !pass) {
+                    return reply.status(400).send({ success: false, error: 'SMTP host, email, and password are required' });
+                }
+
+                // If password is masked, get from DB
+                let actualPass = pass;
+                if (pass === '••••••••') {
+                    const org = await Organization.findById(request.user.organizationId);
+                    if (!org?.smtp?.pass) {
+                        return reply.status(400).send({ success: false, error: 'No saved password found. Please enter the password.' });
+                    }
+                    actualPass = org.smtp.pass;
+                }
+
+                const transporter = nodemailer.createTransport({
+                    host: host,
+                    port: port || 587,
+                    secure: secure || false,
+                    auth: { user, pass: actualPass }
+                });
+
+                // Send test email to the configured email itself
+                await transporter.sendMail({
+                    from: `"${fromName || 'Test'}" <${user}>`,
+                    to: user,
+                    subject: '✅ Pulsar CRM - SMTP Test Successful',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; background: #f0fdf4; border-radius: 8px; border: 1px solid #86efac;">
+                            <h2 style="color: #166534; margin-bottom: 10px;">✅ SMTP Configuration Successful!</h2>
+                            <p style="color: #333;">Your email settings are working correctly. Agent credential emails will be sent from this address.</p>
+                            <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Sent at: ${new Date().toLocaleString()}</p>
+                        </div>
+                    `
+                });
+
+                return reply.send({ success: true, message: 'Test email sent successfully! Check your inbox.' });
+            } catch (error) {
+                console.error('SMTP test failed:', error);
+                return reply.status(400).send({
+                    success: false,
+                    error: `SMTP test failed: ${error.message}`
+                });
+            }
+        });
+
         // Zoho Sync routes (owner/admin only, rate limited)
         protectedApp.post('/api/sync/call-log/:callLogId', {
             preHandler: [requireRole(['owner', 'admin']), zohoSyncLimiter]

@@ -243,6 +243,16 @@ const organizationSchema = new mongoose.Schema({
     twilio: twilioSchema,
     // WhatsApp Business API Integration
     whatsapp: whatsappSchema,
+    // SMTP Email Configuration (per-org)
+    smtp: {
+        host: { type: String, default: null },
+        port: { type: Number, default: 587 },
+        secure: { type: Boolean, default: false },
+        user: { type: String, default: null },
+        pass: { type: String, set: encrypt, get: decrypt, default: null },
+        fromName: { type: String, default: null },
+        isConfigured: { type: Boolean, default: false }
+    },
     // Subscription/billing info (for future)
     plan: {
         type: String,

@@ -5,7 +5,7 @@
 
 const authService = require('./auth.service');
 const usersModel = require('../users/users.model');
-const { notifyOwnerOfNewAgent } = require('../services/email.service');
+const { notifyOwnerOfNewAgent, sendAgentCredentials } = require('../services/email.service');
 
 /**
  * POST /auth/register-organization
@@ -223,6 +223,26 @@ async function register(request, reply) {
                 }
             } catch (err) {
                 console.error('Error notifying owners:', err);
+            }
+        }
+
+        // If created by owner, send credentials email to the new agent
+        if (autoApprove && isDbMode) {
+            try {
+                // Get owner name from JWT
+                let ownerName = 'Your manager';
+                const authHeader3 = request.headers.authorization;
+                if (authHeader3 && authHeader3.startsWith('Bearer ')) {
+                    try {
+                        const { verifyToken: vt3 } = require('./jwt');
+                        const decoded3 = vt3(authHeader3.substring(7));
+                        ownerName = decoded3?.name || 'Your manager';
+                    } catch (_e) { /* ignore */ }
+                }
+                await sendAgentCredentials(email.toLowerCase(), name, password, ownerName, organizationId);
+            } catch (emailError) {
+                console.error(`Failed to send credentials email to ${email}:`, emailError);
+                // Don't fail the creation if email fails
             }
         }
 
