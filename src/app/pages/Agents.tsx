@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, User, Clock, Phone, Mail, CheckCircle, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, UserPlus, Trash2, Activity } from 'lucide-react';
+import { Shield, User, Clock, Phone, Mail, CheckCircle, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, UserPlus, Trash2, Activity, CheckSquare } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -11,7 +11,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Textarea } from '../components/ui/textarea';
 import AgentActivityDialog from '../components/AgentActivityDialog';
+import { createTaskForAgent } from '../../services/leads';
 import { useTenantConfig } from '../context/TenantConfigContext';
 
 interface Agent {
@@ -59,6 +62,19 @@ export default function Agents() {
   // Activity Dialog State
   const [activityDialogOpen, setActivityDialogOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  
+  // Create Task Modal State
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [taskModalAgent, setTaskModalAgent] = useState<Agent | null>(null);
+  const [creatingTask, setCreatingTask] = useState(false);
+  const [taskError, setTaskError] = useState('');
+  const [taskSuccess, setTaskSuccess] = useState(false);
+  const [taskFormData, setTaskFormData] = useState({
+    title: '',
+    description: '',
+    priority: 'medium',
+    dueDate: ''
+  });
   
   const [newAgent, setNewAgent] = useState({
     name: '',
@@ -231,6 +247,54 @@ export default function Agents() {
   const openAgentActivity = (agent: Agent) => {
     setSelectedAgent(agent);
     setActivityDialogOpen(true);
+  };
+
+  const openCreateTaskModal = (agent: Agent) => {
+    setTaskModalAgent(agent);
+    setShowTaskModal(true);
+    setTaskFormData({ title: '', description: '', priority: 'medium', dueDate: '' });
+    setTaskError('');
+    setTaskSuccess(false);
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!taskModalAgent) return;
+    if (!taskFormData.title.trim()) {
+      setTaskError('Task title is required');
+      return;
+    }
+
+    setCreatingTask(true);
+    setTaskError('');
+
+    try {
+      const result = await createTaskForAgent(taskModalAgent._id, {
+        title: taskFormData.title,
+        description: taskFormData.description,
+        priority: taskFormData.priority as 'high' | 'medium' | 'low',
+        dueDate: taskFormData.dueDate || undefined,
+        type: 'manual_action'
+      });
+
+      if (result.success) {
+        setTaskSuccess(true);
+        setTaskFormData({ title: '', description: '', priority: 'medium', dueDate: '' });
+        
+        // Close modal after short delay to show success
+        setTimeout(() => {
+          setShowTaskModal(false);
+          setTaskSuccess(false);
+        }, 1500);
+      } else {
+        setTaskError(result.error || 'Failed to create task');
+      }
+    } catch (error: any) {
+      setTaskError(error.message || 'Failed to create task');
+    } finally {
+      setCreatingTask(false);
+    }
   };
 
   const getLeadStatusBadge = (status: string) => {
@@ -555,6 +619,18 @@ export default function Agents() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCreateTaskModal(agent);
+                            }}
+                            title="Create Task"
+                          >
+                            <CheckSquare className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             onClick={(e) => {
                               e.stopPropagation();
@@ -633,6 +709,110 @@ export default function Agents() {
           </div>
         )}
       </div>
+
+      {/* Create Task Modal */}
+      <Dialog open={showTaskModal} onOpenChange={setShowTaskModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Task for {taskModalAgent?.name}</DialogTitle>
+            <DialogDescription>Assign a task to this agent with a due date and priority</DialogDescription>
+          </DialogHeader>
+          
+          <form onSubmit={handleCreateTask} className="space-y-4">
+            {taskError && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-3 flex items-start gap-2">
+                <XCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">{taskError}</p>
+              </div>
+            )}
+            
+            {taskSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-md p-3 flex items-start gap-2">
+                <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-800">Task created successfully!</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="taskTitle">Task Title *</Label>
+              <Input
+                id="taskTitle"
+                placeholder="e.g., Follow up call, Send quote, Schedule meeting"
+                value={taskFormData.title}
+                onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+                required
+                disabled={creatingTask || taskSuccess}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="taskDescription">Description</Label>
+              <Textarea
+                id="taskDescription"
+                placeholder="Add details about the task..."
+                value={taskFormData.description}
+                onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+                disabled={creatingTask || taskSuccess}
+                className="min-h-20"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="taskPriority">Priority</Label>
+              <Select value={taskFormData.priority} onValueChange={(value) => setTaskFormData({ ...taskFormData, priority: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="taskDueDate">Due Date</Label>
+              <Input
+                id="taskDueDate"
+                type="date"
+                value={taskFormData.dueDate}
+                onChange={(e) => setTaskFormData({ ...taskFormData, dueDate: e.target.value })}
+                disabled={creatingTask || taskSuccess}
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTaskModal(false)}
+                disabled={creatingTask}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={creatingTask || taskSuccess}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {creatingTask ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Create Task
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Agent Activity Dialog */}
       {selectedAgent && (
         <AgentActivityDialog

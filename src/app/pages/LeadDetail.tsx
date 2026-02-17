@@ -243,22 +243,22 @@ export default function LeadDetail() {
         humanCallStatusPollRef.current = null;
       }
     } else {
-      // Start new human call via ElevenLabs
+      // Start new human call via Twilio
       setIsHumanCallConnecting(true);
-      setHumanCallStatus('📞 Initiating call via ElevenLabs...');
+      setHumanCallStatus('📞 Initiating call via Twilio...');
       addLeadActivity('call', 'Human Call Initiated', 'bg-orange-500');
 
       try {
         const result = await makeHumanCall(lead.phone, lead.id, lead.name);
         
         if (result.success) {
-          const callId = result.callSid || result.conversationId || 'call';
+          const callId = result.callSid || 'call';
           setHumanCallSid(callId);
           setIsHumanCallActive(true);
-          setHumanCallStatus(`🔊 Call ${result.status || 'initiated'} - Lead will receive a call`);
+          setHumanCallStatus(`🔊 Call ${result.status || 'initiated'} - Lead's phone is ringing`);
           addLeadActivity('call', `Human Call Connected${callId !== 'call' ? ` (ID: ${callId.substring(0, 8)}...)` : ''}`, 'bg-green-500');
           
-          // Auto-reset after 30 seconds since ElevenLabs webhooks handle the actual call lifecycle
+          // Auto-reset after 30 seconds since Twilio webhooks handle the actual call lifecycle
           setTimeout(() => {
             if (isHumanCallActive) {
               setHumanCallStatus('📞 Call in progress - close when done');
@@ -530,18 +530,18 @@ export default function LeadDetail() {
                 {isConnecting ? 'Connecting...' : isOnCall ? 'End' : 'AI Call Now'}
               </Button>
               <Button
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-                onClick={() => {
-                  // Open phone dialer with lead's number (works on mobile & desktop with phone apps)
-                  const phoneNumber = lead.phone.replace(/[^0-9+]/g, '');
-                  const formattedNumber = phoneNumber.startsWith('+') ? phoneNumber : 
-                    (phoneNumber.length === 10 ? `+91${phoneNumber}` : `+${phoneNumber}`);
-                  window.open(`tel:${formattedNumber}`, '_self');
-                  addLeadActivity('call', `Human Call initiated to ${lead.phone}`, 'bg-orange-500');
-                }}
+                className={isHumanCallActive ? "bg-red-600 hover:bg-red-700 text-white" : "bg-orange-600 hover:bg-orange-700 text-white"}
+                onClick={handleHumanCall}
+                disabled={isHumanCallConnecting || isConnecting || isOnCall}
               >
-                <PhoneCall className="h-4 w-4 mr-2" />
-                Human Call
+                {isHumanCallConnecting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : isHumanCallActive ? (
+                  <PhoneOff className="h-4 w-4 mr-2" />
+                ) : (
+                  <PhoneCall className="h-4 w-4 mr-2" />
+                )}
+                {isHumanCallConnecting ? 'Calling...' : isHumanCallActive ? 'End Call' : 'Twilio Call'}
               </Button>
               <Button
                 className="bg-[#25D366] hover:bg-[#128C7E] text-white"

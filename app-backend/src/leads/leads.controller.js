@@ -239,9 +239,60 @@ async function createTask(request, reply) {
     const userId = request.user._id;
     const userName = request.user.name || request.user.email;
     const organizationId = request.user?.organizationId;
-    const taskData = { ...request.body, userId, userName, organizationId };
+    const taskData = { ...request.body, createdBy: userId, organizationId };
     const task = await leadsService.createTask(taskData);
     return reply.code(201).send(task);
+}
+
+/**
+ * POST /api/tasks/assign/:agentId - Create a task for a specific agent (owner only)
+ */
+async function createTaskForAgent(request, reply) {
+    const userRole = request.user?.role;
+    const organizationId = request.user?.organizationId;
+    
+    // Only owners and managers can create tasks for other agents
+    if (!['owner', 'admin', 'manager'].includes(userRole)) {
+        return reply.status(403).send({ error: 'Only owners/managers can create tasks for agents' });
+    }
+
+    const { agentId } = request.params;
+    const { title, description, priority, dueDate, leadId, type } = request.body;
+
+    if (!title) {
+        return reply.status(400).send({ error: 'Task title is required' });
+    }
+
+    if (!agentId) {
+        return reply.status(400).send({ error: 'Agent ID is required' });
+    }
+
+    // Verify agent exists and belongs to the same organization
+    const User = require('../models/User');
+    const agent = await User.findById(agentId);
+    if (!agent || agent.organizationId !== organizationId) {
+        return reply.status(404).send({ error: 'Agent not found' });
+    }
+
+    try {
+        const taskData = {
+            assignedTo: agentId,
+            createdBy: request.user._id,
+            organizationId,
+            title,
+            description,
+            priority: priority || 'medium',
+            dueDate: dueDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
+            leadId: leadId || null,
+            type: type || 'manual_action'
+        };
+
+        const task = await leadsService.createTask(taskData);
+        return reply.code(201).send(task);
+    } catch (error) {
+        request.log.error(error);
+        return reply.status(500).send({ error: 'Failed to create task', details: error.message });
+    }
 }
 
 /**
@@ -309,6 +360,7 @@ module.exports = {
     getAllSiteVisitsHandler,
     getTasks,
     createTask,
+    createTaskForAgent,
     updateTask,
     deleteTask,
     getUsers,

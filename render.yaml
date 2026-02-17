@@ -1,0 +1,45 @@
+services:
+  # --------------------------------------------------------------------------------
+  # FRONTEND (Vite / React)
+  # --------------------------------------------------------------------------------
+  - type: web
+    name: jk-construction-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # --------------------------------------------------------------------------------
+  # APP BACKEND (Node.js / Fastify)
+  # --------------------------------------------------------------------------------
+  - type: web
+    name: app-backend
+    env: node
+    root: app-backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000 
+      # Add other env vars here or in the Render Dashboard
+
+  # --------------------------------------------------------------------------------
+  # ZOHO LEAD BACKEND (Node.js / Express)
+  # --------------------------------------------------------------------------------
+  - type: web
+    name: zoho-lead-backend
+    env: node
+    root: zoho-lead-backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      # Add other env vars here or in the Render Dashboard

@@ -1,13 +1,13 @@
 /**
  * Voice Calling Service
- * Makes phone calls via ElevenLabs (which uses Twilio integration)
+ * Makes phone calls via Twilio (direct integration)
  */
 
 import axios from 'axios';
 import api from './api';
 
-// ElevenLabs backend endpoint (zoho-lead-backend on port 3000)
-const ELEVENLABS_API_URL = 'http://localhost:3000';
+// App backend endpoint (app-backend on port 4000)
+const TWILIO_API_URL = 'http://localhost:4000';
 
 export interface CallResult {
   success: boolean;
@@ -46,8 +46,8 @@ export interface CallHistoryResult {
 }
 
 /**
- * Make a human phone call via ElevenLabs (Twilio integration)
- * This initiates an outbound call through ElevenLabs which uses Twilio
+ * Make a human phone call via Twilio (direct integration)
+ * This initiates an outbound call directly through Twilio
  */
 export async function makeHumanCall(
   phoneNumber: string,
@@ -55,24 +55,33 @@ export async function makeHumanCall(
   leadName?: string
 ): Promise<CallResult> {
   try {
-    // Use the same endpoint as AI calls - ElevenLabs handles Twilio integration
-    const response = await axios.post<any>(`${ELEVENLABS_API_URL}/elevenlabs/call`, {
-      phoneNumber,
-      leadId,
-      leadName,
-      metadata: {
-        source: 'human_call_button',
-        callType: 'human'
-      }
-    });
+    // Get token from localStorage for authentication
+    const token = localStorage.getItem('accessToken');
     
-    if (response.data && (response.data.success || response.data.status === 'initiated')) {
+    // Use the Twilio endpoint directly via the app-backend
+    const response = await axios.post<any>(
+      `${TWILIO_API_URL}/api/twilio/call`,
+      {
+        phoneNumber,
+        leadId,
+        leadName,
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    if (response.data && (response.data.success || response.data.status === 'initiated' || response.data.status === 'queued')) {
       return {
         success: true,
-        callSid: response.data.callSid || response.data.conversationId,
+        callSid: response.data.callSid,
+        callLogId: response.data.callLogId,
         status: response.data.status || 'initiated',
-        to: phoneNumber,
-        conversationId: response.data.conversationId,
+        to: response.data.to || phoneNumber,
+        from: response.data.from,
       };
     }
     

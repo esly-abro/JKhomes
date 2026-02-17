@@ -144,6 +144,48 @@ async function taskRoutes(fastify, options) {
     }
   });
 
+  // Create task for a specific agent (owner/manager only)
+  fastify.post('/assign/:agentId', async (request, reply) => {
+    try {
+      const { role, organizationId, _id: userId } = request.user;
+      const { agentId } = request.params;
+      const { title, description, priority, dueDate, leadId, type } = request.body;
+
+      // Only owners and managers can create tasks for other agents
+      if (!['owner', 'admin', 'manager'].includes(role)) {
+        return reply.code(403).send({ success: false, error: 'Only owners/managers can create tasks for agents' });
+      }
+
+      if (!title) {
+        return reply.code(400).send({ success: false, error: 'Task title is required' });
+      }
+
+      // Verify agent exists and belongs to the same organization
+      const User = require('../models/User');
+      const agent = await User.findById(agentId);
+      if (!agent || (agent.organizationId !== organizationId)) {
+        return reply.code(404).send({ success: false, error: 'Agent not found' });
+      }
+
+      const task = await taskService.createTask({
+        leadId: leadId || null,
+        type: type || 'manual_action',
+        title,
+        description,
+        priority: priority || 'medium',
+        dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000),
+        assignedTo: agentId,
+        createdBy: userId,
+        organizationId
+      });
+
+      return { success: true, data: task };
+    } catch (error) {
+      console.error('Error creating task for agent:', error);
+      return reply.code(500).send({ success: false, error: error.message });
+    }
+  });
+
   // Mark task as complete
   fastify.put('/:id/complete', async (request, reply) => {
     try {

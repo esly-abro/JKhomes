@@ -186,3 +186,17 @@ export async function getUsers() {
   const { data } = await api.get('/api/users');
   return data;
 }
+/**
+ * Create a task for a specific agent (owner/manager only)
+ */
+export async function createTaskForAgent(agentId: string, taskData: {
+  title: string;
+  description?: string;
+  priority?: 'high' | 'medium' | 'low';
+  dueDate?: string;
+  leadId?: string;
+  type?: string;
+}) {
+  const { data } = await api.post(`/api/tasks/assign/${agentId}`, taskData);
+  return data;
+}
