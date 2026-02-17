@@ -12,12 +12,13 @@ const TWILIO_API_KEY_SID = process.env.TWILIO_API_KEY_SID;
 const TWILIO_API_KEY_SECRET = process.env.TWILIO_API_KEY_SECRET;
 
 // Validate required environment variables
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-  console.warn('Warning: Twilio credentials not configured. Set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in .env');
+const twilioConfigured = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_ACCOUNT_SID.startsWith('AC');
+if (!twilioConfigured) {
+  console.warn('Warning: Twilio credentials not configured. Set TWILIO_ACCOUNT_SID (must start with AC) and TWILIO_AUTH_TOKEN in .env');
 }
 
-// Initialize Twilio client (only if credentials are available)
-const client = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN 
+// Initialize Twilio client (only if valid credentials are available)
+const client = twilioConfigured
   ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
   : null;
 
