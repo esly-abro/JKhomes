@@ -378,9 +378,22 @@ function matchResponseToHandle(parsedMessage, expectedResponses) {
             return expected.nextHandle;
         }
         
-        if (expected.type === 'button' && parsedMessage.buttonPayload) {
-            if (parsedMessage.buttonPayload === expected.value || 
-                parsedMessage.buttonText?.toLowerCase() === expected.value?.toLowerCase()) {
+        if (expected.type === 'button') {
+            // Match by payload
+            if (parsedMessage.buttonPayload && 
+                (parsedMessage.buttonPayload === expected.value || 
+                 parsedMessage.buttonPayload?.toLowerCase() === expected.value?.toLowerCase())) {
+                return expected.nextHandle;
+            }
+            // Match by button text
+            if (parsedMessage.buttonText?.toLowerCase() === expected.value?.toLowerCase()) {
+                return expected.nextHandle;
+            }
+            // Match by message text/value (Twilio sends button text as Body)
+            if (parsedMessage.text?.toLowerCase() === expected.value?.toLowerCase()) {
+                return expected.nextHandle;
+            }
+            if (parsedMessage.value?.toLowerCase() === expected.value?.toLowerCase()) {
                 return expected.nextHandle;
             }
         }
@@ -390,6 +403,15 @@ function matchResponseToHandle(parsedMessage, expectedResponses) {
             if (pattern.test(parsedMessage.text)) {
                 return expected.nextHandle;
             }
+        }
+    }
+    
+    // If no match by value, try matching the message text against ALL expected values
+    // (handles case where user types the button text manually)
+    const responseText = (parsedMessage.text || parsedMessage.value || '').toLowerCase().trim();
+    for (const expected of expectedResponses) {
+        if (expected.value && responseText === expected.value.toLowerCase().trim()) {
+            return expected.nextHandle;
         }
     }
     

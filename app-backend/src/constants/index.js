@@ -4,7 +4,9 @@
  */
 
 // ================================
-// LEAD STATUSES
+// LEAD STATUSES (SEED DEFAULTS ONLY)
+// These are used as initial seed values for new tenants.
+// Runtime validation uses TenantConfig.leadStatuses, NOT these constants.
 // ================================
 
 const LEAD_STATUSES = {

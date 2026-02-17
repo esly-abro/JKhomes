@@ -812,7 +812,7 @@ export default function LeadDetail() {
                   // Call updateLeadStatus for status if needed, but updateLead handles everything
                   // We'll trust updateLead to handle the backend update via DataContext -> API
                   await updateLead(lead.id, {
-                    status: 'Deal Closed',
+                    status: closedStatusKeys.find(k => k.toLowerCase().includes('closed') || k.toLowerCase().includes('won')) || closedStatusKeys[0] || 'Deal Closed',
                     value: value,
                     notes: lead.notes ? `${lead.notes}\n\n[Deal Closed]: ${dealNotes}` : `[Deal Closed]: ${dealNotes}`
                   });

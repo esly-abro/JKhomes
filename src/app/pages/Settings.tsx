@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
 import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical, Key } from 'lucide-react';
 import { useTenantConfig } from '../context/TenantConfigContext';
-import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, CategoryItem, AppointmentType } from '../../services/tenantConfig';
+import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, updateLeadStatuses, getStatusUsage, CategoryItem, AppointmentType, LeadStatus } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
 
 interface Profile {
@@ -66,7 +66,7 @@ interface Invoice {
 }
 
 export default function Settings() {
-  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, categories, appointmentTypes, tenantConfig, refreshConfig } = useTenantConfig();
+  const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, categories, appointmentTypes, leadStatuses, tenantConfig, refreshConfig } = useTenantConfig();
   const [loadingTeam, setLoadingTeam] = useState(true);
 
   // Customization tab state
@@ -74,6 +74,9 @@ export default function Settings() {
   const [editCategoryLabel, setEditCategoryLabel] = useState('');
   const [editAppointmentTypes, setEditAppointmentTypes] = useState<AppointmentType[]>([]);
   const [editAppointmentLabel, setEditAppointmentLabel] = useState('');
+  const [editLeadStatuses, setEditLeadStatuses] = useState<LeadStatus[]>([]);
+  const [statusUsage, setStatusUsage] = useState<Record<string, number>>({});
+  const [statusUsageLoaded, setStatusUsageLoaded] = useState(false);
   const [editLocationLabel, setEditLocationLabel] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [customSaving, setCustomSaving] = useState(false);
@@ -87,6 +90,7 @@ export default function Settings() {
       setEditCategoryLabel(tenantConfig.categoryFieldLabel || 'Category');
       setEditAppointmentTypes(tenantConfig.appointmentTypes?.map((a, i) => ({ ...a, order: a.order ?? i })) || []);
       setEditAppointmentLabel(tenantConfig.appointmentFieldLabel || 'Appointment');
+      setEditLeadStatuses(tenantConfig.leadStatuses?.map((s, i) => ({ ...s, order: s.order ?? i })) || []);
       setEditLocationLabel(tenantConfig.locationFieldLabel || 'Location');
       setSelectedIndustry(tenantConfig.industry || 'real_estate');
       setCustomizationInitialized(true);
@@ -195,6 +199,52 @@ export default function Settings() {
       updated[index].key = value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
     }
     setEditAppointmentTypes(updated);
+  };
+
+  // Lead Status Pipeline handlers
+  const addLeadStatus = () => {
+    const newOrder = editLeadStatuses.length;
+    setEditLeadStatuses([...editLeadStatuses, { key: '', label: '', color: '#6b7280', isActive: true, isClosed: false, order: newOrder }]);
+  };
+
+  const removeLeadStatus = (index: number) => {
+    setEditLeadStatuses(editLeadStatuses.filter((_, i) => i !== index));
+  };
+
+  const updateLeadStatusItem = (index: number, field: keyof LeadStatus, value: string | boolean | number) => {
+    const updated = [...editLeadStatuses];
+    (updated[index] as any)[field] = value;
+    if (field === 'label' && typeof value === 'string') {
+      // For status keys, use Title Case (to match existing key conventions like "Call Attended")
+      updated[index].key = value.trim();
+    }
+    setEditLeadStatuses(updated);
+  };
+
+  const handleSaveLeadStatuses = async () => {
+    try {
+      setCustomSaving(true);
+      await updateLeadStatuses(editLeadStatuses);
+      await refreshConfig();
+      setCustomMessage('Lead status pipeline saved successfully!');
+    } catch (err: any) {
+      setCustomMessage(err?.response?.data?.error || 'Failed to save lead statuses');
+    } finally {
+      setCustomSaving(false);
+      setTimeout(() => setCustomMessage(null), 4000);
+    }
+  };
+
+  const loadStatusUsage = async () => {
+    if (!statusUsageLoaded) {
+      try {
+        const usage = await getStatusUsage();
+        setStatusUsage(usage);
+        setStatusUsageLoaded(true);
+      } catch (err) {
+        console.error('Failed to load status usage', err);
+      }
+    }
   };
 
   const [profile, setProfile] = useState<Profile>({
@@ -735,6 +785,7 @@ export default function Settings() {
 
   // WhatsApp/Meta Business API Settings
   const [whatsappSettings, setWhatsappSettings] = useState({
+    provider: 'meta' as 'meta' | 'twilio',
     accessToken: '',
     phoneNumberId: '',
     businessAccountId: '',
@@ -742,6 +793,10 @@ export default function Settings() {
     verifyToken: '',
     appId: '',
     appSecret: '',
+    // Twilio fields
+    twilioAccountSid: '',
+    twilioAuthToken: '',
+    twilioWhatsappNumber: '',
     enabled: false,
     testingEnabled: false,
     isConnected: false,
@@ -756,6 +811,7 @@ export default function Settings() {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showWhatsAppAccessToken, setShowWhatsAppAccessToken] = useState(false);
   const [showWhatsAppAppSecret, setShowWhatsAppAppSecret] = useState(false);
+  const [showTwilioAuthToken, setShowTwilioAuthToken] = useState(false);
 
   const handleSaveSlackWebhook = () => {
     if (!slackWebhook) {
@@ -787,37 +843,47 @@ export default function Settings() {
   };
 
   const handleSaveWhatsappSettings = async () => {
-    if (!whatsappSettings.accessToken) {
+    if (whatsappSettings.provider === 'meta' && !whatsappSettings.accessToken) {
       alert('Please enter your Meta Access Token');
+      return;
+    }
+    if (whatsappSettings.provider === 'twilio' && (!whatsappSettings.twilioAccountSid || !whatsappSettings.twilioAuthToken)) {
+      alert('Please enter your Twilio Account SID and Auth Token');
       return;
     }
     setSavingWhatsappSettings(true);
     try {
-      // API call to save WhatsApp settings (encrypted) — backend auto-discovers IDs from token
       const api = await import('../../services/api');
-      const response = await api.default.post('/api/settings/api/whatsapp', {
-        accessToken: whatsappSettings.accessToken,
-        phoneNumberId: whatsappSettings.phoneNumberId,
-        businessAccountId: whatsappSettings.businessAccountId,
-        appId: whatsappSettings.appId,
-        appSecret: whatsappSettings.appSecret,
-        verifyToken: whatsappSettings.verifyToken,
-        webhookUrl: whatsappSettings.webhookUrl
-      });
+      const payload: any = { provider: whatsappSettings.provider };
+      if (whatsappSettings.provider === 'meta') {
+        payload.accessToken = whatsappSettings.accessToken;
+        payload.phoneNumberId = whatsappSettings.phoneNumberId;
+        payload.businessAccountId = whatsappSettings.businessAccountId;
+        payload.appId = whatsappSettings.appId;
+        payload.appSecret = whatsappSettings.appSecret;
+        payload.verifyToken = whatsappSettings.verifyToken;
+        payload.webhookUrl = whatsappSettings.webhookUrl;
+      } else {
+        payload.twilioAccountSid = whatsappSettings.twilioAccountSid;
+        payload.twilioAuthToken = whatsappSettings.twilioAuthToken;
+        payload.twilioWhatsappNumber = whatsappSettings.twilioWhatsappNumber;
+      }
+      const response = await api.default.post('/api/settings/api/whatsapp', payload);
       
       if (response.data.success) {
-        // Auto-fill discovered IDs
         const disc = response.data.discovered;
-        if (disc) {
+        if (disc && whatsappSettings.provider === 'meta') {
           setWhatsappSettings(prev => ({
             ...prev,
             phoneNumberId: disc.phoneNumberId || prev.phoneNumberId,
             businessAccountId: disc.businessAccountId || prev.businessAccountId
           }));
         }
-        alert(disc?.phoneDisplay
-          ? `WhatsApp connected! Phone: ${disc.phoneDisplay}${disc.businessName ? ` (${disc.businessName})` : ''}`
-          : 'WhatsApp configuration saved! Click "Test Connection" to verify.'
+        alert(whatsappSettings.provider === 'twilio'
+          ? 'Twilio WhatsApp connected successfully!'
+          : disc?.phoneDisplay
+            ? `WhatsApp connected! Phone: ${disc.phoneDisplay}${disc.businessName ? ` (${disc.businessName})` : ''}`
+            : 'WhatsApp configuration saved! Click "Test Connection" to verify.'
         );
         handleLoadWhatsappSettings();
       } else {
@@ -864,14 +930,20 @@ export default function Settings() {
       const api = await import('../../services/api');
       const response = await api.default.get('/api/settings/api/credentials/whatsapp');
       if (response.data.success && response.data.credentials) {
+        const creds = response.data.credentials;
         setWhatsappSettings(prev => ({
           ...prev,
-          accessToken: response.data.credentials.accessToken?.includes('•') ? prev.accessToken : (response.data.credentials.accessToken || ''),
-          phoneNumberId: response.data.credentials.phoneNumberId || '',
-          businessAccountId: response.data.credentials.businessAccountId || '',
-          appId: response.data.credentials.appId || '',
-          isConnected: response.data.credentials.isConnected || false,
-          enabled: response.data.credentials.enabled || false,
+          provider: creds.provider || 'meta',
+          accessToken: creds.accessToken?.includes('•') ? prev.accessToken : (creds.accessToken || ''),
+          phoneNumberId: creds.phoneNumberId || '',
+          businessAccountId: creds.businessAccountId || '',
+          appId: creds.appId || '',
+          twilioAccountSid: creds.twilioAccountSid?.includes('•') ? prev.twilioAccountSid : (creds.twilioAccountSid || ''),
+          twilioAuthToken: creds.twilioAuthToken?.includes('•') ? prev.twilioAuthToken : (creds.twilioAuthToken || ''),
+          twilioWhatsappNumber: creds.twilioWhatsappNumber || '',
+          isConnected: creds.isConnected || false,
+          enabled: creds.enabled || false,
+          lastTestedAt: creds.lastTestedAt || null,
         }));
       }
     } catch (error) {
@@ -889,6 +961,7 @@ export default function Settings() {
       const api = await import('../../services/api');
       await api.default.delete('/api/settings/api/credentials/whatsapp');
       setWhatsappSettings({
+        provider: 'meta',
         accessToken: '',
         phoneNumberId: '',
         businessAccountId: '',
@@ -896,6 +969,9 @@ export default function Settings() {
         verifyToken: '',
         appId: '',
         appSecret: '',
+        twilioAccountSid: '',
+        twilioAuthToken: '',
+        twilioWhatsappNumber: '',
         enabled: false,
         testingEnabled: false,
         isConnected: false,
@@ -1299,6 +1375,87 @@ export default function Settings() {
               </CardContent>
             </Card>
 
+            {/* Lead Status Pipeline Configuration */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Lead Status Pipeline</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">Define the stages leads move through in your sales funnel. Customize labels, colors, and order to match your workflow.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={loadStatusUsage}>
+                      <Eye className="h-4 w-4 mr-1" /> Usage
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={addLeadStatus}>
+                      <Plus className="h-4 w-4 mr-1" /> Add Stage
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Status Items */}
+                <div className="space-y-2">
+                  {editLeadStatuses.map((status, index) => (
+                    <div key={index} className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+                      {/* Color Picker */}
+                      <input
+                        type="color"
+                        value={status.color || '#6b7280'}
+                        onChange={(e) => updateLeadStatusItem(index, 'color', e.target.value)}
+                        className="w-8 h-8 rounded border border-gray-300 cursor-pointer p-0"
+                        title="Status color"
+                      />
+                      {/* Label */}
+                      <Input
+                        value={status.label}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateLeadStatusItem(index, 'label', e.target.value)}
+                        placeholder="Status name (e.g. Qualified, Demo Booked)"
+                        className="flex-1"
+                      />
+                      {/* Key */}
+                      <span className="text-xs text-gray-400 font-mono min-w-[100px] truncate" title={status.key}>{status.key || '...'}</span>
+                      {/* Usage count */}
+                      {statusUsageLoaded && (
+                        <span className="text-xs text-gray-500 min-w-[40px] text-right" title="Leads with this status">
+                          {statusUsage[status.key] || 0} leads
+                        </span>
+                      )}
+                      {/* Is Closed toggle */}
+                      <div className="flex items-center gap-1" title="Mark as closed/won/lost stage">
+                        <span className="text-xs text-gray-400">Closed</span>
+                        <Switch
+                          checked={status.isClosed}
+                          onCheckedChange={(checked) => updateLeadStatusItem(index, 'isClosed', checked)}
+                        />
+                      </div>
+                      {/* Active toggle */}
+                      <Switch
+                        checked={status.isActive}
+                        onCheckedChange={(checked) => updateLeadStatusItem(index, 'isActive', checked)}
+                      />
+                      {/* Delete */}
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => removeLeadStatus(index)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {editLeadStatuses.length === 0 && (
+                    <div className="text-center py-6 text-gray-400">No lead statuses configured. Click "Add Stage" to create one.</div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-400">Stages marked as "Closed" represent won/lost outcomes (e.g. Deal Closed, Lost). At least 2 stages required.</p>
+                  <Button onClick={handleSaveLeadStatuses} disabled={customSaving} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    {customSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                    Save Pipeline
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Location Field Label */}
             <Card>
               <CardHeader>
@@ -1566,10 +1723,41 @@ export default function Settings() {
                 WhatsApp Business API Configuration
               </CardTitle>
               <p className="text-gray-600">
-                Configure your Meta (Facebook) Business API credentials to enable WhatsApp messaging automation
+                Configure your WhatsApp messaging provider — choose Meta (direct) or Twilio (easier setup)
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Provider Selector */}
+              <div className="p-4 bg-gray-50 rounded-lg border">
+                <Label className="text-sm font-semibold text-gray-900 mb-3 block">WhatsApp Provider</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsappSettingChange('provider', 'meta')}
+                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                      whatsappSettings.provider === 'meta'
+                        ? 'border-green-500 bg-green-50 shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">Meta Cloud API</div>
+                    <p className="text-xs text-gray-500 mt-1">Direct Meta integration. Requires Meta Business verification. Best for high volume.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleWhatsappSettingChange('provider', 'twilio')}
+                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                      whatsappSettings.provider === 'twilio'
+                        ? 'border-green-500 bg-green-50 shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">Twilio</div>
+                    <p className="text-xs text-gray-500 mt-1">Quick setup via Twilio. Sandbox available for testing. Great for getting started.</p>
+                  </button>
+                </div>
+              </div>
+
               {/* Enable/Disable Toggle */}
               <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg border border-green-200">
                 <div className="flex-1">
@@ -1582,38 +1770,102 @@ export default function Settings() {
                 />
               </div>
 
-              {/* Main Key — Access Token */}
-              <div className="space-y-3 p-5 bg-white rounded-xl border-2 border-green-200 shadow-sm">
-                <div className="flex items-center gap-2 mb-1">
-                  <Key className="h-5 w-5 text-green-600" />
-                  <h3 className="font-semibold text-gray-900">Meta Access Token</h3>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Required</span>
-                </div>
-                <p className="text-sm text-gray-500">
-                  Paste your permanent access token from the <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-green-600 underline hover:text-green-800">Meta Business Suite → System Users</a>. Phone Number ID and Business Account ID will be auto-discovered.
-                </p>
-                <Input
-                  id="accessToken"
-                  type="password"
-                  placeholder="EAASNRLjB2uE..."
-                  className="font-mono text-sm h-11"
-                  value={whatsappSettings.accessToken}
-                  onChange={(e) => handleWhatsappSettingChange('accessToken', e.target.value)}
-                />
-              </div>
+              {/* ===== META FIELDS ===== */}
+              {whatsappSettings.provider === 'meta' && (
+                <>
+                  {/* Main Key — Access Token */}
+                  <div className="space-y-3 p-5 bg-white rounded-xl border-2 border-green-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Key className="h-5 w-5 text-green-600" />
+                      <h3 className="font-semibold text-gray-900">Meta Access Token</h3>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Required</span>
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      Paste your permanent access token from the <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener noreferrer" className="text-green-600 underline hover:text-green-800">Meta Business Suite → System Users</a>. Phone Number ID and Business Account ID will be auto-discovered.
+                    </p>
+                    <Input
+                      id="accessToken"
+                      type="password"
+                      placeholder="EAASNRLjB2uE..."
+                      className="font-mono text-sm h-11"
+                      value={whatsappSettings.accessToken}
+                      onChange={(e) => handleWhatsappSettingChange('accessToken', e.target.value)}
+                    />
+                  </div>
 
-              {/* Auto-discovered IDs (read-only display when populated) */}
-              {(whatsappSettings.phoneNumberId || whatsappSettings.businessAccountId) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
-                  <div>
-                    <Label className="text-xs text-gray-500 uppercase tracking-wide">Phone Number ID</Label>
-                    <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.phoneNumberId || '—'}</div>
+                  {/* Auto-discovered IDs (read-only display when populated) */}
+                  {(whatsappSettings.phoneNumberId || whatsappSettings.businessAccountId) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg border">
+                      <div>
+                        <Label className="text-xs text-gray-500 uppercase tracking-wide">Phone Number ID</Label>
+                        <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.phoneNumberId || '—'}</div>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-gray-500 uppercase tracking-wide">Business Account ID</Label>
+                        <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.businessAccountId || '—'}</div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ===== TWILIO FIELDS ===== */}
+              {whatsappSettings.provider === 'twilio' && (
+                <>
+                  <div className="space-y-4 p-5 bg-white rounded-xl border-2 border-green-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Key className="h-5 w-5 text-green-600" />
+                      <h3 className="font-semibold text-gray-900">Twilio Credentials</h3>
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">Required</span>
+                    </div>
+                    <p className="text-sm text-gray-500">
+                      Find these in your <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer" className="text-green-600 underline hover:text-green-800">Twilio Console</a> dashboard.
+                    </p>
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="twilioAccountSid" className="text-sm font-medium text-gray-700">Account SID</Label>
+                        <Input
+                          id="twilioAccountSid"
+                          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                          className="font-mono text-sm h-11"
+                          value={whatsappSettings.twilioAccountSid}
+                          onChange={(e) => handleWhatsappSettingChange('twilioAccountSid', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="twilioAuthToken" className="text-sm font-medium text-gray-700">Auth Token</Label>
+                        <div className="relative">
+                          <Input
+                            id="twilioAuthToken"
+                            type={showTwilioAuthToken ? 'text' : 'password'}
+                            placeholder="Your Twilio Auth Token"
+                            className="font-mono text-sm h-11 pr-10"
+                            value={whatsappSettings.twilioAuthToken}
+                            onChange={(e) => handleWhatsappSettingChange('twilioAuthToken', e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowTwilioAuthToken(!showTwilioAuthToken)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            {showTwilioAuthToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="twilioWhatsappNumber" className="text-sm font-medium text-gray-700">WhatsApp Phone Number</Label>
+                        <Input
+                          id="twilioWhatsappNumber"
+                          placeholder="whatsapp:+14155238886 (sandbox) or your number"
+                          className="font-mono text-sm h-11"
+                          value={whatsappSettings.twilioWhatsappNumber}
+                          onChange={(e) => handleWhatsappSettingChange('twilioWhatsappNumber', e.target.value)}
+                        />
+                        <p className="text-xs text-gray-400">Include the whatsapp: prefix, e.g. whatsapp:+14155238886</p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-500 uppercase tracking-wide">Business Account ID</Label>
-                    <div className="text-sm font-mono text-gray-800 mt-1">{whatsappSettings.businessAccountId || '—'}</div>
-                  </div>
-                </div>
+                </>
               )}
 
               {/* Connection Status */}
@@ -1622,7 +1874,7 @@ export default function Settings() {
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-5 w-5 text-green-600" />
                     <div>
-                      <div className="font-medium text-green-700">Connected</div>
+                      <div className="font-medium text-green-700">Connected ({whatsappSettings.provider === 'twilio' ? 'Twilio' : 'Meta'})</div>
                       {whatsappSettings.lastTestedAt && (
                         <div className="text-sm text-green-600">
                           Last tested: {new Date(whatsappSettings.lastTestedAt).toLocaleString()}
@@ -1651,99 +1903,106 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* Save Button */}
-              <div className="flex justify-end pt-4">
-                <Button 
-                  onClick={handleSaveWhatsappSettings}
-                  disabled={savingWhatsappSettings || !whatsappSettings.accessToken}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  {savingWhatsappSettings ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save &amp; Connect WhatsApp
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {/* Advanced / Optional Settings (collapsible) */}
-              <details className="border rounded-lg">
-                <summary className="cursor-pointer p-4 text-sm font-medium text-gray-600 hover:text-gray-900 select-none">
-                  Advanced Settings (optional)
-                </summary>
-                <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneNumberId" className="text-sm text-gray-600">Phone Number ID</Label>
-                    <Input
-                      id="phoneNumberId"
-                      placeholder="Auto-discovered from token"
-                      value={whatsappSettings.phoneNumberId}
-                      onChange={(e) => handleWhatsappSettingChange('phoneNumberId', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="businessAccountId" className="text-sm text-gray-600">Business Account ID</Label>
-                    <Input
-                      id="businessAccountId"
-                      placeholder="Auto-discovered from token"
-                      value={whatsappSettings.businessAccountId}
-                      onChange={(e) => handleWhatsappSettingChange('businessAccountId', e.target.value)}
-                    />
-                    <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="webhookUrl" className="text-sm text-gray-600">Webhook URL</Label>
-                    <Input
-                      id="webhookUrl"
-                      placeholder="https://your-domain.com/webhook/whatsapp"
-                      value={whatsappSettings.webhookUrl}
-                      onChange={(e) => handleWhatsappSettingChange('webhookUrl', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="verifyToken" className="text-sm text-gray-600">Verify Token</Label>
-                    <Input
-                      id="verifyToken"
-                      placeholder="your-webhook-verify-token"
-                      value={whatsappSettings.verifyToken}
-                      onChange={(e) => handleWhatsappSettingChange('verifyToken', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="appId" className="text-sm text-gray-600">App ID</Label>
-                    <Input
-                      id="appId"
-                      placeholder="Meta App ID"
-                      value={whatsappSettings.appId}
-                      onChange={(e) => handleWhatsappSettingChange('appId', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="appSecret" className="text-sm text-gray-600">App Secret</Label>
-                    <Input
-                      id="appSecret"
-                      type="password"
-                      placeholder="Meta App Secret"
-                      value={whatsappSettings.appSecret}
-                      onChange={(e) => handleWhatsappSettingChange('appSecret', e.target.value)}
-                    />
-                  </div>
+              {/* Save Button — only show when NOT connected */}
+              {!whatsappSettings.isConnected && (
+                <div className="flex justify-end pt-4">
+                  <Button 
+                    onClick={handleSaveWhatsappSettings}
+                    disabled={savingWhatsappSettings || (
+                      whatsappSettings.provider === 'meta' ? !whatsappSettings.accessToken
+                      : (!whatsappSettings.twilioAccountSid || !whatsappSettings.twilioAuthToken)
+                    )}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {savingWhatsappSettings ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save &amp; Connect WhatsApp
+                      </>
+                    )}
+                  </Button>
                 </div>
-              </details>
+              )}
+
+              {/* Advanced / Optional Settings (collapsible) — Meta only */}
+              {whatsappSettings.provider === 'meta' && (
+                <details className="border rounded-lg">
+                  <summary className="cursor-pointer p-4 text-sm font-medium text-gray-600 hover:text-gray-900 select-none">
+                    Advanced Settings (optional)
+                  </summary>
+                  <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="phoneNumberId" className="text-sm text-gray-600">Phone Number ID</Label>
+                      <Input
+                        id="phoneNumberId"
+                        placeholder="Auto-discovered from token"
+                        value={whatsappSettings.phoneNumberId}
+                        onChange={(e) => handleWhatsappSettingChange('phoneNumberId', e.target.value)}
+                      />
+                      <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="businessAccountId" className="text-sm text-gray-600">Business Account ID</Label>
+                      <Input
+                        id="businessAccountId"
+                        placeholder="Auto-discovered from token"
+                        value={whatsappSettings.businessAccountId}
+                        onChange={(e) => handleWhatsappSettingChange('businessAccountId', e.target.value)}
+                      />
+                      <p className="text-xs text-gray-400">Leave blank to auto-discover</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="webhookUrl" className="text-sm text-gray-600">Webhook URL</Label>
+                      <Input
+                        id="webhookUrl"
+                        placeholder="https://your-domain.com/webhook/whatsapp"
+                        value={whatsappSettings.webhookUrl}
+                        onChange={(e) => handleWhatsappSettingChange('webhookUrl', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="verifyToken" className="text-sm text-gray-600">Verify Token</Label>
+                      <Input
+                        id="verifyToken"
+                        placeholder="your-webhook-verify-token"
+                        value={whatsappSettings.verifyToken}
+                        onChange={(e) => handleWhatsappSettingChange('verifyToken', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="appId" className="text-sm text-gray-600">App ID</Label>
+                      <Input
+                        id="appId"
+                        placeholder="Meta App ID"
+                        value={whatsappSettings.appId}
+                        onChange={(e) => handleWhatsappSettingChange('appId', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="appSecret" className="text-sm text-gray-600">App Secret</Label>
+                      <Input
+                        id="appSecret"
+                        type="password"
+                        placeholder="Meta App Secret"
+                        value={whatsappSettings.appSecret}
+                        onChange={(e) => handleWhatsappSettingChange('appSecret', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </details>
+              )}
 
               {/* Testing Section */}
               <div className="border-t pt-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="font-semibold text-gray-900">Connection Testing</h3>
-                    <p className="text-sm text-gray-500">Test your WhatsApp Business API configuration</p>
+                    <p className="text-sm text-gray-500">Test your WhatsApp {whatsappSettings.provider === 'twilio' ? 'Twilio' : 'Business API'} configuration</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
@@ -1759,7 +2018,10 @@ export default function Settings() {
                     <Button 
                       variant="outline" 
                       onClick={handleTestWhatsappConnection}
-                      disabled={!whatsappSettings.accessToken || !whatsappSettings.phoneNumberId}
+                      disabled={whatsappSettings.provider === 'meta'
+                        ? (!whatsappSettings.accessToken || !whatsappSettings.phoneNumberId)
+                        : (!whatsappSettings.twilioAccountSid || !whatsappSettings.twilioAuthToken)
+                      }
                     >
                       <CheckCircle2 className="h-4 w-4 mr-2" />
                       Test Connection
@@ -1791,38 +2053,71 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* Setup Instructions */}
+              {/* Setup Instructions — Provider-specific */}
               <div className="border-t pt-6">
                 <h3 className="font-semibold text-gray-900 mb-3">Setup Instructions</h3>
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
-                    <li>
-                      <strong>Create a Meta Developer Account:</strong> Go to{' '}
-                      <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                        developers.facebook.com
-                      </a>{' '}
-                      and create an account
-                    </li>
-                    <li>
-                      <strong>Create a WhatsApp Business App:</strong> In the Meta Developer Console, create a new app and add WhatsApp Business product
-                    </li>
-                    <li>
-                      <strong>Get Phone Number:</strong> Add and verify a phone number for your WhatsApp Business account
-                    </li>
-                    <li>
-                      <strong>Generate Access Token:</strong> Create a permanent access token with whatsapp_business_messaging and whatsapp_business_management permissions
-                    </li>
-                    <li>
-                      <strong>Configure Webhook:</strong> Set up webhook URL in Meta Console pointing to your server's /webhook/whatsapp endpoint
-                    </li>
-                    <li>
-                      <strong>Test Configuration:</strong> Use the test connection button above to verify everything is working
-                    </li>
-                  </ol>
-                </div>
+                {whatsappSettings.provider === 'meta' ? (
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                      <li>
+                        <strong>Create a Meta Developer Account:</strong> Go to{' '}
+                        <a href="https://developers.facebook.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          developers.facebook.com
+                        </a>{' '}
+                        and create an account
+                      </li>
+                      <li>
+                        <strong>Create a WhatsApp Business App:</strong> In the Meta Developer Console, create a new app and add WhatsApp Business product
+                      </li>
+                      <li>
+                        <strong>Get Phone Number:</strong> Add and verify a phone number for your WhatsApp Business account
+                      </li>
+                      <li>
+                        <strong>Generate Access Token:</strong> Create a permanent access token with whatsapp_business_messaging and whatsapp_business_management permissions
+                      </li>
+                      <li>
+                        <strong>Configure Webhook:</strong> Set up webhook URL in Meta Console pointing to your server's /webhook/whatsapp endpoint
+                      </li>
+                      <li>
+                        <strong>Test Configuration:</strong> Use the test connection button above to verify everything is working
+                      </li>
+                    </ol>
+                  </div>
+                ) : (
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700">
+                      <li>
+                        <strong>Create a Twilio Account:</strong> Sign up at{' '}
+                        <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          twilio.com
+                        </a>{' '}
+                        (free trial available)
+                      </li>
+                      <li>
+                        <strong>Copy Account SID &amp; Auth Token:</strong> Find these on your{' '}
+                        <a href="https://console.twilio.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Twilio Console
+                        </a>{' '}
+                        dashboard
+                      </li>
+                      <li>
+                        <strong>Activate WhatsApp Sandbox:</strong> Go to Messaging → Try it out → Send a WhatsApp message → Follow the join instructions
+                      </li>
+                      <li>
+                        <strong>Enter Sandbox Number:</strong> Use <code className="bg-white px-1.5 py-0.5 rounded text-xs border">whatsapp:+14155238886</code> as the phone number for sandbox testing
+                      </li>
+                      <li>
+                        <strong>Configure Webhook:</strong> In Twilio Console → Messaging → Settings → WhatsApp Sandbox, set the webhook URL to <code className="bg-white px-1.5 py-0.5 rounded text-xs border">https://your-domain.com/webhook/whatsapp/twilio</code>
+                      </li>
+                      <li>
+                        <strong>Test Configuration:</strong> Use the test connection button above to verify everything is working
+                      </li>
+                    </ol>
+                  </div>
+                )}
               </div>
 
-              {/* Save Button */}
+              {/* Bottom Save Button */}
               <div className="flex justify-between items-center pt-6 border-t">
                 <p className="text-sm text-gray-500">
                   * Required fields. Changes will be applied immediately after saving.

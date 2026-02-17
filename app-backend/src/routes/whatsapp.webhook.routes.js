@@ -98,7 +98,8 @@ async function whatsappWebhookRoutes(fastify, options) {
       status: 'active',
       endpoints: {
         verification: 'GET /webhook/whatsapp',
-        messages: 'POST /webhook/whatsapp'
+        messages: 'POST /webhook/whatsapp',
+        twilioMessages: 'POST /webhook/whatsapp/twilio'
       },
       configuration: {
         verifyTokenConfigured: !!verifyToken,
@@ -106,6 +107,32 @@ async function whatsappWebhookRoutes(fastify, options) {
       },
       timestamp: new Date().toISOString()
     });
+  });
+
+  /**
+   * POST /webhook/whatsapp/twilio
+   * Twilio WhatsApp webhook endpoint
+   * Twilio sends x-www-form-urlencoded data when a WhatsApp message is received
+   * Configure this URL in Twilio Console → Phone Numbers → WhatsApp → Webhook
+   */
+  fastify.post('/twilio', async (request, reply) => {
+    console.log('📥 Twilio WhatsApp webhook received');
+    
+    try {
+      const result = await whatsappWebhookService.handleTwilioWebhook(request.body);
+      
+      if (!result.success) {
+        console.error('❌ Twilio webhook processing failed:', result.error);
+      }
+      
+      // Twilio expects a TwiML response (empty is fine to acknowledge)
+      reply.type('text/xml');
+      return reply.send('<Response></Response>');
+    } catch (error) {
+      console.error('❌ Twilio webhook handler error:', error);
+      reply.type('text/xml');
+      return reply.send('<Response></Response>');
+    }
   });
 
   /**

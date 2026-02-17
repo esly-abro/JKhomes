@@ -185,6 +185,9 @@ export default function Agents() {
 
   useEffect(() => {
     fetchAgents();
+    // Auto-refresh every 30 seconds to keep active status current
+    const interval = setInterval(fetchAgents, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAgentLeads = async (agentId: string) => {
@@ -246,6 +249,14 @@ export default function Agents() {
     );
   };
 
+  // Agent is "Active" only if isActive flag is true AND they logged in within the last 30 minutes
+  const isCurrentlyActive = (agent: Agent): boolean => {
+    if (!agent.isActive) return false;
+    if (!agent.lastLogin) return false;
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    return new Date(agent.lastLogin) > thirtyMinutesAgo;
+  };
+
   const getStatusBadge = (agent: Agent) => {
     if (agent.approvalStatus === 'pending') {
       return (
@@ -263,7 +274,7 @@ export default function Agents() {
         </span>
       );
     }
-    if (agent.isActive) {
+    if (isCurrentlyActive(agent)) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
           <CheckCircle className="h-3 w-3" />

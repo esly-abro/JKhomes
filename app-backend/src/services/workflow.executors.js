@@ -70,8 +70,22 @@ async function executeWhatsApp(lead, config, context = {}) {
             return { success: false, error: 'No phone number' };
         }
         
-        const userId = context.userId || lead.assignedTo || lead.assignedAgent;
+        let userId = context.userId || lead.assignedTo || lead.assignedAgent;
         const whatsappService = require('./whatsapp.service');
+
+        // If no userId, try to find Organization owner via organizationId
+        if (!userId && (context.organizationId || lead.organizationId)) {
+            try {
+                const Organization = require('../models/organization.model');
+                const org = await Organization.findById(context.organizationId || lead.organizationId);
+                if (org?.ownerId) {
+                    userId = org.ownerId.toString();
+                    console.log(`📱 Resolved userId from Organization owner: ${userId}`);
+                }
+            } catch (e) {
+                console.warn('Could not resolve userId from Organization:', e.message);
+            }
+        }
         
         // Check if WhatsApp is configured before attempting to send
         const credCheck = await whatsappService.checkCredentialsConfigured(userId);
@@ -147,7 +161,10 @@ async function executeWhatsAppWithResponse(lead, config, run, automation, job) {
     try {
         console.log(`📱 Executing WhatsApp with response wait for lead ${lead.name}`);
         
-        const sendResult = await executeWhatsApp(lead, config, { userId: lead.assignedTo });
+        const sendResult = await executeWhatsApp(lead, config, { 
+            userId: automation?.owner?.toString() || lead.assignedTo,
+            organizationId: run?.organizationId?.toString() || lead?.organizationId?.toString()
+        });
         
         if (!sendResult.success) {
             return sendResult;
@@ -229,6 +246,70 @@ async function executeWaitForResponse(lead, config, run, automation, job) {
 }
 
 /**
+ * Execute Template Response node
+ * This node PAUSES the automation and waits for the customer to click a button
+ * on the previously sent WhatsApp template message.
+ * 
+ * The previous WhatsApp node already sent the template with buttons.
+ * This node sets up the waiting state so that when the customer responds,
+ * the automation resumes on the correct branch (option-0, option-1, option-2, etc.)
+ */
+async function executeTemplateResponse(lead, config, run, automation, job) {
+    try {
+        console.log(`⏸️ Setting up template response wait for lead ${lead.name}`);
+
+        const timeoutDuration = calculateDelay(config.timeout || { duration: 24, unit: 'hours' });
+        const timeoutAt = new Date(Date.now() + timeoutDuration);
+
+        // Build expected responses from config.options (the button labels)
+        const expectedResponses = parseExpectedResponses(config);
+        const normalizedPhone = normalizePhoneNumber(lead.phone);
+
+        // Try to find the messageId from the previous WhatsApp node's result
+        let previousMessageId = null;
+        if (run.executionPath && run.executionPath.length > 0) {
+            // Walk backwards to find the most recent completed whatsapp node
+            for (let i = run.executionPath.length - 1; i >= 0; i--) {
+                const step = run.executionPath[i];
+                if (step.nodeType === 'whatsapp' && step.status === 'completed' && step.result?.messageId) {
+                    previousMessageId = step.result.messageId;
+                    break;
+                }
+            }
+        }
+
+        // Update run to waiting state
+        run.status = 'waiting_for_response';
+        run.currentNodeId = job.nodeId || job.data?.nodeId;
+        run.waitingForResponse = {
+            isWaiting: true,
+            nodeId: job.nodeId || job.data?.nodeId,
+            messageId: previousMessageId,
+            phoneNumber: normalizedPhone,
+            expectedResponses,
+            timeoutAt,
+            timeoutHandle: config.timeoutHandle || 'timeout',
+            startedAt: new Date()
+        };
+        await run.save();
+
+        console.log(`⏸️ Automation paused at template response node, waiting for button click from ${normalizedPhone}`);
+        console.log(`   Expected responses: ${expectedResponses.map(r => `${r.value} → ${r.nextHandle}`).join(', ')}`);
+
+        return {
+            success: true,
+            waiting: true,
+            waitingFor: 'response',
+            timeoutAt,
+            expectedResponses
+        };
+    } catch (error) {
+        console.error('Template response execution error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Parse expected responses from config
  */
 function parseExpectedResponses(config) {
@@ -244,7 +325,20 @@ function parseExpectedResponses(config) {
             expectedResponses.push({
                 type: 'button',
                 value: btn.payload || btn.text,
-                nextHandle: btn.handle || `option${idx + 1}`
+                // Use option-N format (0-indexed) to match frontend ConditionNode handles
+                nextHandle: btn.handle || `option-${idx}`
+            });
+        });
+    }
+
+    // Extract from options array (used by templateResponse nodes)
+    if (expectedResponses.length === 0 && config.options && Array.isArray(config.options)) {
+        config.options.forEach((option, idx) => {
+            expectedResponses.push({
+                type: 'button',
+                value: option,
+                // Use option-N format (0-indexed) to match frontend ConditionNode handles
+                nextHandle: `option-${idx}`
             });
         });
     }
@@ -922,9 +1016,15 @@ async function executeNode(nodeData, lead, run, automation, job) {
     const type = nodeData?.type;
     const config = nodeData?.config;
     
+    // Build a context with userId for WhatsApp provider resolution
+    const execContext = {
+        userId: automation?.owner?.toString() || lead?.assignedTo?.toString() || lead?.assignedAgent?.toString(),
+        organizationId: run?.organizationId?.toString() || automation?.organizationId?.toString() || lead?.organizationId?.toString(),
+    };
+
     switch (type) {
         case 'whatsapp':
-            return await executeWhatsApp(lead, config, run);
+            return await executeWhatsApp(lead, config, execContext);
         case 'whatsappWithResponse':
             return await executeWhatsAppWithResponse(lead, config, run, automation, job);
         case 'waitForResponse':
@@ -945,6 +1045,8 @@ async function executeNode(nodeData, lead, run, automation, job) {
             return await executeCreateTask(lead, config, run);
         case 'analytics':
             return await executeAnalytics(lead, config, run);
+        case 'templateResponse':
+            return await executeTemplateResponse(lead, config, run, automation, job);
         case 'condition':
         case 'conditionTimeout':
             return await evaluateCondition(lead, config);
@@ -961,7 +1063,7 @@ async function executeNode(nodeData, lead, run, automation, job) {
  * Check if node type waits for response or task
  */
 function isWaitingNodeType(type) {
-    return ['whatsappWithResponse', 'waitForResponse', 'aiCallWithResponse', 'humanCall', 'createTask'].includes(type);
+    return ['whatsappWithResponse', 'waitForResponse', 'templateResponse', 'aiCallWithResponse', 'humanCall', 'createTask'].includes(type);
 }
 
 /**
@@ -975,6 +1077,7 @@ module.exports = {
     executeWhatsApp,
     executeWhatsAppWithResponse,
     executeWaitForResponse,
+    executeTemplateResponse,
     executeAICall,
     executeAICallWithResponse,
     executeHumanCall,
