@@ -348,7 +348,38 @@ async function assignTask(taskId, assigneeId, assignedBy, organizationId = null)
     console.error('Failed to send task assignment email:', err.message);
   });
 
+  // Send in-app bell notification (non-blocking)
+  _sendTaskBellNotification(task, assigneeId, assignedBy).catch(err => {
+    console.error('Failed to send task bell notification:', err.message);
+  });
+
   return task;
+}
+
+/**
+ * Internal: send task bell notification
+ */
+async function _sendTaskBellNotification(task, assigneeId, assignedById) {
+  try {
+    const notificationService = require('../services/notification.service');
+    let assignerName = 'Your manager';
+    if (assignedById) {
+      const assigner = await User.findById(assignedById).select('name email');
+      assignerName = assigner?.name || assigner?.email || 'Your manager';
+    }
+
+    await notificationService.create({
+      userId: assigneeId,
+      organizationId: task.organizationId,
+      type: 'task_assigned',
+      title: `New task: ${task.title}`,
+      message: `${assignerName} assigned you a ${task.type || 'task'}${task.priority ? ' (' + task.priority + ')' : ''}`,
+      avatarFallback: assignerName.charAt(0).toUpperCase(),
+      data: { taskId: task._id, taskType: task.type }
+    });
+  } catch (err) {
+    console.error('Task bell notification error:', err.message);
+  }
 }
 
 /**

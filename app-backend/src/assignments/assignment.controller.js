@@ -1,5 +1,6 @@
 const assignmentService = require('./assignment.service');
 const emailService = require('../services/email.service');
+const notificationService = require('../services/notification.service');
 const Lead = require('../models/Lead');
 const User = require('../models/User');
 const mongoose = require('mongoose');
@@ -40,6 +41,34 @@ async function _sendAssignmentEmails(results, assigner, organizationId) {
   }
 }
 
+/**
+ * Send in-app notifications for lead assignments
+ */
+async function _sendAssignmentNotifications(results, assigner, organizationId) {
+  const successByAgent = {};
+  for (const r of results) {
+    if (r.success && r.assignedTo) {
+      const key = r.assignedTo.toString();
+      if (!successByAgent[key]) successByAgent[key] = { leadIds: [] };
+      successByAgent[key].leadIds.push(r.leadId);
+    }
+  }
+
+  const assignerName = assigner?.name || assigner?.email || 'Your manager';
+  for (const [agentId, data] of Object.entries(successByAgent)) {
+    const count = data.leadIds.length;
+    await notificationService.create({
+      userId: agentId,
+      organizationId,
+      type: 'lead_assigned',
+      title: `${count} new lead${count > 1 ? 's' : ''} assigned`,
+      message: `${assignerName} assigned ${count} lead${count > 1 ? 's' : ''} to you`,
+      avatarFallback: assignerName.charAt(0).toUpperCase(),
+      data: { leadIds: data.leadIds, assignedBy: assigner?.id }
+    });
+  }
+}
+
 async function assignLeads(req, reply) {
   try {
     const { leadIds, agentId, autoAssign } = req.body;
@@ -65,6 +94,11 @@ async function assignLeads(req, reply) {
     // Send email notification to agents (non-blocking)
     _sendAssignmentEmails(results, req.user, organizationId).catch(err => {
       console.error('Failed to send assignment emails:', err.message);
+    });
+
+    // Send in-app bell notifications (non-blocking)
+    _sendAssignmentNotifications(results, req.user, organizationId).catch(err => {
+      console.error('Failed to send assignment notifications:', err.message);
     });
 
     return reply.code(200).send({

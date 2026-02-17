@@ -719,6 +719,78 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, assignmentController.getAgentWorkload);
 
+        // ======================================
+        // Notification routes (in-app bell)
+        // ======================================
+        const notificationService = require('./services/notification.service');
+        const sseManager = require('./services/sse.manager');
+
+        // Get notifications (paginated)
+        protectedApp.get('/api/notifications', async (request, reply) => {
+            const { page = 1, limit = 30, unreadOnly } = request.query;
+            const result = await notificationService.getForUser(request.user._id, {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                unreadOnly: unreadOnly === 'true'
+            });
+            return reply.send({ success: true, ...result });
+        });
+
+        // Get unread count
+        protectedApp.get('/api/notifications/unread-count', async (request, reply) => {
+            const count = await notificationService.getUnreadCount(request.user._id);
+            return reply.send({ success: true, count });
+        });
+
+        // Mark single notification as read
+        protectedApp.patch('/api/notifications/:id/read', async (request, reply) => {
+            const result = await notificationService.markRead(request.params.id, request.user._id);
+            if (!result) return reply.code(404).send({ success: false, error: 'Notification not found' });
+            return reply.send({ success: true });
+        });
+
+        // Mark all notifications as read
+        protectedApp.patch('/api/notifications/read-all', async (request, reply) => {
+            const result = await notificationService.markAllRead(request.user._id);
+            return reply.send({ success: true, ...result });
+        });
+
+        // SSE stream for real-time notifications
+        protectedApp.get('/api/notifications/stream', async (request, reply) => {
+            const userId = request.user._id.toString();
+
+            reply.raw.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no'  // Disable nginx buffering
+            });
+
+            // Send initial heartbeat
+            reply.raw.write('event: connected\ndata: {"status":"ok"}\n\n');
+
+            // Register this client
+            sseManager.addClient(userId, reply);
+
+            // Send heartbeat every 30s to keep connection alive
+            const heartbeat = setInterval(() => {
+                try {
+                    reply.raw.write(':heartbeat\n\n');
+                } catch (_) {
+                    clearInterval(heartbeat);
+                }
+            }, 30000);
+
+            // Clean up on disconnect
+            request.raw.on('close', () => {
+                clearInterval(heartbeat);
+                sseManager.removeClient(userId, reply);
+            });
+
+            // Don't let Fastify auto-close the response
+            await reply;
+        });
+
         // Organization Profile routes (owner can update)
         protectedApp.get('/api/organization/me', async (request, reply) => {
             const Organization = require('./models/organization.model');

@@ -210,12 +210,23 @@ async function register(request, reply) {
                     approvalStatus: 'approved'
                 });
 
+                const notificationService = require('../services/notification.service');
                 for (const owner of owners) {
                     try {
                         await notifyOwnerOfNewAgent(owner.email, {
                             email: newUser.email,
                             name: newUser.name,
                             phone: newUser.phone
+                        });
+                        // In-app bell notification for owner
+                        await notificationService.create({
+                            userId: owner._id,
+                            organizationId,
+                            type: 'agent_registered',
+                            title: 'New agent registered',
+                            message: `${newUser.name || newUser.email} has registered and is pending approval`,
+                            avatarFallback: (newUser.name || newUser.email).charAt(0).toUpperCase(),
+                            data: { agentId: newUser._id, agentEmail: newUser.email }
                         });
                     } catch (emailError) {
                         console.error(`Failed to notify owner ${owner.email}:`, emailError);

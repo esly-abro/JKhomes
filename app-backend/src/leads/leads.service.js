@@ -636,6 +636,7 @@ async function updateLead(user, leadId, updateData) {
                 if (HIGH_PRIORITY_STATUSES.includes(updateData.status) && mongoLead.assignedTo) {
                     const emailService = require('../services/email.service');
                     const User = require('../models/User');
+                    const notificationService = require('../services/notification.service');
                     User.findById(mongoLead.assignedTo).select('name email')
                         .then(agent => {
                             if (agent?.email) {
@@ -647,6 +648,16 @@ async function updateLead(user, leadId, updateData) {
                                     mongoLead.organizationId
                                 ).catch(err => console.error('High-priority email failed:', err.message));
                             }
+                            // In-app bell notification
+                            notificationService.create({
+                                userId: mongoLead.assignedTo,
+                                organizationId: mongoLead.organizationId,
+                                type: 'lead_status_high',
+                                title: `Lead status: ${updateData.status}`,
+                                message: `${mongoLead.name || 'A lead'} moved to ${updateData.status}`,
+                                avatarFallback: (mongoLead.name || 'L').charAt(0).toUpperCase(),
+                                data: { leadId: mongoLead._id, status: updateData.status }
+                            }).catch(err => console.error('Status bell notification failed:', err.message));
                         })
                         .catch(err => console.error('Failed to fetch agent for status email:', err.message));
                 }
