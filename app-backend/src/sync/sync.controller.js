@@ -4,12 +4,24 @@
  */
 
 const zohoSyncService = require('../sync/zoho.sync.service');
+const CallLog = require('../models/CallLog');
+const Activity = require('../models/Activity');
+const SiteVisit = require('../models/SiteVisit');
 
 /**
  * Sync a specific CallLog to Zoho
  */
 async function syncCallLog(request, reply) {
   const { callLogId } = request.params;
+  const organizationId = request.user?.organizationId;
+  
+  // Verify entity belongs to user's organization
+  if (organizationId) {
+    const callLog = await CallLog.findById(callLogId).select('organizationId');
+    if (!callLog || String(callLog.organizationId) !== String(organizationId)) {
+      return reply.status(404).send({ success: false, error: 'CallLog not found' });
+    }
+  }
   
   const result = await zohoSyncService.syncCallLogToZoho(callLogId);
   
@@ -32,6 +44,15 @@ async function syncCallLog(request, reply) {
  */
 async function syncActivity(request, reply) {
   const { activityId } = request.params;
+  const organizationId = request.user?.organizationId;
+  
+  // Verify entity belongs to user's organization
+  if (organizationId) {
+    const activity = await Activity.findById(activityId).select('organizationId');
+    if (!activity || String(activity.organizationId) !== String(organizationId)) {
+      return reply.status(404).send({ success: false, error: 'Activity not found' });
+    }
+  }
   
   const result = await zohoSyncService.syncActivityToZoho(activityId);
   
@@ -54,6 +75,15 @@ async function syncActivity(request, reply) {
  */
 async function syncSiteVisit(request, reply) {
   const { siteVisitId } = request.params;
+  const organizationId = request.user?.organizationId;
+  
+  // Verify entity belongs to user's organization
+  if (organizationId) {
+    const siteVisit = await SiteVisit.findById(siteVisitId).select('organizationId');
+    if (!siteVisit || String(siteVisit.organizationId) !== String(organizationId)) {
+      return reply.status(404).send({ success: false, error: 'SiteVisit not found' });
+    }
+  }
   
   const result = await zohoSyncService.syncSiteVisitToZoho(siteVisitId);
   

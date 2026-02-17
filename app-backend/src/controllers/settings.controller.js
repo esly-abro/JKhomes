@@ -23,10 +23,14 @@ async function getWhatsappSettings(request, reply) {
 
     // Check Organization model (with safe decryption)
     let org = null;
+    const organizationId = request.user?.organizationId;
     try {
-      org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
+      // First try user's own org
+      if (organizationId) {
+        org = await Organization.findOne({ _id: organizationId, 'whatsapp.enabled': true });
+      }
       if (!org) {
-        org = await Organization.findOne({ 'whatsapp.enabled': true, 'whatsapp.isConnected': true });
+        org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
       }
     } catch (e) {
       // ignore

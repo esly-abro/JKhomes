@@ -25,6 +25,7 @@ class UserService {
             role,
             status,
             search,
+            organizationId,
             sortBy = 'createdAt',
             sortOrder = 'desc'
         } = params;
@@ -34,6 +35,7 @@ class UserService {
         
         if (role) filter.role = role;
         if (status) filter.status = status;
+        if (organizationId) filter.organizationId = organizationId;
 
         // Build options
         const skip = (page - 1) * limit;
@@ -47,7 +49,7 @@ class UserService {
 
         // Search handling
         if (search) {
-            const searchResults = await userRepository.search(search, options);
+            const searchResults = await userRepository.search(search, { ...options, organizationId });
             const total = await userRepository.count(filter);
             
             return {
@@ -344,22 +346,25 @@ class UserService {
 
     /**
      * Get pending users
-     * @param {Object} options - Query options
+     * @param {Object} options - Query options (includes organizationId)
      * @returns {Promise<Array>} Pending users
      */
     async getPendingUsers(options = {}) {
+        const filter = { status: USER_STATUSES.PENDING };
+        if (options.organizationId) filter.organizationId = options.organizationId;
         return await userRepository.findMany(
-            { status: USER_STATUSES.PENDING },
+            filter,
             options
         );
     }
 
     /**
      * Get user statistics
+     * @param {string} organizationId - Optional org scope
      * @returns {Promise<Object>} Statistics
      */
-    async getStats() {
-        return await userRepository.getStats();
+    async getStats(organizationId = null) {
+        return await userRepository.getStats(organizationId);
     }
 
     /**

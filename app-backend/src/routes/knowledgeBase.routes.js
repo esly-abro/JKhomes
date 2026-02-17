@@ -30,8 +30,12 @@ async function knowledgeBaseRoutes(fastify, options) {
     }
   }, async (request, reply) => {
     try {
-      // Get all properties (don't filter by isActive since it may not be set)
-      const properties = await Property.find({})
+      // Support org scoping via query param (for multi-tenant AI agents)
+      const propertyFilter = {};
+      if (request.query.orgId) propertyFilter.organizationId = request.query.orgId;
+      
+      // Get properties (scoped to org if provided)
+      const properties = await Property.find(propertyFilter)
         .populate('assignedAgent', 'name email phone')
         .lean();
 
@@ -105,8 +109,12 @@ async function knowledgeBaseRoutes(fastify, options) {
    */
   fastify.get('/properties/text', async (request, reply) => {
     try {
-      // Get all properties (don't filter by isActive since it may not be set)
-      const properties = await Property.find({})
+      // Support org scoping via query param (for multi-tenant AI agents)
+      const propertyFilter = {};
+      if (request.query.orgId) propertyFilter.organizationId = request.query.orgId;
+      
+      // Get properties (scoped to org if provided)
+      const properties = await Property.find(propertyFilter)
         .populate('assignedAgent', 'name email phone')
         .lean();
 
@@ -184,8 +192,12 @@ async function knowledgeBaseRoutes(fastify, options) {
    */
   fastify.get('/summary', async (request, reply) => {
     try {
-      // Get all properties (don't filter by isActive since it may not be set)
-      const properties = await Property.find({}).lean();
+      // Support org scoping via query param (for multi-tenant AI agents)
+      const propertyFilter = {};
+      if (request.query.orgId) propertyFilter.organizationId = request.query.orgId;
+      
+      // Get properties (scoped to org if provided)
+      const properties = await Property.find(propertyFilter).lean();
       
       const byStatus = {};
       const byType = {};

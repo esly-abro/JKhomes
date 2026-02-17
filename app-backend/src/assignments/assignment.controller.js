@@ -18,7 +18,8 @@ class AssignmentController {
         leadIds,
         agentId,
         assignedBy,
-        autoAssign
+        autoAssign,
+        req.user?.organizationId
       );
 
       return reply.code(200).send({
@@ -33,7 +34,7 @@ class AssignmentController {
 
   async getAgentWorkload(req, reply) {
     try {
-      const workload = await assignmentService.getAgentWorkload();
+      const workload = await assignmentService.getAgentWorkload(req.user?.organizationId);
       return reply.code(200).send(workload);
     } catch (error) {
       console.error('Get agent workload controller error:', error);

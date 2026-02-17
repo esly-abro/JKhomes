@@ -77,7 +77,7 @@ async function findByPhoneInZoho(phone, organizationId = null) {
  * @param {string} phone - Normalized phone
  * @returns {Promise<Object|null>} - Existing lead or null
  */
-async function findInMongoDB(email, phone) {
+async function findInMongoDB(email, phone, organizationId = null) {
     if (!process.env.MONGODB_URI) return null;
     
     try {
@@ -95,6 +95,11 @@ async function findInMongoDB(email, phone) {
         }
         
         if (query.$or.length === 0) return null;
+        
+        // Scope to organization if provided
+        if (organizationId) {
+            query.organizationId = organizationId;
+        }
         
         const lead = await Lead.findOne(query).lean();
         return lead;
@@ -150,7 +155,7 @@ async function findDuplicate(leadData, options = {}) {
 
     // Step 3: Check MongoDB (for leads not yet synced to Zoho)
     if (checkMongoDB) {
-        const mongoLead = await findInMongoDB(Email, Phone);
+        const mongoLead = await findInMongoDB(Email, Phone, organizationId);
         if (mongoLead) {
             return {
                 found: true,

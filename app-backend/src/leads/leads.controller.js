@@ -226,8 +226,9 @@ async function getAllSiteVisitsHandler(request, reply) {
  */
 async function getTasks(request, reply) {
     const userId = request.user._id;
+    const organizationId = request.user?.organizationId;
     const { status, priority } = request.query;
-    const tasks = await leadsService.getTasks(userId, { status, priority });
+    const tasks = await leadsService.getTasks(userId, { status, priority, organizationId });
     return reply.send(tasks);
 }
 
@@ -237,7 +238,8 @@ async function getTasks(request, reply) {
 async function createTask(request, reply) {
     const userId = request.user._id;
     const userName = request.user.name || request.user.email;
-    const taskData = { ...request.body, userId, userName };
+    const organizationId = request.user?.organizationId;
+    const taskData = { ...request.body, userId, userName, organizationId };
     const task = await leadsService.createTask(taskData);
     return reply.code(201).send(task);
 }
@@ -248,8 +250,9 @@ async function createTask(request, reply) {
 async function updateTask(request, reply) {
     const { id } = request.params;
     const userId = request.user._id;
+    const organizationId = request.user?.organizationId;
     const updates = request.body;
-    const task = await leadsService.updateTask(id, userId, updates);
+    const task = await leadsService.updateTask(id, userId, updates, organizationId);
     return reply.send(task);
 }
 
@@ -259,7 +262,8 @@ async function updateTask(request, reply) {
 async function deleteTask(request, reply) {
     const { id } = request.params;
     const userId = request.user._id;
-    await leadsService.deleteTask(id, userId);
+    const organizationId = request.user?.organizationId;
+    await leadsService.deleteTask(id, userId, organizationId);
     return reply.code(204).send();
 }
 

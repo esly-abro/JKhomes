@@ -273,6 +273,10 @@ async function getLead(user, leadId) {
             if (mongoose.Types.ObjectId.isValid(leadId)) {
                 query.$or.push({ _id: leadId });
             }
+            // Multi-tenancy: scope to user's organization
+            if (user?.organizationId) {
+                query.organizationId = user.organizationId;
+            }
             
             const mongoLead = await Lead.findOne(query);
             if (mongoLead) {
@@ -543,6 +547,10 @@ async function updateLead(user, leadId, updateData) {
             if (mongoose.Types.ObjectId.isValid(leadId)) {
                 query.$or.push({ _id: leadId });
             }
+            // Multi-tenancy: scope to user's organization
+            if (user?.organizationId) {
+                query.organizationId = user.organizationId;
+            }
             
             mongoLead = await Lead.findOneAndUpdate(
                 query,
@@ -644,8 +652,12 @@ async function deleteLead(user, leadId) {
     // Also delete from MongoDB
     if (useDatabase()) {
         try {
-            // Delete lead record
-            await Lead.deleteOne({ $or: [{ zohoId: leadId }, { _id: leadId }, { zohoLeadId: leadId }] });
+            // Delete lead record (scoped to user's organization)
+            const deleteQuery = { $or: [{ zohoId: leadId }, { _id: leadId }, { zohoLeadId: leadId }] };
+            if (user?.organizationId) {
+                deleteQuery.organizationId = user.organizationId;
+            }
+            await Lead.deleteOne(deleteQuery);
 
             // Also delete related site visits
             const SiteVisit = require('../models/SiteVisit');

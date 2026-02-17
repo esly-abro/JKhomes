@@ -746,16 +746,25 @@ async function executeAssignAgent(lead, config, run = null) {
 
         // Round-robin assignment if no specific agent
         if (!assigneeId && config?.roundRobin) {
-            const agents = await User.find({ 
+            const agentQuery = { 
                 role: { $in: ['agent', 'manager'] },
                 isActive: true,
                 approvalStatus: 'approved'
-            }).select('_id name');
+            };
+            // Scope to lead's organization
+            if (lead.organizationId) {
+                agentQuery.organizationId = lead.organizationId;
+            }
+            const agents = await User.find(agentQuery).select('_id name');
 
             if (agents.length > 0) {
                 // Simple round-robin based on lead count
+                const leadMatchStage = { assignedTo: { $in: agents.map(a => a._id) } };
+                if (lead.organizationId) {
+                    leadMatchStage.organizationId = lead.organizationId;
+                }
                 const leadCounts = await Lead.aggregate([
-                    { $match: { assignedTo: { $in: agents.map(a => a._id) } } },
+                    { $match: leadMatchStage },
                     { $group: { _id: '$assignedTo', count: { $sum: 1 } } }
                 ]);
 

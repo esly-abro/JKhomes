@@ -157,10 +157,13 @@ class PropertiesService {
     }
   }
 
-  async incrementInterestedCount(propertyId) {
+  async incrementInterestedCount(propertyId, organizationId = null) {
     try {
-      const property = await Property.findByIdAndUpdate(
-        propertyId,
+      const query = { _id: propertyId };
+      if (organizationId) query.organizationId = organizationId;
+      
+      const property = await Property.findOneAndUpdate(
+        query,
         { $inc: { interestedLeadsCount: 1 } },
         { new: true }
       ).populate('assignedAgent', 'name email phone');
@@ -177,10 +180,13 @@ class PropertiesService {
     }
   }
 
-  async decrementInterestedCount(propertyId) {
+  async decrementInterestedCount(propertyId, organizationId = null) {
     try {
-      const property = await Property.findByIdAndUpdate(
-        propertyId,
+      const query = { _id: propertyId };
+      if (organizationId) query.organizationId = organizationId;
+      
+      const property = await Property.findOneAndUpdate(
+        query,
         { $inc: { interestedLeadsCount: -1 } },
         { new: true }
       ).populate('assignedAgent', 'name email phone');
@@ -200,9 +206,12 @@ class PropertiesService {
   /**
    * Sync all properties to Google Sheets (full refresh)
    */
-  async syncAllToGoogleSheets() {
+  async syncAllToGoogleSheets(organizationId = null) {
     try {
-      const properties = await Property.find({})
+      const filter = {};
+      if (organizationId) filter.organizationId = organizationId;
+      
+      const properties = await Property.find(filter)
         .populate('createdBy', 'name email')
         .populate('assignedAgent', 'name email phone');
       

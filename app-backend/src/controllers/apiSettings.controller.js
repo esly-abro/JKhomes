@@ -8,6 +8,19 @@ const Settings = require('../models/settings.model');
 const { validateEncryptionConfig, maskSensitiveValue } = require('../utils/encryption');
 
 /**
+ * Helper: Find user's organization using organizationId (preferred) or ownerId fallback
+ */
+async function findUserOrganization(request) {
+    const organizationId = request.user?.organizationId;
+    const userId = request.user.id || request.user._id;
+    
+    if (organizationId) {
+        return await Organization.findById(organizationId);
+    }
+    return await Organization.findOne({ ownerId: userId });
+}
+
+/**
  * Get encryption status (for admin dashboard)
  */
 async function getEncryptionStatus(request, reply) {
@@ -38,8 +51,8 @@ async function getApiConnectionStatus(request, reply) {
     try {
         const userId = request.user.id || request.user._id;
         
-        // Get organization for this user
-        const organization = await Organization.findOne({ ownerId: userId });
+        // Get organization for this user (uses organizationId from JWT, fallback to ownerId)
+        const organization = await findUserOrganization(request);
         
         // Get user settings (for WhatsApp if not using organization model)
         const userSettings = await Settings.findOne({ userId });
@@ -98,7 +111,7 @@ async function getMaskedCredentials(request, reply) {
         const userId = request.user.id || request.user._id;
         const { provider } = request.params;
         
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         
         if (!organization) {
             return reply.status(404).send({
@@ -194,7 +207,7 @@ async function saveTwilioCredentials(request, reply) {
         }
         
         // Find or create organization
-        let organization = await Organization.findOne({ ownerId: userId });
+        let organization = await findUserOrganization(request);
         
         if (!organization) {
             organization = new Organization({
@@ -254,7 +267,7 @@ async function saveWhatsappCredentials(request, reply) {
 
         if (!resolvedPhoneNumberId || !resolvedBusinessAccountId) {
             // Check existing org data first (may already have IDs from previous save)
-            const existingOrg = await Organization.findOne({ ownerId: userId });
+            const existingOrg = await findUserOrganization(request);
             if (existingOrg?.whatsapp) {
                 if (!resolvedPhoneNumberId && existingOrg.whatsapp.phoneNumberId) {
                     resolvedPhoneNumberId = existingOrg.whatsapp.phoneNumberId;
@@ -320,7 +333,7 @@ async function saveWhatsappCredentials(request, reply) {
         }
         
         // Find or create organization
-        let organization = await Organization.findOne({ ownerId: userId });
+        let organization = await findUserOrganization(request);
         
         if (!organization) {
             organization = new Organization({
@@ -371,7 +384,7 @@ async function saveWhatsappCredentials(request, reply) {
 async function testTwilioConnection(request, reply) {
     try {
         const userId = request.user.id || request.user._id;
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         
         if (!organization?.twilio?.accountSid) {
             return reply.status(400).send({
@@ -407,7 +420,7 @@ async function testTwilioConnection(request, reply) {
         
         // Update error status
         const userId = request.user.id || request.user._id;
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         if (organization?.twilio) {
             organization.twilio.isConnected = false;
             organization.twilio.lastTestedAt = new Date();
@@ -428,7 +441,7 @@ async function testTwilioConnection(request, reply) {
 async function testWhatsappConnection(request, reply) {
     try {
         const userId = request.user.id || request.user._id;
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         
         if (!organization?.whatsapp?.accessToken) {
             return reply.status(400).send({
@@ -470,7 +483,7 @@ async function testWhatsappConnection(request, reply) {
         
         // Update error status
         const userId = request.user.id || request.user._id;
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         if (organization?.whatsapp) {
             organization.whatsapp.isConnected = false;
             organization.whatsapp.lastTestedAt = new Date();
@@ -493,7 +506,7 @@ async function deleteCredentials(request, reply) {
         const userId = request.user.id || request.user._id;
         const { provider } = request.params;
         
-        const organization = await Organization.findOne({ ownerId: userId });
+        const organization = await findUserOrganization(request);
         
         if (!organization) {
             return reply.status(404).send({

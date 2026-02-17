@@ -135,7 +135,9 @@ const broadcastSchema = new mongoose.Schema({
   // Organization (for multi-tenant)
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Organization'
+    ref: 'Organization',
+    required: true,
+    index: true
   }
 }, {
   timestamps: true

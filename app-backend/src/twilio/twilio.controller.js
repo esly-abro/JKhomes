@@ -7,6 +7,7 @@ async function twilioRoutes(fastify, options) {
     handler: async (request, reply) => {
       const { phoneNumber, leadId, leadName } = request.body;
       const userId = request.user._id;
+      const organizationId = request.user?.organizationId;
 
       if (!phoneNumber) {
         return reply.status(400).send({ error: 'Phone number is required' });
@@ -17,7 +18,8 @@ async function twilioRoutes(fastify, options) {
         twilioService.TWILIO_PHONE_NUMBER,
         userId,
         leadId,
-        leadName
+        leadName,
+        organizationId
       );
 
       if (result.success) {
@@ -38,11 +40,24 @@ async function twilioRoutes(fastify, options) {
     },
   });
 
-  // Get call history
+  // Get call history (scoped to user's organization via MongoDB CallLogs)
   fastify.get('/calls', {
     preHandler: fastify.auth,
     handler: async (request, reply) => {
       const { limit } = request.query;
+      const organizationId = request.user?.organizationId;
+      
+      // If user has an org, return org-scoped call logs from MongoDB
+      if (organizationId) {
+        const CallLog = require('../models/CallLog');
+        const calls = await CallLog.find({ organizationId })
+          .sort({ startTime: -1 })
+          .limit(limit ? parseInt(limit) : 20)
+          .lean();
+        return reply.send({ success: true, calls });
+      }
+      
+      // Fallback: Twilio API (admin/no-org users)
       const result = await twilioService.getCallHistory(limit ? parseInt(limit) : 20);
       return reply.send(result);
     },

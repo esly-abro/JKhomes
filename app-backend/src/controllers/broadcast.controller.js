@@ -13,9 +13,14 @@ const whatsappService = require('../services/whatsapp.service');
 async function getBroadcasts(request, reply) {
   try {
     const userId = request.user._id;
+    const organizationId = request.user.organizationId;
     const { status, page = 1, limit = 20 } = request.query;
     
     const query = { createdBy: userId };
+    // Multi-tenancy: scope to organization
+    if (organizationId) {
+      query.organizationId = organizationId;
+    }
     if (status) {
       query.status = status;
     }
@@ -138,7 +143,8 @@ async function createBroadcast(request, reply) {
       targetFilter,
       scheduledAt,
       status: scheduledAt ? 'scheduled' : 'draft',
-      createdBy: userId
+      createdBy: userId,
+      organizationId: request.user.organizationId
     });
     
     await broadcast.save();
@@ -251,9 +257,14 @@ async function deleteBroadcast(request, reply) {
 async function getTargetLeadsCount(request, reply) {
   try {
     const userId = request.user._id;
+    const organizationId = request.user.organizationId;
     const { status, source, tags, assignedTo } = request.query;
     
     const query = { phone: { $exists: true, $ne: '' } };
+    // Multi-tenancy: scope to organization
+    if (organizationId) {
+      query.organizationId = organizationId;
+    }
     
     if (status) {
       query.status = { $in: status.split(',') };
@@ -309,6 +320,10 @@ async function sendBroadcast(request, reply) {
     
     // Build lead query based on target filter
     const leadQuery = { phone: { $exists: true, $ne: '' } };
+    // Multi-tenancy: scope to organization
+    if (request.user.organizationId) {
+      leadQuery.organizationId = request.user.organizationId;
+    }
     
     if (broadcast.targetFilter) {
       if (broadcast.targetFilter.status?.length > 0) {
@@ -518,7 +533,8 @@ async function duplicateBroadcast(request, reply) {
       buttons: original.buttons,
       targetFilter: original.targetFilter,
       status: 'draft',
-      createdBy: userId
+      createdBy: userId,
+      organizationId: request.user.organizationId
     });
     
     await duplicate.save();

@@ -206,8 +206,12 @@ class TenantConfigController {
      */
     async getCategoryUsage(req, reply) {
         try {
+            const orgId = req.user?.organizationId;
+            const matchStage = { category: { $ne: null, $exists: true } };
+            if (orgId) matchStage.organizationId = orgId;
+
             const usage = await Lead.aggregate([
-                { $match: { category: { $ne: null, $exists: true } } },
+                { $match: matchStage },
                 { $group: { _id: '$category', count: { $sum: 1 } } },
                 { $sort: { count: -1 } }
             ]);
@@ -319,8 +323,12 @@ class TenantConfigController {
      */
     async getStatusUsage(req, reply) {
         try {
+            const orgId = req.user?.organizationId;
+            const matchStage = { status: { $ne: null, $exists: true } };
+            if (orgId) matchStage.organizationId = orgId;
+
             const usage = await Lead.aggregate([
-                { $match: { status: { $ne: null, $exists: true } } },
+                { $match: matchStage },
                 { $group: { _id: '$status', count: { $sum: 1 } } },
                 { $sort: { count: -1 } }
             ]);
