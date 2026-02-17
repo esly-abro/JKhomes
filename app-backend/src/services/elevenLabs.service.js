@@ -21,29 +21,54 @@ class ElevenLabsService {
 
     /**
      * Get ElevenLabs credentials for a specific user/organization
-     * Falls back to environment config if no user-specific config found
+     * 
+     * Lookup priority:
+     *   1. Org's default agent from ElevenLabsAgent collection (multi-tenant model)
+     *   2. Org's legacy elevenLabs config (Settings page connection)
+     *   3. Environment fallback (platform default)
      */
     async getCredentials(userId) {
         try {
             if (userId) {
                 const Organization = require('../models/organization.model');
+                const ElevenLabsAgent = require('../models/elevenLabsAgent.model');
                 const org = await Organization.findByUser(userId);
                 
-                if (org?.elevenLabs?.isConnected && org?.elevenLabs?.apiKey) {
-                    console.log('📞 Using organization-specific ElevenLabs credentials');
-                    return {
-                        apiKey: org.elevenLabs.apiKey,
-                        agentId: org.elevenLabs.agentId,
-                        phoneNumberId: org.elevenLabs.phoneNumberId,
-                        source: 'organization'
-                    };
+                if (org) {
+                    // Priority 1: Check the org-scoped ElevenLabsAgent model (default agent)
+                    const defaultAgent = await ElevenLabsAgent.findOne({
+                        organizationId: org._id,
+                        isDefault: true
+                    });
+                    
+                    if (defaultAgent) {
+                        console.log(`📞 Using org default agent: "${defaultAgent.name}" (${defaultAgent.agentId})`);
+                        return {
+                            apiKey: this.defaultApiKey, // shared platform key
+                            agentId: defaultAgent.agentId,
+                            phoneNumberId: this.defaultPhoneNumberId, // shared platform phone
+                            source: 'org-agent',
+                            agentName: defaultAgent.name
+                        };
+                    }
+                    
+                    // Priority 2: Fall back to legacy org-specific credentials (Settings page)
+                    if (org?.elevenLabs?.isConnected && org?.elevenLabs?.apiKey) {
+                        console.log('📞 Using organization-specific ElevenLabs credentials (legacy)');
+                        return {
+                            apiKey: org.elevenLabs.apiKey,
+                            agentId: org.elevenLabs.agentId,
+                            phoneNumberId: org.elevenLabs.phoneNumberId,
+                            source: 'organization'
+                        };
+                    }
                 }
             }
         } catch (error) {
             console.error('Error fetching organization ElevenLabs config:', error);
         }
         
-        // Fallback to environment config
+        // Priority 3: Fallback to environment config
         console.log('📞 Using default ElevenLabs credentials from environment');
         return {
             apiKey: this.defaultApiKey,

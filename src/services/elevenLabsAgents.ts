@@ -56,6 +56,7 @@ export interface ElevenLabsAgent {
     conversation_config?: ConversationConfig;
     metadata?: Record<string, any>;
     created_at?: string;
+    _isDefault?: boolean;
     _usage?: AgentUsage;
     _deleted?: boolean;
 }
@@ -138,6 +139,13 @@ export async function updateAgent(agentId: string, updates: {
  */
 export async function deleteAgent(agentId: string): Promise<void> {
     await api.delete(`${BASE_PATH}/agents/${agentId}`);
+}
+
+/**
+ * Set an agent as the default for outbound calls
+ */
+export async function setDefaultAgent(agentId: string): Promise<void> {
+    await api.post(`${BASE_PATH}/agents/${agentId}/set-default`);
 }
 
 /**

@@ -65,6 +65,7 @@ async function listAgents(request, reply) {
                 );
                 agentDetails.push({
                     ...response.data,
+                    _isDefault: dbAgent.isDefault || false,
                     _usage: {
                         totalCalls: dbAgent.usage.totalCalls,
                         totalMinutes: dbAgent.usage.totalMinutes,
@@ -77,6 +78,7 @@ async function listAgents(request, reply) {
                     agentDetails.push({
                         agent_id: dbAgent.agentId,
                         name: dbAgent.name || 'Deleted Agent',
+                        _isDefault: dbAgent.isDefault || false,
                         _deleted: true,
                         _usage: {
                             totalCalls: dbAgent.usage.totalCalls,
@@ -150,15 +152,20 @@ async function createAgent(request, reply) {
 
         const newAgentId = response.data.agent_id;
 
+        // Check if this is the org's first agent — auto-set as default
+        const existingCount = await ElevenLabsAgent.countDocuments({ organizationId: orgId });
+        const isFirst = existingCount === 0;
+
         // Map agent → org in our DB
         await ElevenLabsAgent.create({
             agentId: newAgentId,
             organizationId: orgId,
             createdBy: userId,
-            name: name || ''
+            name: name || '',
+            isDefault: isFirst  // first agent is automatically the default
         });
 
-        console.log(`🤖 Agent "${name}" created (${newAgentId}) for org ${orgId}`);
+        console.log(`🤖 Agent "${name}" created (${newAgentId}) for org ${orgId}${isFirst ? ' [DEFAULT]' : ''}`);
 
         return reply.send({
             success: true,
@@ -402,6 +409,53 @@ async function getUsage(request, reply) {
     }
 }
 
+/**
+ * POST /agents/:agentId/set-default - Set an agent as the org's default for calls
+ */
+async function setDefaultAgent(request, reply) {
+    try {
+        const userId = request.user.id || request.user._id;
+        const orgId = await getUserOrgId(userId);
+        if (!orgId) {
+            return reply.code(400).send({ success: false, error: 'No organization found' });
+        }
+
+        const { agentId } = request.params;
+
+        // Verify this agent belongs to user's org
+        const dbAgent = await ElevenLabsAgent.findByAgentIdAndOrg(agentId, orgId);
+        if (!dbAgent) {
+            return reply.code(403).send({
+                success: false,
+                error: 'Agent not found or does not belong to your organization'
+            });
+        }
+
+        // Unset any existing default for this org
+        await ElevenLabsAgent.updateMany(
+            { organizationId: orgId, isDefault: true },
+            { $set: { isDefault: false } }
+        );
+
+        // Set the new default
+        dbAgent.isDefault = true;
+        await dbAgent.save();
+
+        console.log(`⭐ Agent "${dbAgent.name}" (${agentId}) set as default for org ${orgId}`);
+
+        return reply.send({
+            success: true,
+            message: `Agent "${dbAgent.name}" is now the default for calls`
+        });
+    } catch (error) {
+        console.error('Error setting default agent:', error.message);
+        return reply.code(500).send({
+            success: false,
+            error: 'Failed to set default agent'
+        });
+    }
+}
+
 module.exports = {
     listAgents,
     createAgent,
@@ -409,5 +463,6 @@ module.exports = {
     updateAgent,
     deleteAgent,
     listVoices,
-    getUsage
+    getUsage,
+    setDefaultAgent
 };

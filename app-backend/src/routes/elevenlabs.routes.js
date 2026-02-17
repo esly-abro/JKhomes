@@ -101,6 +101,14 @@ async function elevenLabsRoutes(fastify, options) {
     }, agentsController.deleteAgent);
 
     /**
+     * POST /api/integrations/elevenlabs/agents/:agentId/set-default
+     * Set agent as the default for outbound calls
+     */
+    fastify.post('/agents/:agentId/set-default', {
+        preHandler: requireRole(['owner', 'admin'])
+    }, agentsController.setDefaultAgent);
+
+    /**
      * GET /api/integrations/elevenlabs/voices
      * List available ElevenLabs voices
      */

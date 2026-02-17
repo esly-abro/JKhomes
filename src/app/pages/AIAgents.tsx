@@ -17,7 +17,8 @@ import {
   X,
   AlertCircle,
   Check,
-  RefreshCw
+  RefreshCw,
+  Star
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -44,6 +45,7 @@ import {
   getAgent,
   updateAgent,
   deleteAgent,
+  setDefaultAgent,
   listVoices,
   type ElevenLabsAgent,
   type Voice,
@@ -277,6 +279,17 @@ export default function AIAgents() {
     }
   }
 
+  async function handleSetDefault(agentId: string) {
+    try {
+      setError(null);
+      await setDefaultAgent(agentId);
+      setSuccess('Agent set as default for calls');
+      await loadData();
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to set default agent');
+    }
+  }
+
   function playVoicePreview(voice: Voice) {
     if (!voice.preview_url) return;
 
@@ -417,8 +430,19 @@ export default function AIAgents() {
             return (
               <div
                 key={agent.agent_id}
-                className="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition-shadow"
+                className={`bg-white rounded-xl border p-5 hover:shadow-md transition-shadow ${
+                  agent._isDefault ? 'border-blue-400 ring-1 ring-blue-200' : 'border-gray-200'
+                }`}
               >
+                {/* Default Badge */}
+                {agent._isDefault && (
+                  <div className="mb-2 -mt-1">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded-full">
+                      <Star className="h-3 w-3 fill-blue-500" />
+                      Default Agent (used for calls)
+                    </span>
+                  </div>
+                )}
                 {/* Card Header */}
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
@@ -444,6 +468,11 @@ export default function AIAgents() {
                       <DropdownMenuItem onClick={() => openEditDialog(agent.agent_id)}>
                         <Pencil className="h-4 w-4 mr-2" /> Edit
                       </DropdownMenuItem>
+                      {!agent._isDefault && (
+                        <DropdownMenuItem onClick={() => handleSetDefault(agent.agent_id)}>
+                          <Star className="h-4 w-4 mr-2" /> Set as Default
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => copyAgentId(agent.agent_id)}>
                         <Copy className="h-4 w-4 mr-2" /> Copy ID
                       </DropdownMenuItem>
