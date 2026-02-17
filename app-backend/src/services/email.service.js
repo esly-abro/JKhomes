@@ -352,10 +352,271 @@ async function sendAgentCredentials(agentEmail, agentName, password, ownerName, 
   }
 }
 
+/**
+ * Generic send email using org SMTP
+ * Used by workflow executors (humanCall), etc.
+ */
+async function sendEmail({ to, subject, html, organizationId }) {
+  const { transporter, fromAddress } = await createOrgTransporter(organizationId);
+
+  if (!transporter) {
+    console.log('📧 [EMAIL PREVIEW] Would send to:', to);
+    console.log('Subject:', subject);
+    return { success: true, preview: true };
+  }
+
+  const mailOptions = { from: fromAddress, to, subject, html };
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent to:', to, '| Message ID:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send email to', to, ':', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Notify agent that new leads have been assigned to them
+ * @param {string} agentEmail
+ * @param {string} agentName
+ * @param {Array} leads - array of { name, phone, status, source }
+ * @param {string} assignedByName - who assigned
+ * @param {string} organizationId
+ */
+async function sendLeadAssignmentEmail(agentEmail, agentName, leads, assignedByName, organizationId) {
+  const { transporter, fromAddress, orgName } = await createOrgTransporter(organizationId);
+  const count = leads.length;
+  const companyName = orgName || 'Pulsar CRM';
+  const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  const leadRows = leads.slice(0, 10).map(l => `
+    <tr>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${l.name || 'N/A'}</td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${l.phone || 'N/A'}</td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${l.status || 'New'}</td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">${l.source || 'N/A'}</td>
+    </tr>
+  `).join('');
+
+  const moreText = count > 10 ? `<p style="color:#6b7280; font-size:13px;">...and ${count - 10} more lead(s). View all in your dashboard.</p>` : '';
+
+  const mailOptions = {
+    from: fromAddress || `"${companyName}" <noreply@pulsar.com>`,
+    to: agentEmail,
+    subject: `📋 ${count} New Lead${count > 1 ? 's' : ''} Assigned to You`,
+    html: `
+      <!DOCTYPE html><html><head><style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 6px; overflow: hidden; margin: 16px 0; }
+        th { background: #f3f4f6; padding: 10px 12px; text-align: left; font-size: 13px; color: #374151; }
+        .button { display: inline-block; padding: 12px 28px; background: #3b82f6; color: white; text-decoration: none; border-radius: 6px; margin: 16px 0; }
+        .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 24px; }
+      </style></head><body>
+        <div class="container">
+          <div class="header">
+            <h2 style="margin:0;">📋 New Leads Assigned</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${agentName}</strong>,</p>
+            <p><strong>${assignedByName || 'Your manager'}</strong> has assigned <strong>${count} new lead${count > 1 ? 's' : ''}</strong> to you.</p>
+            <table>
+              <thead><tr><th>Name</th><th>Phone</th><th>Status</th><th>Source</th></tr></thead>
+              <tbody>${leadRows}</tbody>
+            </table>
+            ${moreText}
+            <div style="text-align:center;">
+              <a href="${dashboardUrl}/leads" class="button">View My Leads</a>
+            </div>
+            <div class="footer"><p>This is an automated message from ${companyName}</p></div>
+          </div>
+        </div>
+      </body></html>
+    `
+  };
+
+  if (!transporter) {
+    console.log('📧 [EMAIL PREVIEW] Lead assignment email to:', agentEmail, `(${count} leads)`);
+    return { success: true, preview: true };
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Lead assignment email sent to ${agentEmail} (${count} leads) | ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send lead assignment email:', error.message);
+    // Don't throw — non-blocking
+  }
+}
+
+/**
+ * Notify agent that a task has been assigned to them
+ * @param {string} agentEmail
+ * @param {string} agentName
+ * @param {object} task - { title, type, priority, dueDate, description }
+ * @param {object} lead - { name, phone, email, status }
+ * @param {string} assignedByName
+ * @param {string} organizationId
+ */
+async function sendTaskAssignmentEmail(agentEmail, agentName, task, lead, assignedByName, organizationId) {
+  const { transporter, fromAddress, orgName } = await createOrgTransporter(organizationId);
+  const companyName = orgName || 'Pulsar CRM';
+  const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  const priorityColors = { urgent: '#dc2626', high: '#f97316', medium: '#eab308', low: '#22c55e' };
+  const pColor = priorityColors[task.priority] || '#6b7280';
+  const dueStr = task.dueDate ? new Date(task.dueDate).toLocaleString() : 'No due date';
+
+  const mailOptions = {
+    from: fromAddress || `"${companyName}" <noreply@pulsar.com>`,
+    to: agentEmail,
+    subject: `🔔 New Task: ${task.title || 'Task Assigned'}`,
+    html: `
+      <!DOCTYPE html><html><head><style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #fff7ed; padding: 24px; border: 1px solid #fed7aa; border-radius: 0 0 8px 8px; }
+        .card { background: white; border: 1px solid #fdba74; border-radius: 8px; padding: 16px; margin: 16px 0; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; color: white; }
+        .button { display: inline-block; padding: 12px 28px; background: #f97316; color: white; text-decoration: none; border-radius: 6px; margin: 16px 0; }
+        .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 24px; }
+      </style></head><body>
+        <div class="container">
+          <div class="header">
+            <h2 style="margin:0;">📋 New Task Assigned</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${agentName}</strong>,</p>
+            <p>${assignedByName ? `<strong>${assignedByName}</strong> has assigned` : 'A new task has been assigned'} to you.</p>
+            <div class="card">
+              <h3 style="margin-top:0; color:#c2410c;">${task.title || 'Task'}</h3>
+              ${task.description ? `<p style="color:#666;">${task.description}</p>` : ''}
+              <p><span class="badge" style="background:${pColor};">${(task.priority || 'medium').toUpperCase()}</span> &nbsp; 📅 Due: ${dueStr}</p>
+            </div>
+            ${lead ? `
+            <div class="card">
+              <h4 style="margin-top:0; color:#c2410c;">Lead Details</h4>
+              <table style="width:100%; border-collapse:collapse;">
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Name:</strong></td><td style="padding:4px 8px;">${lead.name || 'N/A'}</td></tr>
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Phone:</strong></td><td style="padding:4px 8px;"><a href="tel:${lead.phone}">${lead.phone || 'N/A'}</a></td></tr>
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Email:</strong></td><td style="padding:4px 8px;">${lead.email || 'N/A'}</td></tr>
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Status:</strong></td><td style="padding:4px 8px;">${lead.status || 'N/A'}</td></tr>
+              </table>
+            </div>` : ''}
+            <div style="text-align:center;">
+              <a href="${dashboardUrl}/tasks" class="button">View My Tasks</a>
+            </div>
+            <div class="footer"><p>This is an automated message from ${companyName}</p></div>
+          </div>
+        </div>
+      </body></html>
+    `
+  };
+
+  if (!transporter) {
+    console.log('📧 [EMAIL PREVIEW] Task assignment email to:', agentEmail);
+    return { success: true, preview: true };
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Task assignment email sent to ${agentEmail} | ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send task assignment email:', error.message);
+  }
+}
+
+/**
+ * Notify agent when their lead status changes to a high-priority status
+ * @param {string} agentEmail
+ * @param {string} agentName
+ * @param {object} lead - { name, phone, email, status }
+ * @param {string} newStatus
+ * @param {string} organizationId
+ */
+async function sendHighPriorityStatusEmail(agentEmail, agentName, lead, newStatus, organizationId) {
+  const { transporter, fromAddress, orgName } = await createOrgTransporter(organizationId);
+  const companyName = orgName || 'Pulsar CRM';
+  const dashboardUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+  const statusMessages = {
+    'Appointment Booked': { icon: '📅', action: 'An appointment has been booked', color: '#3b82f6' },
+    'Appointment Scheduled': { icon: '🗓️', action: 'An appointment has been scheduled', color: '#8b5cf6' },
+    'Interested': { icon: '🔥', action: 'Lead is now marked as Interested', color: '#22c55e' },
+  };
+
+  const info_s = statusMessages[newStatus] || { icon: '⚡', action: `Status changed to ${newStatus}`, color: '#f97316' };
+
+  const mailOptions = {
+    from: fromAddress || `"${companyName}" <noreply@pulsar.com>`,
+    to: agentEmail,
+    subject: `${info_s.icon} High Priority: ${lead.name || 'Lead'} — ${newStatus}`,
+    html: `
+      <!DOCTYPE html><html><head><style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: linear-gradient(135deg, ${info_s.color} 0%, ${info_s.color}dd 100%); color: white; padding: 24px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 24px; border: 1px solid #e5e7eb; border-radius: 0 0 8px 8px; }
+        .card { background: white; border: 1px solid #d1d5db; border-radius: 8px; padding: 16px; margin: 16px 0; }
+        .status-badge { display: inline-block; padding: 6px 14px; border-radius: 16px; font-size: 14px; font-weight: 600; color: white; background: ${info_s.color}; }
+        .button { display: inline-block; padding: 12px 28px; background: ${info_s.color}; color: white; text-decoration: none; border-radius: 6px; margin: 16px 0; }
+        .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 24px; }
+      </style></head><body>
+        <div class="container">
+          <div class="header">
+            <h2 style="margin:0;">${info_s.icon} High Priority Update</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${agentName}</strong>,</p>
+            <p>${info_s.action} for your lead <strong>${lead.name || 'N/A'}</strong>.</p>
+            <p>New status: <span class="status-badge">${newStatus}</span></p>
+            <div class="card">
+              <h4 style="margin-top:0;">Lead Details</h4>
+              <table style="width:100%; border-collapse:collapse;">
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Name:</strong></td><td style="padding:4px 8px;">${lead.name || 'N/A'}</td></tr>
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Phone:</strong></td><td style="padding:4px 8px;"><a href="tel:${lead.phone}">${lead.phone || 'N/A'}</a></td></tr>
+                <tr><td style="padding:4px 8px; color:#666;"><strong>Email:</strong></td><td style="padding:4px 8px;">${lead.email || 'N/A'}</td></tr>
+              </table>
+            </div>
+            <div style="text-align:center;">
+              <a href="${dashboardUrl}/leads" class="button">View Lead</a>
+            </div>
+            <p style="color:#666; font-size:14px;">Please take immediate action on this lead.</p>
+            <div class="footer"><p>This is an automated message from ${companyName}</p></div>
+          </div>
+        </div>
+      </body></html>
+    `
+  };
+
+  if (!transporter) {
+    console.log(`📧 [EMAIL PREVIEW] High-priority status email to: ${agentEmail} (${newStatus})`);
+    return { success: true, preview: true };
+  }
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ High-priority status email sent to ${agentEmail} (${newStatus}) | ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Failed to send high-priority status email:', error.message);
+  }
+}
+
 module.exports = {
   notifyOwnerOfNewAgent,
   notifyAgentApproval,
   notifyAgentRejection,
   sendAgentCredentials,
-  createOrgTransporter
+  createOrgTransporter,
+  sendEmail,
+  sendLeadAssignmentEmail,
+  sendTaskAssignmentEmail,
+  sendHighPriorityStatusEmail
 };
