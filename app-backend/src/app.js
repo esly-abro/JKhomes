@@ -363,6 +363,7 @@ async function buildApp() {
             const twilioService = require('./twilio/twilio.service');
             const { phoneNumber, leadId, leadName } = request.body;
             const userId = request.user._id;
+            const organizationId = request.user?.organizationId;
 
             if (!phoneNumber) {
                 return reply.status(400).send({ error: 'Phone number is required' });
@@ -373,7 +374,8 @@ async function buildApp() {
                 twilioService.TWILIO_PHONE_NUMBER,
                 userId,
                 leadId,
-                leadName
+                leadName,
+                organizationId
             );
 
             if (result.success) {
