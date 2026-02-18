@@ -6,8 +6,8 @@
 import axios from 'axios';
 import api from './api';
 
-// App backend endpoint (app-backend on port 4000)
-const TWILIO_API_URL = 'http://localhost:4000';
+// App backend endpoint — uses relative URL so Nginx proxies to port 4000
+const TWILIO_API_URL = '';
 
 export interface CallResult {
   success: boolean;

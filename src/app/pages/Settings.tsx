@@ -480,7 +480,7 @@ export default function Settings() {
     }
     
     // Simple redirect - no credentials needed from customer!
-    const backendUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+    const backendUrl = import.meta.env.VITE_API_URL || '';
     window.location.href = `${backendUrl}/auth/zoho/connect?dc=${zohoConfig.dataCenter}&userId=${userId}`;
   };
 

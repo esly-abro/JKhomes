@@ -95,7 +95,7 @@ export default function LeadDetail() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(phoneNumber)}?leadId=${encodeURIComponent(id || '')}`, {
+      const response = await fetch(`/api/elevenlabs/summary/${encodeURIComponent(phoneNumber)}?leadId=${encodeURIComponent(id || '')}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -338,7 +338,7 @@ export default function LeadDetail() {
 
       // Always call API to check for status updates (even if we have cached summary)
       const token = localStorage.getItem('accessToken');
-      fetch(`http://localhost:4000/api/elevenlabs/summary/${encodeURIComponent(lead.phone)}?leadId=${encodeURIComponent(id || '')}`, {
+      fetch(`/api/elevenlabs/summary/${encodeURIComponent(lead.phone)}?leadId=${encodeURIComponent(id || '')}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

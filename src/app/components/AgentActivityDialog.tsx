@@ -151,7 +151,7 @@ export default function AgentActivityDialog({
         setError(null);
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await fetch(`http://localhost:4000/api/agents/${agentId}/activity`, {
+            const response = await fetch(`/api/agents/${agentId}/activity`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }

@@ -26,7 +26,7 @@ export default function UserManagement() {
   const fetchPendingUsers = async () => {
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch('http://localhost:4000/api/users/pending', {
+      const response = await fetch('/api/users/pending', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -52,7 +52,7 @@ export default function UserManagement() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:4000/api/users/${userId}/approve`, {
+      const response = await fetch(`/api/users/${userId}/approve`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -84,7 +84,7 @@ export default function UserManagement() {
 
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await fetch(`http://localhost:4000/api/users/${userId}/reject`, {
+      const response = await fetch(`/api/users/${userId}/reject`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${token}`,
