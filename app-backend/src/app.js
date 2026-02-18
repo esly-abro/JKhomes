@@ -284,17 +284,31 @@ async function buildApp() {
 
     app.post('/api/twilio/status', async (request, reply) => {
         const twilioService = require('./twilio/twilio.service');
+        const { PostCallOrchestrator } = require('./services/postCall.orchestrator');
         const { CallSid, CallStatus, CallDuration, EndTime } = request.body;
 
         console.log(`Call status update: ${CallSid} -> ${CallStatus}`);
 
         // Update call log in MongoDB
-        await twilioService.updateCallStatus(
+        const result = await twilioService.updateCallStatus(
             CallSid,
             CallStatus,
             CallDuration,
             EndTime
         );
+
+        // When call ends, also update the Lead status via PostCallOrchestrator
+        const terminalStatuses = ['completed', 'busy', 'no-answer', 'failed', 'canceled'];
+        if (terminalStatuses.includes(CallStatus) && result.callLog) {
+            const callLog = result.callLog;
+            PostCallOrchestrator.processCallStatus({
+                callSid: CallSid,
+                status: CallStatus,
+                phoneNumber: callLog.to || callLog.phoneNumber,
+                duration: CallDuration,
+                leadId: callLog.leadId
+            }).catch(err => console.error('Post-call lead update error:', err));
+        }
 
         return reply.send({ success: true });
     });
@@ -1324,21 +1338,47 @@ async function buildApp() {
     // Migrated from zoho-lead-backend for single backend architecture
     // ==========================================================================
 
+    // Dedup set: track processed conversationIds to prevent race conditions
+    const processedConversations = new Set();
+    const DEDUP_TTL_MS = 10 * 60 * 1000; // 10 minutes
+    function markProcessed(conversationId) {
+        if (!conversationId) return false;
+        if (processedConversations.has(conversationId)) return true;
+        processedConversations.add(conversationId);
+        setTimeout(() => processedConversations.delete(conversationId), DEDUP_TTL_MS);
+        return false;
+    }
+    app.decorate('markProcessed', markProcessed);
+
     // ElevenLabs post-call webhook (main entry point)
     const elevenLabsWebhookService = require('./services/elevenlabs.webhook.service');
     
     app.post('/webhook/elevenlabs', async (request, reply) => {
         try {
-            if (!elevenLabsWebhookService.verifyWebhook(request)) {
-                return reply.code(401).send({ error: 'Invalid signature' });
+            const convId = request.body?.data?.conversation_id || request.body?.conversation_id;
+            if (convId && markProcessed(convId)) {
+                console.log('Skipping duplicate webhook for conversation ' + convId);
+                return reply.send({ status: 'already_processed' });
             }
-
             const result = await elevenLabsWebhookService.handleWebhook(request.body);
-            
-            // Always return 200 to acknowledge (prevents ElevenLabs from retrying)
             return reply.send({ status: 'received', ...result });
         } catch (error) {
-            console.error('âŒ ElevenLabs webhook error:', error);
+            console.error('ElevenLabs webhook error:', error);
+            return reply.send({ status: 'error', error: error.message });
+        }
+    });
+
+    // Mirror under /api/ prefix for Nginx routing
+    app.post('/api/webhook/elevenlabs', async (request, reply) => {
+        try {
+            const convId = request.body?.data?.conversation_id || request.body?.conversation_id;
+            if (convId && markProcessed(convId)) {
+                return reply.send({ status: 'already_processed' });
+            }
+            const result = await elevenLabsWebhookService.handleWebhook(request.body);
+            return reply.send({ status: 'received', ...result });
+        } catch (error) {
+            console.error('ElevenLabs webhook error:', error);
             return reply.send({ status: 'error', error: error.message });
         }
     });
@@ -1355,14 +1395,29 @@ async function buildApp() {
         }
     });
 
-    // Twilio call status callback
+    // Twilio call status callback (legacy path)
     app.post('/elevenlabs/status', async (request, reply) => {
         const { CallSid, CallStatus, CallDuration } = request.body;
-        console.log(`Call status: ${CallSid} -> ${CallStatus}`);
+        console.log(`Call status (legacy): ${CallSid} -> ${CallStatus}`);
         
         try {
             const twilioService = require('./twilio/twilio.service');
-            await twilioService.updateCallStatus(CallSid, CallStatus, CallDuration);
+            const { PostCallOrchestrator } = require('./services/postCall.orchestrator');
+
+            const result = await twilioService.updateCallStatus(CallSid, CallStatus, CallDuration);
+
+            // Also update lead status for terminal call states
+            const terminalStatuses = ['completed', 'busy', 'no-answer', 'failed', 'canceled'];
+            if (terminalStatuses.includes(CallStatus) && result.callLog) {
+                const callLog = result.callLog;
+                PostCallOrchestrator.processCallStatus({
+                    callSid: CallSid,
+                    status: CallStatus,
+                    phoneNumber: callLog.to || callLog.phoneNumber,
+                    duration: CallDuration,
+                    leadId: callLog.leadId
+                }).catch(err => console.error('Post-call lead update error:', err));
+            }
         } catch (error) {
             console.error('Call status update error:', error);
         }
@@ -1377,6 +1432,9 @@ async function buildApp() {
             timestamp: new Date().toISOString(),
             endpoints: [
                 'POST /webhook/elevenlabs',
+                'POST /api/webhook/elevenlabs',
+                'POST /api/twilio/voice',
+                'POST /api/twilio/status',
                 'POST /ai-call-webhook',
                 'POST /elevenlabs/status'
             ]
