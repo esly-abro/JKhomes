@@ -1267,6 +1267,13 @@ async function buildApp() {
         await whatsappProtectedApp.register(whatsappRoutes, { prefix: '/api/whatsapp' });
     });
 
+    // WhatsApp Template CRUD routes (requires auth) - Per-org template management
+    app.register(async function (whatsappTemplateProtectedApp) {
+        whatsappTemplateProtectedApp.addHook('onRequest', requireAuth);
+        const whatsappTemplateRoutes = require('./routes/whatsappTemplate.routes');
+        await whatsappTemplateProtectedApp.register(whatsappTemplateRoutes, { prefix: '/api/whatsapp-templates' });
+    });
+
     // Zoho CRM Integration routes (requires auth)
     app.register(async function (zohoProtectedApp) {
         zohoProtectedApp.addHook('onRequest', requireAuth);

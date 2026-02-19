@@ -11,6 +11,7 @@ import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Load
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, updateLeadStatuses, getStatusUsage, CategoryItem, AppointmentType, LeadStatus } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
+import TemplateBuilder from '../components/settings/TemplateBuilder';
 
 interface Profile {
   firstName: string;
@@ -2141,6 +2142,9 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Template Builder — Create, submit, and manage WhatsApp templates */}
+          <TemplateBuilder />
         </TabsContent>
 
         <TabsContent value="integrations">
@@ -2372,42 +2376,63 @@ export default function Settings() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* OAuth Status Display */}
-              {zohoOAuthStatus?.connected && (
+              {/* Connection Status */}
+              {(zohoOAuthStatus?.connected || zohoConfig.isConnected) && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-green-800">
                       <CheckCircle2 className="h-5 w-5" />
-                      <span className="font-semibold">Connected via OAuth</span>
+                      <span className="font-semibold">Connected to Zoho CRM</span>
                     </div>
-                    <Button variant="destructive" size="sm" onClick={handleDisconnectZohoOAuth}>
+                    <Button variant="destructive" size="sm" onClick={zohoOAuthStatus?.connected ? handleDisconnectZohoOAuth : handleDisconnectZoho}>
                       Disconnect
                     </Button>
                   </div>
-                  {zohoOAuthStatus.organizationName && (
+                  {zohoOAuthStatus?.organizationName && (
                     <p className="text-sm text-green-700 mt-2">
                       <strong>Organization:</strong> {zohoOAuthStatus.organizationName}
                     </p>
                   )}
-                  {zohoOAuthStatus.connectedAt && (
+                  {(zohoOAuthStatus?.connectedAt || zohoConfig.lastSyncAt) && (
                     <p className="text-sm text-green-700">
-                      <strong>Connected:</strong> {new Date(zohoOAuthStatus.connectedAt).toLocaleString()}
+                      <strong>Last sync:</strong> {new Date(zohoOAuthStatus?.connectedAt || zohoConfig.lastSyncAt!).toLocaleString()}
                     </p>
                   )}
                 </div>
               )}
 
+              {/* Test Result */}
+              {zohoTestResult && (
+                <div className={`p-4 rounded-lg ${zohoTestResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                  <div className={`flex items-center gap-2 font-medium ${zohoTestResult.success ? 'text-green-700' : 'text-red-700'}`}>
+                    {zohoTestResult.success ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                    {zohoTestResult.message || zohoTestResult.error}
+                  </div>
+                  {zohoTestResult.warning && (
+                    <p className="text-sm text-amber-700 mt-1">⚠️ {zohoTestResult.warning}</p>
+                  )}
+                  {zohoTestResult.data?.organizationName && (
+                    <p className="text-sm text-green-600 mt-1">Org: {zohoTestResult.data.organizationName}</p>
+                  )}
+                  {zohoTestResult.data?.leadsAvailable !== undefined && (
+                    <p className="text-sm text-green-600 mt-1">Leads accessible: Yes</p>
+                  )}
+                  {zohoTestResult.data?.grantedScopes && (
+                    <p className="text-xs text-gray-500 mt-1">Scopes: {zohoTestResult.data.grantedScopes}</p>
+                  )}
+                </div>
+              )}
+
               {/* Simple One-Click Connect Section */}
-              {!zohoOAuthStatus?.connected && (
+              {!zohoOAuthStatus?.connected && !zohoConfig.isConnected && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-5">
                   <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
-                    🔗 Connect Your Zoho CRM
+                    🔗 Option 1: One-Click Connect
                   </h3>
                   <p className="text-sm text-blue-800 mb-4">
-                    Connect your Zoho CRM account to sync your leads automatically. Just click the button below and login to your Zoho account.
+                    Fastest way — just click and login to your Zoho account.
                   </p>
                   
-                  {/* Data Center Selection */}
                   <div className="mb-4">
                     <Label htmlFor="oauth-datacenter" className="text-sm text-blue-800">Select your Zoho region:</Label>
                     <select
@@ -2420,7 +2445,6 @@ export default function Settings() {
                         <option key={dc.code} value={dc.code}>{dc.name} (.zoho.{dc.code})</option>
                       ))}
                     </select>
-                    <p className="text-xs text-blue-600 mt-1">Select based on where you created your Zoho account</p>
                   </div>
 
                   <Button 
@@ -2431,12 +2455,131 @@ export default function Settings() {
                     <ExternalLink className="h-4 w-4 mr-2" />
                     Connect with Zoho
                   </Button>
-                  <p className="text-xs text-blue-600 mt-2 text-center">
-                    You'll be redirected to Zoho to login and authorize access
-                  </p>
                 </div>
               )}
 
+              {/* Manual Credential Entry */}
+              <div className="border rounded-lg p-5">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  🔑 {zohoConfig.isConnected ? 'Manage Credentials' : 'Option 2: Manual Setup'}
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Enter your Zoho API credentials from{' '}
+                  <a href="https://api-console.zoho.in/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                    Zoho API Console
+                  </a>
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="zoho-datacenter">Data Center</Label>
+                    <select
+                      id="zoho-datacenter"
+                      value={zohoConfig.dataCenter}
+                      onChange={(e) => setZohoConfig(prev => ({ ...prev, dataCenter: e.target.value }))}
+                      className="mt-1 w-full border rounded-md px-3 py-2 bg-white text-sm"
+                    >
+                      {zohoDataCenters.map(dc => (
+                        <option key={dc.code} value={dc.code}>{dc.name} (.zoho.{dc.code})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="zoho-client-id" className="flex items-center gap-1">
+                      Client ID <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="zoho-client-id"
+                      value={zohoConfig.clientId}
+                      onChange={(e) => setZohoConfig(prev => ({ ...prev, clientId: e.target.value }))}
+                      placeholder="1000.XXXX..."
+                      className="font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="zoho-client-secret" className="flex items-center gap-1">
+                      Client Secret <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="zoho-client-secret"
+                        type={showZohoSecrets.clientSecret ? 'text' : 'password'}
+                        value={zohoConfig.clientSecret}
+                        onChange={(e) => setZohoConfig(prev => ({ ...prev, clientSecret: e.target.value }))}
+                        placeholder="Enter client secret"
+                        className="pr-10 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowZohoSecrets(prev => ({ ...prev, clientSecret: !prev.clientSecret }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showZohoSecrets.clientSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="zoho-refresh-token" className="flex items-center gap-1">
+                      Refresh Token <span className="text-red-500">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="zoho-refresh-token"
+                        type={showZohoSecrets.refreshToken ? 'text' : 'password'}
+                        value={zohoConfig.refreshToken}
+                        onChange={(e) => setZohoConfig(prev => ({ ...prev, refreshToken: e.target.value }))}
+                        placeholder="1000.xxxx..."
+                        className="pr-10 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowZohoSecrets(prev => ({ ...prev, refreshToken: !prev.refreshToken }))}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      >
+                        {showZohoSecrets.refreshToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Generate from Zoho API Console → Self Client → scope: <code className="bg-gray-100 px-1 rounded">ZohoCRM.modules.ALL,ZohoCRM.org.ALL,ZohoCRM.settings.ALL,ZohoCRM.users.ALL</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-5 pt-4 border-t">
+                  <Button
+                    onClick={handleSaveZohoConfig}
+                    disabled={savingZohoConfig || !zohoConfig.clientId || !zohoConfig.clientSecret || !zohoConfig.refreshToken}
+                    className="flex-1"
+                  >
+                    {savingZohoConfig ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving...</>
+                    ) : 'Save Credentials'}
+                  </Button>
+                  <Button
+                    onClick={handleTestZohoConnection}
+                    disabled={testingZohoConnection}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {testingZohoConnection ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Testing...</>
+                    ) : 'Test Connection'}
+                  </Button>
+                </div>
+
+                {zohoConfig.isConnected && (
+                  <Button
+                    onClick={handleDisconnectZoho}
+                    variant="outline"
+                    className="w-full mt-3 text-red-600 border-red-200 hover:bg-red-50"
+                  >
+                    Disconnect Zoho CRM
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
