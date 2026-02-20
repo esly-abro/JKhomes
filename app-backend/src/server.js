@@ -91,10 +91,11 @@ async function start() {
         logger.info(`  GET http://localhost:${config.port}/api/health/live`);
         logger.info('');
 
-        // ── Start auto-logout cron (every 60 seconds) ──
+        // ── Start auto-logout safety net cron (every 2 minutes) ──
+        // Primary presence is via SSE connections; this catches edge cases
         const { autoLogoutStaleAgents, AGENT_TIMEOUT_MINUTES } = require('./controllers/attendance.controller');
-        setInterval(autoLogoutStaleAgents, 60 * 1000);
-        logger.info(`✓ Agent auto-logout active (${AGENT_TIMEOUT_MINUTES} min inactivity timeout)`);
+        setInterval(autoLogoutStaleAgents, 2 * 60 * 1000);
+        logger.info(`✓ Agent auto-logout safety net active (${AGENT_TIMEOUT_MINUTES} min stale threshold, SSE-aware)`);
 
         logger.info('Ready to accept requests! 🎉');
         logger.info('');

@@ -79,17 +79,14 @@ async function login(email, password, ipAddress, userAgent) {
         // Don't fail login if this fails
     }
 
-    // Mark user online + attendance check-in
+    // Note: Online status + attendance check-in is now handled by SSE connection
+    // (see sse.manager.js addClient). Login just sets initial lastHeartbeat for safety.
     try {
         const User = require('../models/User');
-        const Attendance = require('../models/Attendance');
         const userId = user._id || user.id;
-        await User.findByIdAndUpdate(userId, { isOnline: true, lastHeartbeat: new Date() });
-        if (user.organizationId) {
-            await Attendance.checkIn(userId, user.organizationId);
-        }
+        await User.findByIdAndUpdate(userId, { lastHeartbeat: new Date() });
     } catch (err) {
-        console.error('Failed to record attendance check-in:', err);
+        console.error('Failed to update lastHeartbeat on login:', err);
     }
 
     return {

@@ -332,7 +332,8 @@ async function logout(request, reply) {
             const decoded = verifyToken(refreshToken);
             if (decoded && decoded.userId) {
                 await LoginHistory.recordLogout(decoded.userId, sessionId);
-                // Mark user offline and close attendance
+                // Mark user offline (SSE disconnect will also handle this,
+                // but explicit logout should be immediate, not wait for grace period)
                 await User.findByIdAndUpdate(decoded.userId, { isOnline: false, lastHeartbeat: null });
                 await Attendance.checkOut(decoded.userId, 'manual');
             }

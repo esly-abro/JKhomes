@@ -497,8 +497,8 @@ async function buildApp() {
         }, usersController.getAgentActivity);
 
         // ── Attendance & Presence routes ──
+        // Presence is tracked via SSE connections (sse.manager.js), NOT HTTP polling
         const attendanceController = require('./controllers/attendance.controller');
-        protectedApp.post('/api/attendance/heartbeat', attendanceController.heartbeat);
         protectedApp.post('/api/attendance/check-in', attendanceController.checkIn);
         protectedApp.post('/api/attendance/check-out', attendanceController.checkOut);
         protectedApp.get('/api/attendance/status', attendanceController.getMyStatus);
@@ -786,9 +786,12 @@ async function buildApp() {
             return reply.send({ success: true, ...result });
         });
 
-        // SSE stream for real-time notifications
+        // SSE stream for real-time notifications + presence tracking
+        // When SSE connects → user marked online + attendance check-in
+        // When SSE disconnects (all tabs) → 30s grace → marked offline + attendance check-out
         protectedApp.get('/api/notifications/stream', async (request, reply) => {
             const userId = request.user._id.toString();
+            const organizationId = request.user.organizationId?.toString() || null;
 
             reply.raw.writeHead(200, {
                 'Content-Type': 'text/event-stream',
@@ -800,8 +803,8 @@ async function buildApp() {
             // Send initial heartbeat
             reply.raw.write('event: connected\ndata: {"status":"ok"}\n\n');
 
-            // Register this client
-            sseManager.addClient(userId, reply);
+            // Register this client — also marks online + attendance check-in
+            sseManager.addClient(userId, reply, organizationId);
 
             // Send heartbeat every 30s to keep connection alive
             const heartbeat = setInterval(() => {
@@ -812,10 +815,10 @@ async function buildApp() {
                 }
             }, 30000);
 
-            // Clean up on disconnect
+            // Clean up on disconnect — starts grace period before marking offline
             request.raw.on('close', () => {
                 clearInterval(heartbeat);
-                sseManager.removeClient(userId, reply);
+                sseManager.removeClient(userId, reply, organizationId);
             });
 
             // Don't let Fastify auto-close the response
