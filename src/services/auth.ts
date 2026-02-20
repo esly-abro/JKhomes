@@ -70,6 +70,7 @@ export async function login(email: string, password: string): Promise<User> {
 
     localStorage.setItem('accessToken', data.accessToken);
     localStorage.setItem('refreshToken', data.refreshToken);
+    window.dispatchEvent(new Event('auth-change'));
 
     return data.user;
 }
@@ -88,6 +89,7 @@ export async function logout(): Promise<void> {
 
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    window.dispatchEvent(new Event('auth-change'));
 }
 
 /**

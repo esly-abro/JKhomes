@@ -24,21 +24,15 @@ const syncController = require('./sync/sync.controller');
 const requireAuth = require('./middleware/requireAuth');
 const { requireRole } = require('./middleware/roles');
 
-// NEW: Production Middleware
-const { 
-    errorHandler, 
-    asyncHandler 
-} = require('./middleware/errorHandler');
+// Production Middleware
 const { 
     apiLimiter, 
     authLimiter, 
     voiceCallLimiter, 
-    zohoSyncLimiter,
-    whatsappLimiter
+    zohoSyncLimiter
 } = require('./middleware/rateLimiter');
 const { 
-    setupFastifySecurity, 
-    addRequestId 
+    setupFastifySecurity
 } = require('./middleware/security');
 
 // NEW: Structured Logging
@@ -1520,6 +1514,7 @@ async function buildApp() {
 
     // Twilio voice webhook (no auth - called by Twilio)
     app.post('/twilio/voice', async (request, reply) => {
+        const twilioService = require('./twilio/twilio.service');
         const toNumber = request.body.To || request.body.to;
         let twiml;
 
@@ -1527,7 +1522,7 @@ async function buildApp() {
         if (toNumber && toNumber.startsWith('+')) {
             twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="+19567583964">
+  <Dial callerId="${twilioService.TWILIO_PHONE_NUMBER}">
     <Number>${toNumber}</Number>
   </Dial>
 </Response>`;

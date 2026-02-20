@@ -29,11 +29,11 @@ const createTransporter = () => {
 /**
  * Send email to owner when new agent signs up
  */
-async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
-  const transporter = createTransporter();
+async function notifyOwnerOfNewAgent(ownerEmail, agentData, organizationId) {
+  const { transporter, fromAddress } = await createOrgTransporter(organizationId);
   
   const mailOptions = {
-    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
+    from: fromAddress || `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: ownerEmail,
     subject: '🔔 New Agent Signup Pending Approval',
     html: `
@@ -106,11 +106,11 @@ async function notifyOwnerOfNewAgent(ownerEmail, agentData) {
 /**
  * Send approval notification to agent
  */
-async function notifyAgentApproval(agentEmail, agentName) {
-  const transporter = createTransporter();
+async function notifyAgentApproval(agentEmail, agentName, organizationId) {
+  const { transporter, fromAddress } = await createOrgTransporter(organizationId);
   
   const mailOptions = {
-    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
+    from: fromAddress || `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: agentEmail,
     subject: '✅ Your Pulsar CRM Account Has Been Approved',
     html: `
@@ -172,11 +172,11 @@ async function notifyAgentApproval(agentEmail, agentName) {
 /**
  * Send rejection notification to agent
  */
-async function notifyAgentRejection(agentEmail, agentName, reason) {
-  const transporter = createTransporter();
+async function notifyAgentRejection(agentEmail, agentName, reason, organizationId) {
+  const { transporter, fromAddress } = await createOrgTransporter(organizationId);
   
   const mailOptions = {
-    from: `"Pulsar CRM" <${process.env.SMTP_USER}>`,
+    from: fromAddress || `"Pulsar CRM" <${process.env.SMTP_USER}>`,
     to: agentEmail,
     subject: 'Pulsar CRM Account Update',
     html: `

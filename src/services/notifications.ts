@@ -72,12 +72,6 @@ export function connectNotificationStream(
     onNotification: (notification: NotificationData) => void,
     onError?: (error: Event) => void
 ): () => void {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-        console.warn('No auth token for SSE connection');
-        return () => {};
-    }
-
     const baseUrl = import.meta.env.VITE_API_URL ?? '';
     const url = `${baseUrl}/api/notifications/stream`;
 
@@ -89,6 +83,13 @@ export function connectNotificationStream(
     async function connect() {
         if (!isActive) return;
         
+        // Read token fresh on every connect/reconnect to handle token refresh
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            console.warn('No auth token for SSE connection');
+            return;
+        }
+
         try {
             const response = await fetch(url, {
                 headers: {

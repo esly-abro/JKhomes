@@ -207,7 +207,8 @@ async function register(request, reply) {
                 const owners = await User.find({ 
                     role: 'owner', 
                     isActive: true,
-                    approvalStatus: 'approved'
+                    approvalStatus: 'approved',
+                    organizationId: organizationId
                 });
 
                 const notificationService = require('../services/notification.service');
@@ -217,7 +218,7 @@ async function register(request, reply) {
                             email: newUser.email,
                             name: newUser.name,
                             phone: newUser.phone
-                        });
+                        }, organizationId);
                         // In-app bell notification for owner
                         await notificationService.create({
                             userId: owner._id,

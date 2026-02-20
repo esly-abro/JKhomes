@@ -110,7 +110,7 @@ async function approveUser(req, reply) {
 
     // Send approval email to agent
     try {
-      await notifyAgentApproval(user.email, user.name);
+      await notifyAgentApproval(user.email, user.name, currentUser.organizationId);
     } catch (emailError) {
       console.error('Failed to send approval email:', emailError);
       // Don't fail the approval if email fails
@@ -170,7 +170,7 @@ async function rejectUser(req, reply) {
 
     // Send rejection email to agent
     try {
-      await notifyAgentRejection(user.email, user.name, reason);
+      await notifyAgentRejection(user.email, user.name, reason, currentUser.organizationId);
     } catch (emailError) {
       console.error('Failed to send rejection email:', emailError);
     }

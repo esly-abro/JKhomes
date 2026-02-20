@@ -77,22 +77,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(() => !!localStorage.getItem('accessToken'));
   const sseCleanupRef = useRef<(() => void) | null>(null);
 
-  // ─── Detect login/logout by polling localStorage token ───
+  // ─── Detect login/logout via custom events and cross-tab storage events ───
   useEffect(() => {
-    const checkAuth = () => {
+    const handleAuthChange = () => {
       const hasToken = !!localStorage.getItem('accessToken');
-      setIsAuthenticated(prev => {
-        if (prev !== hasToken) return hasToken;
-        return prev;
-      });
+      setIsAuthenticated(hasToken);
     };
-    // Check every 2 seconds for token appearance (login) or removal (logout)
-    const interval = setInterval(checkAuth, 2000);
+    // Listen for auth events dispatched by login/logout code
+    window.addEventListener('auth-change', handleAuthChange);
     // Also listen for storage events (cross-tab)
-    window.addEventListener('storage', checkAuth);
+    window.addEventListener('storage', handleAuthChange);
+    // Check once on mount
+    handleAuthChange();
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', checkAuth);
+      window.removeEventListener('auth-change', handleAuthChange);
+      window.removeEventListener('storage', handleAuthChange);
     };
   }, []);
 
@@ -177,7 +176,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const now = new Date();
     const newNotification: Notification = {
       ...notification,
-      id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `local-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       time: getRelativeTime(now),
       timestamp: now,
       section: 'new',
