@@ -338,6 +338,9 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, metricsController.getOverview);
 
+        // Agent self-performance route (ALL authenticated users)
+        protectedApp.get('/api/analytics/my-performance', metricsController.getMyPerformance);
+
         // Analytics routes (manager and above only)
         protectedApp.get('/api/analytics', {
             preHandler: requireRole(['owner', 'admin', 'manager'])

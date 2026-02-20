@@ -25,7 +25,8 @@ import {
   Zap,
   Megaphone,
   ClipboardList,
-  Bot
+  Bot,
+  TrendingUp
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -70,6 +71,7 @@ export default function MainLayout() {
     { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin', module: 'broadcasts' },
     { name: 'Activities', href: '/activities', icon: Activity, showFor: 'all' },
     { name: 'Calendar', href: '/calendar', icon: Calendar, showFor: 'all', module: 'appointments' },
+    { name: 'My Performance', href: '/my-performance', icon: TrendingUp, showFor: 'all' },
     { name: 'Analytics', href: '/analytics', icon: BarChart3, showFor: 'admin' },
     { name: 'Settings', href: '/settings', icon: Settings, showFor: 'admin' },
     { name: 'Automation', href: '/automation', icon: Zap, showFor: 'admin' },
