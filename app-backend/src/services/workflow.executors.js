@@ -534,49 +534,21 @@ async function executeHumanCall(lead, config, run = null) {
         const locationLabel = tenantConfig?.locationFieldLabel || 'Location';
         const categoryLabel = tenantConfig?.categoryFieldLabel || 'Category';
 
-        // Send notification email to the assigned agent
+        // Send notification email to the assigned agent using org SMTP
         if (assignedAgent?.email) {
             try {
-                await emailService.sendEmail({
-                    to: assignedAgent.email,
-                    subject: `🔔 New Call Task: ${lead.name}`,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                            <div style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-                                <h2 style="margin: 0;">📞 New Call Task Assigned</h2>
-                            </div>
-                            <div style="background: #fff7ed; padding: 20px; border: 1px solid #fed7aa; border-radius: 0 0 8px 8px;">
-                                <p>Hi <strong>${assignedAgent.name}</strong>,</p>
-                                <p>A new call task has been assigned to you from an automation workflow.</p>
-                                
-                                <div style="background: white; border: 1px solid #fdba74; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                                    <h3 style="margin-top: 0; color: #c2410c;">Lead Details</h3>
-                                    <table style="width: 100%; border-collapse: collapse;">
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Name:</strong></td><td style="padding: 4px 8px;">${lead.name || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Phone:</strong></td><td style="padding: 4px 8px;"><a href="tel:${lead.phone}">${lead.phone || 'N/A'}</a></td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Email:</strong></td><td style="padding: 4px 8px;">${lead.email || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Budget:</strong></td><td style="padding: 4px 8px;">${lead.budget || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Source:</strong></td><td style="padding: 4px 8px;">${lead.source || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>${categoryLabel}:</strong></td><td style="padding: 4px 8px;">${lead.category || lead.propertyType || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>${locationLabel}:</strong></td><td style="padding: 4px 8px;">${lead.location || 'N/A'}</td></tr>
-                                        <tr><td style="padding: 4px 8px; color: #666;"><strong>Status:</strong></td><td style="padding: 4px 8px;">${lead.status || 'N/A'}</td></tr>
-                                    </table>
-                                </div>
-                                
-                                <div style="background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; padding: 12px; margin: 12px 0;">
-                                    <strong>⚡ Priority:</strong> ${priority.toUpperCase()} &nbsp;|&nbsp; 
-                                    <strong>📅 Due:</strong> ${dueDate.toLocaleDateString()} ${dueDate.toLocaleTimeString()}
-                                </div>
-                                
-                                <p style="color: #666; font-size: 14px;">Please complete this task in your dashboard. The automation will continue after you mark the task as done.</p>
-                            </div>
-                        </div>
-                    `
-                });
-                console.log(`📧 Notification email sent to agent ${assignedAgent.name} (${assignedAgent.email})`);
+                await emailService.sendTaskAssignmentEmail(
+                    assignedAgent.email,
+                    assignedAgent.name || 'Agent',
+                    { title: task.title, type: taskType, priority, dueDate, description: config?.notes || config?.description },
+                    { name: lead.name, phone: lead.phone, email: lead.email, status: lead.status },
+                    'Automation',
+                    lead.organizationId
+                );
+                console.log(`📧 Task email sent to agent ${assignedAgent.name} (${assignedAgent.email})`);
             } catch (emailErr) {
                 // Don't fail the task creation if email fails
-                console.warn(`⚠️ Failed to send notification email to agent: ${emailErr.message}`);
+                console.warn(`⚠️ Failed to send task email to agent: ${emailErr.message}`);
             }
         } else {
             console.warn(`⚠️ No email found for assigned agent - notification not sent`);
@@ -797,9 +769,20 @@ async function executeAssignAgent(lead, config, run = null) {
         await lead.save();
 
         // Get agent name for logging
-        const agent = await User.findById(assigneeId).select('name');
+        const agent = await User.findById(assigneeId).select('name email');
 
         console.log(`👤 Lead assigned to ${agent?.name || assigneeId}`);
+
+        // Send email to assigned agent (non-blocking)
+        if (agent?.email) {
+            emailService.sendLeadAssignmentEmail(
+                agent.email,
+                agent.name || agent.email,
+                [{ name: lead.name, phone: lead.phone, status: lead.status, source: lead.source }],
+                'Automation',
+                lead.organizationId
+            ).catch(err => console.warn('Auto-assign email failed:', err.message));
+        }
 
         // Log activity
         await new Activity({
