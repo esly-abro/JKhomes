@@ -45,7 +45,7 @@ npm install --production 2>&1 | tail -3
 
 # 6. Restart backend
 log "Restarting backend via PM2..."
-pm2 restart app-backend --update-env 2>&1 | tail -3
+pm2 restart pulsar-backend --update-env 2>&1 | tail -3
 sleep 2
 
 # 7. Verify backend health
