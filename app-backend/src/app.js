@@ -180,23 +180,28 @@ async function buildApp() {
     // ======================================
     registerFastifyHealthRoutes(app);
 
-    // Root endpoint
-    app.get('/', async (request, reply) => {
-        return {
-            service: 'SaaS Lead Management - Application Backend',
-            version: '1.0.0',
-            documentation: 'See README.md',
-            endpoints: {
-                'POST /auth/login': 'User login',
-                'POST /auth/refresh': 'Refresh access token',
-                'POST /auth/logout': 'User logout',
-                'GET /api/leads': 'List leads',
-                'GET /api/leads/:id': 'Get lead details',
-                'POST /api/leads': 'Create lead',
-                'GET /api/metrics/overview': 'Dashboard metrics'
-            }
-        };
-    });
+    // Root endpoint (only when NOT serving frontend dist — avoids
+    // duplicate GET / conflict with @fastify/static SPA serving below)
+    const fs = require('fs');
+    const distPath = path.join(__dirname, '../../dist');
+    if (!fs.existsSync(distPath)) {
+        app.get('/', async (request, reply) => {
+            return {
+                service: 'SaaS Lead Management - Application Backend',
+                version: '1.0.0',
+                documentation: 'See README.md',
+                endpoints: {
+                    'POST /auth/login': 'User login',
+                    'POST /auth/refresh': 'Refresh access token',
+                    'POST /auth/logout': 'User logout',
+                    'GET /api/leads': 'List leads',
+                    'GET /api/leads/:id': 'Get lead details',
+                    'POST /api/leads': 'Create lead',
+                    'GET /api/metrics/overview': 'Dashboard metrics'
+                }
+            };
+        });
+    }
 
     // Auth routes (no auth required)
     // Rate limited to prevent brute force attacks
@@ -1649,8 +1654,6 @@ async function buildApp() {
     });
 
     // ── Production: Serve built frontend from dist/ ──
-    const fs = require('fs');
-    const distPath = path.join(__dirname, '../../dist');
     if (fs.existsSync(distPath)) {
         await app.register(require('@fastify/static'), {
             root: distPath,
