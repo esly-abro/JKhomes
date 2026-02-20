@@ -15,6 +15,7 @@
 
 const twilioService = require('../twilio/twilio.service');
 const emailService = require('./email.service');
+const notificationService = require('./notification.service');
 const elevenLabsService = require('./elevenLabs.service');
 const Automation = require('../models/Automation');
 const Lead = require('../models/Lead');
@@ -516,19 +517,6 @@ async function executeHumanCall(lead, config, run = null) {
 
         console.log(`✅ Task created: ${task._id} for agent ${assignedAgent?.name || 'unassigned'}`);
 
-        // Log activity
-        try {
-            await Activity.create({
-                leadId: lead._id?.toString(),
-                organizationId: lead.organizationId,
-                type: 'task_created',
-                title: `Call Task Created`,
-                description: `Call task assigned to ${assignedAgent?.name || 'unassigned agent'} — ${config?.title || 'Call lead'}`,
-                userName: 'Automation',
-                metadata: { taskId: task._id?.toString(), assignedTo: assignedAgent?.name, automated: true }
-            });
-        } catch (e) { /* ignore */ }
-
         // Load tenant config for dynamic field labels
         const tenantConfig = await TenantConfig.getOrCreate(lead.organizationId);
         const locationLabel = tenantConfig?.locationFieldLabel || 'Location';
@@ -552,6 +540,24 @@ async function executeHumanCall(lead, config, run = null) {
             }
         } else {
             console.warn(`⚠️ No email found for assigned agent - notification not sent`);
+        }
+
+        // Send in-app bell notification via SSE so agent sees it immediately
+        if (assignedAgentId) {
+            try {
+                await notificationService.create({
+                    userId: assignedAgentId,
+                    organizationId: lead.organizationId,
+                    type: 'task_assigned',
+                    title: `New task: ${config?.title || `Call lead: ${lead.name}`}`,
+                    message: `Automation assigned you a ${taskType} task${priority ? ' (' + priority + ')' : ''} for lead ${lead.name}`,
+                    avatarFallback: (lead.name || 'L').charAt(0).toUpperCase(),
+                    data: { taskId: task._id, taskType, leadId: lead._id?.toString() }
+                });
+                console.log(`🔔 In-app notification sent to agent ${assignedAgent?.name || assignedAgentId}`);
+            } catch (notifErr) {
+                console.warn(`⚠️ Failed to send in-app notification: ${notifErr.message}`);
+            }
         }
 
         // Log activity on the lead
@@ -623,7 +629,8 @@ async function executeEmail(lead, config) {
         await emailService.sendEmail({
             to: lead.email,
             subject,
-            html: body
+            html: body,
+            organizationId: lead.organizationId
         });
 
         try {
