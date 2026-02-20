@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -12,10 +12,15 @@ interface LoginProps {
 }
 
 export default function Login({ onLogin }: LoginProps) {
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    searchParams.get('reason') === 'inactive'
+      ? 'You were logged out due to inactivity. Please log in again.'
+      : ''
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

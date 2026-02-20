@@ -79,6 +79,19 @@ async function login(email, password, ipAddress, userAgent) {
         // Don't fail login if this fails
     }
 
+    // Mark user online + attendance check-in
+    try {
+        const User = require('../models/User');
+        const Attendance = require('../models/Attendance');
+        const userId = user._id || user.id;
+        await User.findByIdAndUpdate(userId, { isOnline: true, lastHeartbeat: new Date() });
+        if (user.organizationId) {
+            await Attendance.checkIn(userId, user.organizationId);
+        }
+    } catch (err) {
+        console.error('Failed to record attendance check-in:', err);
+    }
+
     return {
         ...tokens,
         user: usersModel.getSafeUser({ ...user, isActive: true })

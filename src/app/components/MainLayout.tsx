@@ -41,11 +41,15 @@ import { logout, getStoredUser } from '../../services/auth';
 import NotificationMenu from './NotificationMenu';
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { useOrganization } from '../hooks/useOrganization';
+import { usePresence } from '../hooks/usePresence';
 
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Heartbeat + inactivity auto-logout for agents
+  usePresence();
   const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
 
   // Get current user role for permissions
@@ -71,7 +75,7 @@ export default function MainLayout() {
     { name: 'Broadcasts', href: '/broadcasts', icon: Megaphone, showFor: 'admin', module: 'broadcasts' },
     { name: 'Activities', href: '/activities', icon: Activity, showFor: 'all' },
     { name: 'Calendar', href: '/calendar', icon: Calendar, showFor: 'all', module: 'appointments' },
-    { name: 'My Performance', href: '/my-performance', icon: TrendingUp, showFor: 'all' },
+    { name: 'My Performance', href: '/my-performance', icon: TrendingUp, showFor: 'agent' },
     { name: 'Analytics', href: '/analytics', icon: BarChart3, showFor: 'admin' },
     { name: 'Settings', href: '/settings', icon: Settings, showFor: 'admin' },
     { name: 'Automation', href: '/automation', icon: Zap, showFor: 'admin' },
@@ -80,7 +84,10 @@ export default function MainLayout() {
     // Check module enablement
     if (item.module && !isModuleEnabled(item.module)) return false;
     // Check role permissions
-    return item.showFor === 'all' || (item.showFor === 'admin' && isAdminOrManager);
+    if (item.showFor === 'all') return true;
+    if (item.showFor === 'admin') return isAdminOrManager;
+    if (item.showFor === 'agent') return isAgent;
+    return true;
   });
 
   const isActive = (href: string) => location.pathname === href;

@@ -321,16 +321,20 @@ async function refresh(request, reply) {
 async function logout(request, reply) {
     const { refreshToken } = request.body;
     
-    // Record logout in history
+    // Record logout in history + mark offline + attendance check-out
     try {
         const LoginHistory = require('../models/LoginHistory');
+        const User = require('../models/User');
+        const Attendance = require('../models/Attendance');
         if (refreshToken) {
             const sessionId = refreshToken.substring(0, 32);
-            // Find the session by session ID (we need userId from token)
             const { verifyToken } = require('./jwt');
             const decoded = verifyToken(refreshToken);
             if (decoded && decoded.userId) {
                 await LoginHistory.recordLogout(decoded.userId, sessionId);
+                // Mark user offline and close attendance
+                await User.findByIdAndUpdate(decoded.userId, { isOnline: false, lastHeartbeat: null });
+                await Attendance.checkOut(decoded.userId, 'manual');
             }
         }
     } catch (err) {

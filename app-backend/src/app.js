@@ -496,6 +496,19 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, usersController.getAgentActivity);
 
+        // ── Attendance & Presence routes ──
+        const attendanceController = require('./controllers/attendance.controller');
+        protectedApp.post('/api/attendance/heartbeat', attendanceController.heartbeat);
+        protectedApp.post('/api/attendance/check-in', attendanceController.checkIn);
+        protectedApp.post('/api/attendance/check-out', attendanceController.checkOut);
+        protectedApp.get('/api/attendance/status', attendanceController.getMyStatus);
+        protectedApp.get('/api/attendance/agents-status', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, attendanceController.getAgentsStatus);
+        protectedApp.get('/api/attendance/log', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, attendanceController.getAttendanceLog);
+
         // Properties routes
         const propertiesController = require('./properties/properties.controller');
         protectedApp.get('/api/properties', propertiesController.getProperties);
