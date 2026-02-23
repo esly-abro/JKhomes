@@ -1,9 +1,13 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { ChevronLeft, ChevronRight, Plus, MapPin, Phone, Mail, Calendar } from 'lucide-react';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { ChevronLeft, ChevronRight, Plus, MapPin, Phone, Mail, Calendar, X, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { createCalendarEvent, type CreateEventPayload } from '../../services/calendar';
 
 interface CalendarEvent {
   id: string;
@@ -13,13 +17,55 @@ interface CalendarEvent {
   color: string;
   type: 'site_visit' | 'appointment' | 'call' | 'meeting' | 'email' | 'other';
   leadName?: string;
+  leadId?: string;
 }
 
 export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week' | 'month'>('month');
-  const { siteVisits = [], activities = [] } = useData();
+  const { siteVisits = [], activities = [], leads = [] } = useData();
   const { appointmentFieldLabel } = useTenantConfig();
+  const navigate = useNavigate();
+
+  // Add Event Dialog state
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [addingEvent, setAddingEvent] = useState(false);
+  const [eventForm, setEventForm] = useState({
+    title: '',
+    type: 'meeting' as CreateEventPayload['type'],
+    startDate: new Date().toISOString().slice(0, 16),
+    endDate: '',
+    description: '',
+    leadId: '',
+    location: '',
+  });
+
+  // Event detail dialog
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+
+  const handleAddEvent = async () => {
+    if (!eventForm.title || !eventForm.startDate) return;
+    setAddingEvent(true);
+    try {
+      await createCalendarEvent({
+        title: eventForm.title,
+        type: eventForm.type,
+        startDate: new Date(eventForm.startDate).toISOString(),
+        endDate: eventForm.endDate ? new Date(eventForm.endDate).toISOString() : new Date(new Date(eventForm.startDate).getTime() + 3600000).toISOString(),
+        description: eventForm.description,
+        leadId: eventForm.leadId || undefined,
+        location: eventForm.location || undefined,
+      });
+      setShowAddEvent(false);
+      setEventForm({ title: '', type: 'meeting', startDate: new Date().toISOString().slice(0, 16), endDate: '', description: '', leadId: '', location: '' });
+      // Refresh data context
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to create event:', err);
+    } finally {
+      setAddingEvent(false);
+    }
+  };
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'];
@@ -135,7 +181,7 @@ export default function CalendarView() {
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
           <p className="text-gray-600">Manage your meetings and events</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddEvent(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Event
         </Button>
@@ -256,12 +302,137 @@ export default function CalendarView() {
                     })} at {event.time}
                   </div>
                 </div>
-                <Button variant="outline" size="sm">View</Button>
+                <Button variant="outline" size="sm" onClick={() => setSelectedEvent(event)}>View</Button>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      {/* Add Event Dialog */}
+      {showAddEvent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAddEvent(false)}>
+          <Card className="w-full max-w-lg p-6 m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Add New Event</h3>
+              <Button variant="ghost" size="icon" onClick={() => setShowAddEvent(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label>Title *</Label>
+                <Input
+                  value={eventForm.title}
+                  onChange={(e) => setEventForm(f => ({ ...f, title: e.target.value }))}
+                  placeholder="Event title"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Type</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    value={eventForm.type}
+                    onChange={(e) => setEventForm(f => ({ ...f, type: e.target.value as CreateEventPayload['type'] }))}
+                  >
+                    <option value="meeting">Meeting</option>
+                    <option value="call">Call</option>
+                    <option value="site_visit">Site Visit</option>
+                    <option value="follow_up">Follow Up</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Lead (optional)</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                    value={eventForm.leadId}
+                    onChange={(e) => setEventForm(f => ({ ...f, leadId: e.target.value }))}
+                  >
+                    <option value="">None</option>
+                    {leads.map(l => (
+                      <option key={l.id || l._id} value={l.id || l._id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Start *</Label>
+                  <Input
+                    type="datetime-local"
+                    value={eventForm.startDate}
+                    onChange={(e) => setEventForm(f => ({ ...f, startDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>End</Label>
+                  <Input
+                    type="datetime-local"
+                    value={eventForm.endDate}
+                    onChange={(e) => setEventForm(f => ({ ...f, endDate: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Location</Label>
+                <Input
+                  value={eventForm.location}
+                  onChange={(e) => setEventForm(f => ({ ...f, location: e.target.value }))}
+                  placeholder="Event location"
+                />
+              </div>
+              <div>
+                <Label>Description</Label>
+                <textarea
+                  className="w-full border rounded-md px-3 py-2 text-sm min-h-[80px]"
+                  value={eventForm.description}
+                  onChange={(e) => setEventForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Event description..."
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setShowAddEvent(false)}>Cancel</Button>
+                <Button onClick={handleAddEvent} disabled={!eventForm.title || !eventForm.startDate || addingEvent}>
+                  {addingEvent ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Create Event
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Event Detail Dialog */}
+      {selectedEvent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setSelectedEvent(null)}>
+          <Card className="w-full max-w-md p-6 m-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Event Details</h3>
+              <Button variant="ghost" size="icon" onClick={() => setSelectedEvent(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${selectedEvent.color}`}></div>
+                <span className="font-semibold text-lg">{selectedEvent.title}</span>
+              </div>
+              <div className="text-sm text-gray-600">
+                <p><strong>Type:</strong> {selectedEvent.type.replace('_', ' ')}</p>
+                <p><strong>Date:</strong> {new Date(selectedEvent.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</p>
+                <p><strong>Time:</strong> {selectedEvent.time}</p>
+                {selectedEvent.leadName && <p><strong>Lead:</strong> {selectedEvent.leadName}</p>}
+              </div>
+              {selectedEvent.leadId && (
+                <Button variant="outline" className="w-full" onClick={() => { setSelectedEvent(null); navigate(`/leads/${selectedEvent.leadId}`); }}>
+                  View Lead Profile
+                </Button>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

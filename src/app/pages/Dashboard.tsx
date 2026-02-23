@@ -4,7 +4,7 @@ import { useTenantConfig } from '../context/TenantConfigContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Users, TrendingUp, DollarSign, Target, ArrowUpRight, ArrowDownRight, Phone, Mail, Calendar, Clock, CheckCircle2, Filter } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { getUsers } from '../../services/leads';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList, Legend } from 'recharts';
 
@@ -359,7 +359,10 @@ export default function Dashboard() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Leads Needing Attention</CardTitle>
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="gap-2" onClick={() => {
+                  const el = document.getElementById('attention-filter');
+                  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                }}>
                   <Filter className="h-4 w-4" />
                   Filter
                 </Button>
@@ -398,10 +401,10 @@ export default function Dashboard() {
                                 : 'No activity'}
                             </div>
                             <div className="flex gap-1 mt-2 justify-end">
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (lead.phone) window.open(`tel:${lead.phone}`); }}>
                                 <Phone className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/calendar`; }}>
                                 <Calendar className="h-4 w-4" />
                               </Button>
                             </div>

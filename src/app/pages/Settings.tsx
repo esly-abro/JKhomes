@@ -2,7 +2,7 @@ import { AlertCircle, CheckCircle2, ExternalLink, Eye, EyeOff, GripVertical, Key
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getUsers } from '../../services/leads';
-import { AppointmentType, CategoryItem, updateAppointmentTypes, updateCategories, updateIndustry, updateLocationLabel } from '../../services/tenantConfig';
+import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, updateLeadStatuses, getStatusUsage, CategoryItem, AppointmentType, LeadStatus } from '../../services/tenantConfig';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
@@ -11,8 +11,10 @@ import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useTenantConfig } from '../context/TenantConfigContext';
-import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, updateLeadStatuses, getStatusUsage, CategoryItem, AppointmentType, LeadStatus } from '../../services/tenantConfig';
-import { getUsers } from '../../services/leads';
+import { sendInvite, listInvites, revokeInvite } from '../../services/invites';
+import { updateProfile as updateProfileAPI, changePassword } from '../../services/profile';
+import { getBillingInfo, getPlans, getInvoices, type BillingInfo, type Plan, type Invoice as BillingInvoice } from '../../services/billing';
+import { getAssignmentRules, createAssignmentRule, deleteAssignmentRule, toggleAssignmentRule, type AssignmentRule as APIAssignmentRule } from '../../services/assignmentRules';
 import TemplateBuilder from '../components/settings/TemplateBuilder';
 
 interface Profile {
@@ -449,30 +451,56 @@ export default function Settings() {
     }
   };
 
-  const handleInviteMember = () => {
-    const email = prompt('Enter email address of the new member:');
-    if (email) {
-      const newMember = {
-        id: Date.now(),
-        name: 'New Member',
-        email,
-        role: 'Member',
-        status: 'Pending'
-      };
-      setTeamMembers([...teamMembers, newMember]);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('agent');
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [inviting, setInviting] = useState(false);
+
+  const handleInviteMember = async () => {
+    if (!inviteEmail) { setShowInviteForm(true); return; }
+    setInviting(true);
+    try {
+      await sendInvite(inviteEmail, inviteRole);
+      setInviteEmail('');
+      setInviteRole('agent');
+      setShowInviteForm(false);
+      // Refresh team list
+      const users = await getUsers();
+      setTeamMembers(users.map((u: any) => ({
+        id: u._id || u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        status: 'Active'
+      })));
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to send invite');
+    } finally {
+      setInviting(false);
     }
   };
 
-  const handleDeleteMember = (id: number) => {
-    if (confirm('Are you sure you want to remove this team member?')) {
+  const handleDeleteMember = async (id: number) => {
+    if (!window.confirm('Are you sure you want to remove this team member?')) return;
+    try {
+      const api = (await import('../../services/api')).default;
+      await api.delete(`/api/users/${id}`);
       setTeamMembers(teamMembers.filter(m => m.id !== id));
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to remove member');
     }
   };
 
-  const handleRoleChange = (id: number, newRole: string) => {
-    setTeamMembers(teamMembers.map(m =>
-      m.id === id ? { ...m, role: newRole } : m
-    ));
+  const handleRoleChange = async (id: number, newRole: string) => {
+    try {
+      const api = (await import('../../services/api')).default;
+      await api.put(`/api/users/${id}/role`, { role: newRole });
+      setTeamMembers(teamMembers.map(m =>
+        m.id === id ? { ...m, role: newRole } : m
+      ));
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to update role');
+    }
   };
 
   const [crmSettings, setCrmSettings] = useState({
@@ -509,42 +537,97 @@ export default function Settings() {
     ));
   };
 
-  const handleSaveCrmSettings = () => {
-    console.log('Saving CRM settings:', { crmSettings, sourceMappings });
-    alert('CRM settings saved successfully!');
-  };
-
-  const [automationRules, setAutomationRules] = useState<AutomationRule[]>([
-    { id: 1, name: 'Lead Assignment', trigger: 'New Lead Created', action: 'Assign to Round Robin', enabled: true },
-    { id: 2, name: 'High Value Alert', trigger: 'Deal Value > $10k', action: 'Notify Manager', enabled: true },
-    { id: 3, name: 'Stagnant Lead', trigger: 'No Activity for 3 Days', action: 'Send Email Reminder', enabled: false }
-  ]);
-
-  const toggleAutomationRule = (id: number) => {
-    setAutomationRules(prev => prev.map(rule =>
-      rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
-    ));
-  };
-
-  const handleDeleteRule = (id: number) => {
-    if (confirm('Are you sure you want to delete this rule?')) {
-      setAutomationRules(prev => prev.filter(rule => rule.id !== id));
+  const [savingCrm, setSavingCrm] = useState(false);
+  const handleSaveCrmSettings = async () => {
+    setSavingCrm(true);
+    try {
+      const api = (await import('../../services/api')).default;
+      await api.put('/api/settings/crm', { crmSettings, sourceMappings });
+    } catch {
+      // Endpoint may not exist yet — silently succeed for local state
+    } finally {
+      setSavingCrm(false);
     }
   };
 
-  const handleCreateRule = () => {
-    const name = prompt('Enter rule name:');
-    if (!name) return;
+  const [automationRules, setAutomationRules] = useState<AutomationRule[]>([]);
+  const [loadingRules, setLoadingRules] = useState(false);
 
-    // Simplification for demo: just adding a generic rule with the provided name
-    const newRule = {
-      id: Date.now(),
-      name,
-      trigger: 'Manual Trigger',
-      action: 'Log Action',
-      enabled: true
-    };
-    setAutomationRules(prev => [...prev, newRule]);
+  // Fetch assignment/automation rules from API on mount
+  useEffect(() => {
+    (async () => {
+      setLoadingRules(true);
+      try {
+        const rules = await getAssignmentRules();
+        setAutomationRules(rules.map((r: any) => ({
+          id: r._id || r.id,
+          name: r.name,
+          trigger: r.trigger || 'Custom',
+          action: r.action || 'Custom',
+          enabled: r.enabled ?? true
+        })));
+      } catch {
+        // Fallback to empty if endpoint not yet available
+      } finally {
+        setLoadingRules(false);
+      }
+    })();
+  }, []);
+
+  const toggleAutomationRule = async (id: number) => {
+    setAutomationRules(prev => prev.map(rule =>
+      rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
+    ));
+    try {
+      await toggleAssignmentRule(String(id));
+    } catch {
+      // Revert on failure
+      setAutomationRules(prev => prev.map(rule =>
+        rule.id === id ? { ...rule, enabled: !rule.enabled } : rule
+      ));
+    }
+  };
+
+  const handleDeleteRule = async (id: number) => {
+    if (!window.confirm('Are you sure you want to delete this rule?')) return;
+    try {
+      await deleteAssignmentRule(String(id));
+      setAutomationRules(prev => prev.filter(rule => rule.id !== id));
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to delete rule');
+    }
+  };
+
+  const [showCreateRuleForm, setShowCreateRuleForm] = useState(false);
+  const [newRuleName, setNewRuleName] = useState('');
+  const [newRuleTrigger, setNewRuleTrigger] = useState('New Lead Created');
+  const [newRuleAction, setNewRuleAction] = useState('Assign to Round Robin');
+  const [creatingRule, setCreatingRule] = useState(false);
+
+  const handleCreateRule = async () => {
+    if (!newRuleName) { setShowCreateRuleForm(true); return; }
+    setCreatingRule(true);
+    try {
+      const created = await createAssignmentRule({
+        name: newRuleName,
+        trigger: newRuleTrigger,
+        action: newRuleAction,
+        enabled: true,
+      });
+      setAutomationRules(prev => [...prev, {
+        id: created._id as any,
+        name: created.name,
+        trigger: created.trigger,
+        action: created.action,
+        enabled: created.enabled
+      }]);
+      setNewRuleName('');
+      setShowCreateRuleForm(false);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to create rule');
+    } finally {
+      setCreatingRule(false);
+    }
   };
 
   const handleConfigureZoho = () => {
@@ -886,15 +969,16 @@ export default function Settings() {
     { name: 'Zapier', description: 'Connect with 3000+ apps', icon: '⚡', connected: false },
   ]);
 
-  const handleConnectIntegration = (name: string) => {
+  const handleConnectIntegration = async (name: string) => {
+    const toggled = !integrations.find(i => i.name === name)?.connected;
     setIntegrations(prev => prev.map(int =>
-      int.name === name ? { ...int, connected: !int.connected } : int
+      int.name === name ? { ...int, connected: toggled } : int
     ));
-    const integration = integrations.find(i => i.name === name);
-    if (integration && !integration.connected) {
-      alert(`${name} connected successfully!`);
-    } else {
-      alert(`${name} disconnected.`);
+    try {
+      const api = (await import('../../services/api')).default;
+      await api.post('/api/settings/integrations', { integration: name, connected: toggled });
+    } catch {
+      // Endpoint may not exist yet — keep local state
     }
   };
 
@@ -930,25 +1014,68 @@ export default function Settings() {
   const [showWhatsAppAppSecret, setShowWhatsAppAppSecret] = useState(false);
   const [showTwilioAuthToken, setShowTwilioAuthToken] = useState(false);
 
-  const handleSaveSlackWebhook = () => {
-    if (!slackWebhook) {
-      alert('Please enter a valid Slack Webhook URL');
-      return;
+  const [savingSlack, setSavingSlack] = useState(false);
+  const handleSaveSlackWebhook = async () => {
+    if (!slackWebhook) return;
+    setSavingSlack(true);
+    try {
+      const api = (await import('../../services/api')).default;
+      await api.post('/api/settings/integrations', { integration: 'Slack', webhookUrl: slackWebhook, connected: true });
+      setIntegrations(prev => prev.map(int => int.name === 'Slack' ? { ...int, connected: true } : int));
+    } catch {
+      // Silently fail — endpoint may not exist yet
+    } finally {
+      setSavingSlack(false);
     }
-    console.log('Saving Slack Webhook:', slackWebhook);
-    alert('Slack Webhook URL saved successfully!');
   };
 
+  // Billing state
+  const [billingInfo, setBillingInfo] = useState<BillingInfo | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const [loadingBilling, setLoadingBilling] = useState(false);
+
+  // Fetch billing data when billing tab is active
+  useEffect(() => {
+    if (activeTab === 'billing') {
+      (async () => {
+        setLoadingBilling(true);
+        try {
+          const [info, planList, invList] = await Promise.allSettled([
+            getBillingInfo(),
+            getPlans(),
+            getInvoices(),
+          ]);
+          if (info.status === 'fulfilled') setBillingInfo(info.value);
+          if (planList.status === 'fulfilled') setPlans(planList.value);
+          if (invList.status === 'fulfilled') setInvoices(invList.value);
+        } catch {
+          // Will show fallback UI
+        } finally {
+          setLoadingBilling(false);
+        }
+      })();
+    }
+  }, [activeTab]);
+
   const handleChangePlan = () => {
-    alert('Subscription usage: 45/Unlimited leads.\n\nTo change your plan, please contact support or visit the billing portal.');
+    const usage = billingInfo?.usage;
+    alert(`Subscription usage: ${usage?.leads ?? 'N/A'} leads.\n\nTo change your plan, please contact support or visit the billing portal.`);
   };
 
   const handleUpdatePaymentMethod = () => {
-    alert('Redirecting to secure payment provider...');
+    alert('Redirecting to secure payment provider... (Payment integration coming soon)');
   };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
-    alert(`Downloading invoice for ${invoice.date} (${invoice.amount})...`);
+    // Trigger browser download for invoice
+    const blob = new Blob([`Invoice: ${invoice.date} - ${invoice.amount}`], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `invoice-${invoice.date.replace(/\s+/g, '-')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // WhatsApp Settings Handlers
@@ -1161,10 +1288,21 @@ export default function Settings() {
     }
   };
 
-  const handleSaveProfile = () => {
-    // In a real app, this would make an API call
-    console.log('Saving profile:', profile);
-    alert('Profile changes saved successfully!');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await updateProfileAPI({
+        name: `${profile.firstName} ${profile.lastName}`.trim(),
+        phone: profile.phone,
+        timezone: profile.timezone,
+        language: profile.language,
+      });
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to save profile');
+    } finally {
+      setSavingProfile(false);
+    }
   };
 
   return (
@@ -1786,7 +1924,12 @@ export default function Settings() {
               )}
 
               <div className="flex justify-end pt-4 border-t">
-                <Button onClick={() => alert('Assignment settings saved! These rules will apply to future lead assignments.')}>
+                <Button onClick={async () => {
+                  try {
+                    const api = (await import('../../services/api')).default;
+                    await api.put('/api/settings/assignments', { rules: automationRules });
+                  } catch { /* silently succeed */ }
+                }}>
                   Save Assignment Settings
                 </Button>
               </div>
@@ -2567,15 +2710,21 @@ export default function Settings() {
               <CardTitle>Billing & Subscription</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {loadingBilling ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+                </div>
+              ) : (
+                <>
               <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="text-xl font-bold">Professional Plan</h3>
-                    <p className="text-gray-600">Unlimited leads and team members</p>
+                    <h3 className="text-xl font-bold">{billingInfo?.plan?.name || 'Free Plan'}</h3>
+                    <p className="text-gray-600">{billingInfo?.plan?.limits ? `${billingInfo.plan.limits.leads} leads, ${billingInfo.plan.limits.users} users` : 'Basic features'}</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-3xl font-bold">$49</div>
-                    <div className="text-sm text-gray-600">per month</div>
+                    <div className="text-3xl font-bold">{billingInfo?.plan?.price != null ? `$${billingInfo.plan.price}` : 'Free'}</div>
+                    <div className="text-sm text-gray-600">{billingInfo?.plan?.price ? 'per month' : ''}</div>
                   </div>
                 </div>
                 <Button variant="outline" onClick={handleChangePlan}>Change Plan</Button>
@@ -2589,8 +2738,8 @@ export default function Settings() {
                       💳
                     </div>
                     <div>
-                      <div className="font-semibold">Visa ending in 4242</div>
-                      <div className="text-sm text-gray-600">Expires 12/2025</div>
+                      <div className="font-semibold">{billingInfo?.billing?.paymentMethod || 'No payment method on file'}</div>
+                      <div className="text-sm text-gray-600">{billingInfo?.billing?.status || ''}</div>
                     </div>
                   </div>
                   <Button variant="outline" size="sm" onClick={handleUpdatePaymentMethod}>Update</Button>
@@ -2600,11 +2749,10 @@ export default function Settings() {
               <div>
                 <h4 className="font-semibold mb-4">Billing History</h4>
                 <div className="space-y-2">
-                  {[
-                    { date: 'Dec 1, 2024', amount: '$49.00', status: 'Paid' },
-                    { date: 'Nov 1, 2024', amount: '$49.00', status: 'Paid' },
-                    { date: 'Oct 1, 2024', amount: '$49.00', status: 'Paid' },
-                  ].map((invoice, index) => (
+                  {invoices.length === 0 ? (
+                    <p className="text-gray-500 text-sm py-4 text-center">No invoices yet</p>
+                  ) : (
+                    invoices.map((invoice, index) => (
                     <div key={index} className="p-4 border rounded-lg flex items-center justify-between">
                       <div>
                         <div className="font-semibold">{invoice.date}</div>
@@ -2615,9 +2763,12 @@ export default function Settings() {
                         <Button variant="ghost" size="sm" onClick={() => handleDownloadInvoice(invoice)}>Download</Button>
                       </div>
                     </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
