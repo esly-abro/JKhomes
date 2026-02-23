@@ -1,58 +1,109 @@
 /**
- * WhatsApp Business API Service
- * Integrates with Meta's WhatsApp Business Cloud API
- * Supports dynamic credentials from database (Settings model) with fallback to env vars
+ * WhatsApp Business API Service — Provider Router
+ * 
+ * Routes WhatsApp operations to the correct provider (Meta or Twilio)
+ * based on the tenant's Organization.whatsapp.provider setting.
+ * 
+ * SaaS-ready: each tenant chooses Meta or Twilio independently.
  */
 
 const axios = require('axios');
 const Settings = require('../models/settings.model');
 const Organization = require('../models/organization.model');
 
-// Meta WhatsApp API Configuration
+// Sub-providers
+const twilioWhatsapp = require('./whatsapp.twilio.service');
+
+// ==========================================
+// META PROVIDER CONFIGURATION
+// ==========================================
+
 const WHATSAPP_API_VERSION = 'v18.0';
 const WHATSAPP_API_BASE = `https://graph.facebook.com/${WHATSAPP_API_VERSION}`;
 
-// Get credentials from environment (fallback)
-const getAccessToken = () => {
-  return process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN;
-};
+const getAccessToken = () => process.env.WHATSAPP_ACCESS_TOKEN || process.env.META_ACCESS_TOKEN;
+const getPhoneNumberId = () => process.env.WHATSAPP_PHONE_NUMBER_ID;
+const getBusinessAccountId = () => process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
 
-const getPhoneNumberId = () => {
-  return process.env.WHATSAPP_PHONE_NUMBER_ID;
-};
+// ==========================================
+// PROVIDER RESOLUTION
+// ==========================================
 
-const getBusinessAccountId = () => {
-  return process.env.WHATSAPP_BUSINESS_ACCOUNT_ID;
-};
+const mongoose = require('mongoose');
+
+/**
+ * Determine which WhatsApp provider a tenant uses
+ * @param {string} userId - User ID for database lookup
+ * @returns {Promise<'meta'|'twilio'>}
+ */
+async function resolveProvider(userId) {
+  if (userId) {
+    try {
+      // Build owner query that matches both String and ObjectId stored values
+      const ownerQuery = mongoose.Types.ObjectId.isValid(userId)
+        ? { $in: [userId, new mongoose.Types.ObjectId(userId)] }
+        : userId;
+
+      // Priority 1: org with connected whatsapp (most reliable)
+      let org = await Organization.findOne({ ownerId: ownerQuery, 'whatsapp.isConnected': true });
+      if (org?.whatsapp?.provider) {
+        console.log(`📱 Resolved provider: ${org.whatsapp.provider} (org: ${org._id}, connected)`);
+        return org.whatsapp.provider;
+      }
+      // Priority 2: org with provider explicitly set to 'twilio'
+      org = await Organization.findOne({ ownerId: ownerQuery, 'whatsapp.provider': 'twilio' });
+      if (org) {
+        console.log(`📱 Resolved provider: twilio (org: ${org._id}, explicit)`);
+        return 'twilio';
+      }
+      // Priority 3: any org for this owner
+      org = await Organization.findOne({ ownerId: ownerQuery });
+      if (org?.whatsapp?.provider) {
+        console.log(`📱 Resolved provider: ${org.whatsapp.provider} (org: ${org._id}, fallback)`);
+        return org.whatsapp.provider;
+      }
+    } catch (e) {
+      console.error('resolveProvider error:', e.message);
+    }
+  }
+
+  // Check env fallback
+  if (process.env.WHATSAPP_PROVIDER === 'twilio') return 'twilio';
+
+  // Default to meta if Meta tokens exist, otherwise twilio
+  if (getAccessToken() && getPhoneNumberId()) return 'meta';
+  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN) return 'twilio';
+
+  return 'meta';
+}
+
+// ==========================================
+// META CREDENTIAL RESOLUTION
+// ==========================================
 
 /**
  * Get user's WhatsApp settings from database
  */
 async function getUserWhatsappSettings(userId) {
   const settings = await Settings.findOne({ userId });
-  
-  if (!settings || !settings.whatsapp || !settings.whatsapp.enabled) {
-    return null;
-  }
-  
+  if (!settings || !settings.whatsapp || !settings.whatsapp.enabled) return null;
   return settings.whatsapp;
 }
 
 /**
- * Get WhatsApp credentials - tries database first, then falls back to env vars
+ * Get Meta WhatsApp credentials
  * Checks: Settings model → Organization model → env vars
  * @param {string} userId - User ID for database lookup (optional)
  * @param {string} organizationId - Organization ID for multi-tenant lookup (optional)
  * @returns {Object} - { accessToken, phoneNumberId, businessAccountId }
  */
-async function getCredentials(userId, organizationId = null) {
-  // Try to get credentials from Settings model first
+async function getMetaCredentials(userId, organizationId = null) {
+  // Try Settings model first
   if (userId) {
     try {
       const settings = await Settings.findOne({ userId });
-      
       if (settings?.whatsapp?.enabled && settings?.whatsapp?.accessToken && settings?.whatsapp?.phoneNumberId) {
-        console.log('📱 Using WhatsApp credentials from Settings for user:', userId);
+        console.log('📱 Using Meta WhatsApp credentials from Settings for user:', userId);
         return {
           accessToken: settings.whatsapp.accessToken,
           phoneNumberId: settings.whatsapp.phoneNumberId,
@@ -64,7 +115,7 @@ async function getCredentials(userId, organizationId = null) {
     }
   }
 
-  // Try to get credentials from Organization model (encrypted, auto-decrypted via getters)
+  // Try Organization model
   try {
     let org = null;
     if (organizationId) {
@@ -74,18 +125,14 @@ async function getCredentials(userId, organizationId = null) {
     if (!org && userId) {
       org = await Organization.findOne({ ownerId: userId, 'whatsapp.enabled': true });
     }
-    
     if (org?.whatsapp?.phoneNumberId) {
-      // Access accessToken in a try/catch since decryption may fail if encryption key changed
       let token;
-      try {
-        token = org.whatsapp.accessToken;
-      } catch (decryptErr) {
+      try { token = org.whatsapp.accessToken; } catch (decryptErr) {
         console.warn('⚠️ Could not decrypt Organization WhatsApp token, falling back to env vars');
         token = null;
       }
       if (token) {
-        console.log('📱 Using WhatsApp credentials from Organization:', org.name);
+        console.log('📱 Using Meta WhatsApp credentials from Organization:', org.name);
         return {
           accessToken: token,
           phoneNumberId: org.whatsapp.phoneNumberId,
@@ -96,9 +143,9 @@ async function getCredentials(userId, organizationId = null) {
   } catch (error) {
     console.warn('Could not fetch WhatsApp settings from Organization model:', error.message);
   }
-  
+
   // Fallback to environment variables
-  console.log('📱 Using WhatsApp credentials from environment variables');
+  console.log('📱 Using Meta WhatsApp credentials from environment variables');
   return {
     accessToken: getAccessToken(),
     phoneNumberId: getPhoneNumberId(),
@@ -107,402 +154,262 @@ async function getCredentials(userId, organizationId = null) {
 }
 
 /**
- * Fetch all available WhatsApp message templates
- * @param {string} userId - User ID for dynamic credential lookup (optional)
- * @param {string} accessToken - Direct access token (optional, overrides lookup)
+ * Get WhatsApp credentials — routes to correct provider
+ * Backward-compatible: callers don't need to know the provider
  */
-async function getTemplates(userId = null, accessToken = null) {
-  try {
-    // Get credentials - use provided token, or lookup dynamically, or fall back to env
-    let token, businessAccountId, phoneNumberId;
-    
-    if (accessToken) {
-      token = accessToken;
-      businessAccountId = getBusinessAccountId();
-      phoneNumberId = getPhoneNumberId();
-    } else {
-      const creds = await getCredentials(userId);
-      token = creds.accessToken;
-      businessAccountId = creds.businessAccountId;
-      phoneNumberId = creds.phoneNumberId;
-    }
-    
-    if (!token) {
-      throw new Error('WhatsApp access token not configured. Please add your WhatsApp API credentials in Settings.');
-    }
-
-    if (!businessAccountId) {
-      // Try to get templates using phone number ID instead
-      if (!phoneNumberId) {
-        throw new Error('WhatsApp Business Account ID or Phone Number ID not configured. Please add credentials in Settings.');
-      }
-      
-      // First get the WABA ID from phone number
-      const phoneResponse = await axios.get(
-        `${WHATSAPP_API_BASE}/${phoneNumberId}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { fields: 'id,display_phone_number,verified_name' }
-        }
-      );
-      
-      console.log('Phone info:', phoneResponse.data);
-    }
-
-    const response = await axios.get(
-      `${WHATSAPP_API_BASE}/${businessAccountId}/message_templates`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        },
-        params: {
-          limit: 100
-        }
-      }
-    );
-
-    const templates = response.data.data || [];
-    
-    // Parse templates to extract useful info
-    return templates.map(template => ({
-      id: template.id,
-      name: template.name,
-      status: template.status,
-      category: template.category,
-      language: template.language,
-      components: template.components || [],
-      // Extract buttons/quick replies for condition branching
-      buttons: extractButtons(template.components),
-    }));
-  } catch (error) {
-    console.error('Error fetching WhatsApp templates:', error.response?.data || error.message);
-    throw error;
+async function getCredentials(userId) {
+  const provider = await resolveProvider(userId);
+  if (provider === 'twilio') {
+    return twilioWhatsapp.getCredentials(userId);
   }
+  return getMetaCredentials(userId);
 }
 
+// ==========================================
+// META IMPLEMENTATIONS
+// ==========================================
+
 /**
- * Extract buttons from template components
+ * Extract buttons from Meta template components
  */
 function extractButtons(components) {
   if (!components) return [];
-  
   const buttons = [];
-  
   for (const component of components) {
     if (component.type === 'BUTTONS') {
       for (const button of component.buttons || []) {
         buttons.push({
           type: button.type,
           text: button.text,
-          // For URL buttons
           url: button.url,
-          // For phone buttons  
           phone_number: button.phone_number,
-          // For quick reply buttons
-          payload: button.text // Use text as payload for quick replies
+          payload: button.text
         });
       }
     }
   }
-  
   return buttons;
 }
 
 /**
+ * Format phone number for Meta API (no + prefix)
+ */
+function formatMetaPhone(phoneNumber) {
+  let formatted = phoneNumber.replace(/[\s\-\(\)]/g, '');
+  if (!formatted.startsWith('+')) {
+    if (!formatted.startsWith('91')) {
+      formatted = '91' + formatted;
+    }
+  } else {
+    formatted = formatted.substring(1);
+  }
+  return formatted;
+}
+
+/**
+ * [META] Fetch all available WhatsApp message templates
+ */
+async function metaGetTemplates(userId = null, accessToken = null) {
+  let token, businessAccountId, phoneNumberId;
+  if (accessToken) {
+    token = accessToken;
+    businessAccountId = getBusinessAccountId();
+    phoneNumberId = getPhoneNumberId();
+  } else {
+    const creds = await getMetaCredentials(userId);
+    token = creds.accessToken;
+    businessAccountId = creds.businessAccountId;
+    phoneNumberId = creds.phoneNumberId;
+  }
+
+  if (!token) throw new Error('WhatsApp access token not configured. Please add your WhatsApp API credentials in Settings.');
+  if (!businessAccountId) {
+    if (!phoneNumberId) throw new Error('WhatsApp Business Account ID or Phone Number ID not configured.');
+    // Try to get WABA ID from phone number
+    const phoneResponse = await axios.get(`${WHATSAPP_API_BASE}/${phoneNumberId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { fields: 'id,display_phone_number,verified_name' }
+    });
+    console.log('Phone info:', phoneResponse.data);
+  }
+
+  const response = await axios.get(`${WHATSAPP_API_BASE}/${businessAccountId}/message_templates`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { limit: 100 }
+  });
+
+  return (response.data.data || []).map(template => ({
+    id: template.id,
+    name: template.name,
+    status: template.status,
+    category: template.category,
+    language: template.language,
+    components: template.components || [],
+    buttons: extractButtons(template.components),
+  }));
+}
+
+/**
+ * [META] Send a template message
+ */
+async function metaSendTemplate(phoneNumber, templateName, languageCode = 'en', components = [], userId = null, accessToken = null) {
+  let token, phoneNumberId;
+  if (accessToken) { token = accessToken; phoneNumberId = getPhoneNumberId(); }
+  else { const creds = await getMetaCredentials(userId); token = creds.accessToken; phoneNumberId = creds.phoneNumberId; }
+  if (!token || !phoneNumberId) throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
+
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: formatMetaPhone(phoneNumber),
+    type: 'template',
+    template: { name: templateName, language: { code: languageCode } }
+  };
+  if (components && components.length > 0) payload.template.components = components;
+
+  const response = await axios.post(`${WHATSAPP_API_BASE}/${phoneNumberId}/messages`, payload, {
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  });
+
+  console.log('WhatsApp template message sent:', response.data);
+  return { success: true, messageId: response.data.messages?.[0]?.id, contacts: response.data.contacts, provider: 'meta' };
+}
+
+/**
+ * [META] Send a text message
+ */
+async function metaSendText(phoneNumber, message, userId = null, accessToken = null) {
+  let token, phoneNumberId;
+  if (accessToken) { token = accessToken; phoneNumberId = getPhoneNumberId(); }
+  else { const creds = await getMetaCredentials(userId); token = creds.accessToken; phoneNumberId = creds.phoneNumberId; }
+  if (!token || !phoneNumberId) throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
+
+  const response = await axios.post(`${WHATSAPP_API_BASE}/${phoneNumberId}/messages`, {
+    messaging_product: 'whatsapp', to: formatMetaPhone(phoneNumber), type: 'text', text: { body: message }
+  }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+
+  return { success: true, messageId: response.data.messages?.[0]?.id, provider: 'meta' };
+}
+
+/**
+ * [META] Send interactive message with buttons
+ */
+async function metaSendInteractive(phoneNumber, bodyText, buttons, userId = null, accessToken = null) {
+  let token, phoneNumberId;
+  if (accessToken) { token = accessToken; phoneNumberId = getPhoneNumberId(); }
+  else { const creds = await getMetaCredentials(userId); token = creds.accessToken; phoneNumberId = creds.phoneNumberId; }
+  if (!token || !phoneNumberId) throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
+
+  const response = await axios.post(`${WHATSAPP_API_BASE}/${phoneNumberId}/messages`, {
+    messaging_product: 'whatsapp', to: formatMetaPhone(phoneNumber), type: 'interactive',
+    interactive: {
+      type: 'button', body: { text: bodyText },
+      action: { buttons: buttons.slice(0, 3).map((btn, idx) => ({ type: 'reply', reply: { id: `btn_${idx}`, title: btn.text.substring(0, 20) } })) }
+    }
+  }, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+
+  return { success: true, messageId: response.data.messages?.[0]?.id, provider: 'meta' };
+}
+
+/**
+ * [META] Check if credentials are configured
+ */
+async function metaCheckCredentials(userId = null) {
+  try {
+    const creds = await getMetaCredentials(userId);
+    if (creds.accessToken && creds.phoneNumberId) {
+      return { configured: true, source: userId ? 'database' : 'environment', needsSetup: false, provider: 'meta' };
+    }
+    return { configured: false, source: null, needsSetup: true, provider: 'meta', message: 'Meta WhatsApp credentials not configured. Go to Settings > API Settings to add your Meta WhatsApp API credentials.' };
+  } catch (error) {
+    return { configured: false, source: null, needsSetup: true, provider: 'meta', message: error.message };
+  }
+}
+
+/**
+ * [META] Validate credentials by making a test API call
+ */
+async function metaValidateCredentials(userId = null) {
+  try {
+    const creds = await getMetaCredentials(userId);
+    if (!creds.accessToken || !creds.phoneNumberId) return { valid: false, error: 'Missing access token or phone number ID' };
+
+    const response = await axios.get(`${WHATSAPP_API_BASE}/${creds.phoneNumberId}`, {
+      headers: { Authorization: `Bearer ${creds.accessToken}` },
+      params: { fields: 'id,display_phone_number,verified_name,quality_rating' }
+    });
+
+    return { valid: true, phoneNumber: response.data.display_phone_number, verifiedName: response.data.verified_name, qualityRating: response.data.quality_rating, provider: 'meta' };
+  } catch (error) {
+    return { valid: false, error: error.response?.data?.error?.message || error.message, provider: 'meta' };
+  }
+}
+
+// ==========================================
+// PUBLIC API — Routes to correct provider
+// ==========================================
+
+/**
+ * Fetch all available WhatsApp message templates
+ * Routes to Meta or Twilio based on tenant's provider setting
+ */
+async function getTemplates(userId = null, accessToken = null) {
+  const provider = await resolveProvider(userId);
+  console.log(`📱 WhatsApp getTemplates via ${provider}`);
+  if (provider === 'twilio') return twilioWhatsapp.getTemplates(userId);
+  return metaGetTemplates(userId, accessToken);
+}
+
+/**
  * Send a template message via WhatsApp
- * @param {string} phoneNumber - Recipient phone number
- * @param {string} templateName - Template name to send
- * @param {string} languageCode - Language code (default: 'en')
- * @param {Array} components - Template components/variables
- * @param {string} userId - User ID for dynamic credential lookup (optional)
- * @param {string} accessToken - Direct access token (optional, overrides lookup)
+ * Routes to Meta or Twilio based on tenant's provider setting
  */
 async function sendTemplateMessage(phoneNumber, templateName, languageCode = 'en', components = [], userId = null, accessToken = null) {
-  try {
-    // Get credentials - use provided token, or lookup dynamically, or fall back to env
-    let token, phoneNumberId;
-    
-    if (accessToken) {
-      token = accessToken;
-      phoneNumberId = getPhoneNumberId();
-    } else {
-      const creds = await getCredentials(userId);
-      token = creds.accessToken;
-      phoneNumberId = creds.phoneNumberId;
-    }
-    
-    if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
-    }
-
-    // Format phone number (remove spaces, add country code if needed)
-    let formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.startsWith('91')) {
-        formattedPhone = formattedPhone;
-      } else {
-        formattedPhone = '91' + formattedPhone;
-      }
-    } else {
-      formattedPhone = formattedPhone.substring(1); // Remove + for API
-    }
-
-    const payload = {
-      messaging_product: 'whatsapp',
-      to: formattedPhone,
-      type: 'template',
-      template: {
-        name: templateName,
-        language: {
-          code: languageCode
-        }
-      }
-    };
-
-    // Add components if provided (for variables, headers, buttons)
-    if (components && components.length > 0) {
-      payload.template.components = components;
-    }
-
-    const response = await axios.post(
-      `${WHATSAPP_API_BASE}/${phoneNumberId}/messages`,
-      payload,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    console.log('WhatsApp template message sent:', response.data);
-    
-    return {
-      success: true,
-      messageId: response.data.messages?.[0]?.id,
-      contacts: response.data.contacts
-    };
-  } catch (error) {
-    console.error('Error sending WhatsApp template:', error.response?.data || error.message);
-    throw error;
-  }
+  const provider = await resolveProvider(userId);
+  console.log(`📱 WhatsApp sendTemplate via ${provider}`);
+  if (provider === 'twilio') return twilioWhatsapp.sendTemplateMessage(phoneNumber, templateName, languageCode, components, userId);
+  return metaSendTemplate(phoneNumber, templateName, languageCode, components, userId, accessToken);
 }
 
 /**
  * Send a text message via WhatsApp
- * @param {string} phoneNumber - Recipient phone number
- * @param {string} message - Message text to send
- * @param {string} userId - User ID for dynamic credential lookup (optional)
- * @param {string} accessToken - Direct access token (optional, overrides lookup)
+ * Routes to Meta or Twilio based on tenant's provider setting
  */
 async function sendTextMessage(phoneNumber, message, userId = null, accessToken = null) {
-  try {
-    // Get credentials - use provided token, or lookup dynamically, or fall back to env
-    let token, phoneNumberId;
-    
-    if (accessToken) {
-      token = accessToken;
-      phoneNumberId = getPhoneNumberId();
-    } else {
-      const creds = await getCredentials(userId);
-      token = creds.accessToken;
-      phoneNumberId = creds.phoneNumberId;
-    }
-    
-    if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
-    }
-
-    // Format phone number
-    let formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.startsWith('91')) {
-        formattedPhone = formattedPhone;
-      } else {
-        formattedPhone = '91' + formattedPhone;
-      }
-    } else {
-      formattedPhone = formattedPhone.substring(1);
-    }
-
-    const response = await axios.post(
-      `${WHATSAPP_API_BASE}/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to: formattedPhone,
-        type: 'text',
-        text: {
-          body: message
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    return {
-      success: true,
-      messageId: response.data.messages?.[0]?.id
-    };
-  } catch (error) {
-    console.error('Error sending WhatsApp text:', error.response?.data || error.message);
-    throw error;
-  }
+  const provider = await resolveProvider(userId);
+  console.log(`📱 WhatsApp sendText via ${provider}`);
+  if (provider === 'twilio') return twilioWhatsapp.sendTextMessage(phoneNumber, message, userId);
+  return metaSendText(phoneNumber, message, userId, accessToken);
 }
 
 /**
  * Send interactive message with buttons
- * @param {string} phoneNumber - Recipient phone number
- * @param {string} bodyText - Message body text
- * @param {Array} buttons - Array of button objects
- * @param {string} userId - User ID for dynamic credential lookup (optional)
- * @param {string} accessToken - Direct access token (optional, overrides lookup)
+ * Routes to Meta or Twilio based on tenant's provider setting
  */
 async function sendInteractiveMessage(phoneNumber, bodyText, buttons, userId = null, accessToken = null) {
-  try {
-    // Get credentials - use provided token, or lookup dynamically, or fall back to env
-    let token, phoneNumberId;
-    
-    if (accessToken) {
-      token = accessToken;
-      phoneNumberId = getPhoneNumberId();
-    } else {
-      const creds = await getCredentials(userId);
-      token = creds.accessToken;
-      phoneNumberId = creds.phoneNumberId;
-    }
-    
-    if (!token || !phoneNumberId) {
-      throw new Error('WhatsApp credentials not configured. Please add your WhatsApp API credentials in Settings.');
-    }
-
-    // Format phone number
-    let formattedPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
-    if (!formattedPhone.startsWith('+')) {
-      if (formattedPhone.startsWith('91')) {
-        formattedPhone = formattedPhone;
-      } else {
-        formattedPhone = '91' + formattedPhone;
-      }
-    } else {
-      formattedPhone = formattedPhone.substring(1);
-    }
-
-    const response = await axios.post(
-      `${WHATSAPP_API_BASE}/${phoneNumberId}/messages`,
-      {
-        messaging_product: 'whatsapp',
-        to: formattedPhone,
-        type: 'interactive',
-        interactive: {
-          type: 'button',
-          body: {
-            text: bodyText
-          },
-          action: {
-            buttons: buttons.slice(0, 3).map((btn, idx) => ({
-              type: 'reply',
-              reply: {
-                id: `btn_${idx}`,
-                title: btn.text.substring(0, 20) // Max 20 chars
-              }
-            }))
-          }
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    return {
-      success: true,
-      messageId: response.data.messages?.[0]?.id
-    };
-  } catch (error) {
-    console.error('Error sending WhatsApp interactive:', error.response?.data || error.message);
-    throw error;
-  }
+  const provider = await resolveProvider(userId);
+  console.log(`📱 WhatsApp sendInteractive via ${provider}`);
+  if (provider === 'twilio') return twilioWhatsapp.sendInteractiveMessage(phoneNumber, bodyText, buttons, userId);
+  return metaSendInteractive(phoneNumber, bodyText, buttons, userId, accessToken);
 }
 
 /**
  * Check if WhatsApp credentials are configured
- * Used by automation to skip nodes gracefully if not set up
- * @param {string} userId - User ID for dynamic credential lookup
- * @returns {Object} - { configured: boolean, source: string, needsSetup: boolean }
+ * Routes to Meta or Twilio based on tenant's provider setting
  */
 async function checkCredentialsConfigured(userId = null) {
-  try {
-    const creds = await getCredentials(userId);
-    
-    if (creds.accessToken && creds.phoneNumberId) {
-      return {
-        configured: true,
-        source: userId ? 'database' : 'environment',
-        needsSetup: false
-      };
-    }
-    
-    return {
-      configured: false,
-      source: null,
-      needsSetup: true,
-      message: 'WhatsApp credentials not configured. Go to Settings > API Settings to add your Meta WhatsApp API credentials.'
-    };
-  } catch (error) {
-    return {
-      configured: false,
-      source: null,
-      needsSetup: true,
-      message: error.message
-    };
-  }
+  const provider = await resolveProvider(userId);
+  if (provider === 'twilio') return twilioWhatsapp.checkCredentialsConfigured(userId);
+  return metaCheckCredentials(userId);
 }
 
 /**
  * Validate WhatsApp credentials by making a test API call
- * @param {string} userId - User ID for dynamic credential lookup
- * @returns {Object} - { valid: boolean, error?: string, phoneNumber?: string }
+ * Routes to Meta or Twilio based on tenant's provider setting
  */
 async function validateCredentials(userId = null) {
-  try {
-    const creds = await getCredentials(userId);
-    
-    if (!creds.accessToken || !creds.phoneNumberId) {
-      return {
-        valid: false,
-        error: 'Missing access token or phone number ID'
-      };
-    }
-
-    // Make a test call to verify credentials
-    const response = await axios.get(
-      `${WHATSAPP_API_BASE}/${creds.phoneNumberId}`,
-      {
-        headers: { Authorization: `Bearer ${creds.accessToken}` },
-        params: { fields: 'id,display_phone_number,verified_name,quality_rating' }
-      }
-    );
-
-    return {
-      valid: true,
-      phoneNumber: response.data.display_phone_number,
-      verifiedName: response.data.verified_name,
-      qualityRating: response.data.quality_rating
-    };
-  } catch (error) {
-    const errorMessage = error.response?.data?.error?.message || error.message;
-    return {
-      valid: false,
-      error: errorMessage
-    };
-  }
+  const provider = await resolveProvider(userId);
+  if (provider === 'twilio') return twilioWhatsapp.validateCredentials(userId);
+  return metaValidateCredentials(userId);
 }
 
 module.exports = {
@@ -514,5 +421,6 @@ module.exports = {
   getCredentials,
   getUserWhatsappSettings,
   checkCredentialsConfigured,
-  validateCredentials
+  validateCredentials,
+  resolveProvider
 };

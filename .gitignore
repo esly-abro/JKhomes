@@ -111,3 +111,10 @@ ecosystem.config.cjs
 # Extra docs not needed in repo
 README-QUICK-START.md
 app-backend/PRODUCTION_CONFIG.md
+
+# SSH keys
+Pulsar1.pem
+*.pem
+
+# Test scripts
+app-backend/test-resolve.js

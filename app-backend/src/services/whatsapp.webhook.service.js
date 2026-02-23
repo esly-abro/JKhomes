@@ -409,6 +409,81 @@ async function processTimeouts() {
   }
 }
 
+/**
+ * Parse incoming Twilio WhatsApp webhook
+ * Twilio sends a simpler x-www-form-urlencoded payload
+ * 
+ * For quick-reply template responses, Twilio sends the button text as Body.
+ * For numbered replies (sandbox), it sends "1", "2", "3" etc.
+ * @param {object} body - Parsed form body from Twilio
+ * @returns {object[]} - Array of parsed messages (same format as Meta parser)
+ */
+function parseTwilioWebhook(body) {
+  const messages = [];
+
+  // Twilio sends: From, Body, MessageSid, NumMedia, ProfileName, etc.
+  if (!body.From || !body.From.startsWith('whatsapp:')) return messages;
+
+  const from = body.From.replace('whatsapp:', '');
+  const messageBody = body.Body || '';
+  const messageSid = body.MessageSid || '';
+
+  // Determine if this is a button/quick-reply response
+  // Twilio quick-reply buttons send the button text as Body
+  // Check for numbered replies (sandbox: "1", "2", "3") or
+  // ButtonText header (Twilio content templates send this)
+  const isNumberedReply = /^[1-9]$/.test(messageBody.trim());
+  const buttonText = body.ButtonText || (isNumberedReply ? messageBody.trim() : null);
+  
+  // Treat as button response if: numbered reply OR short text that looks like a button click
+  const isButtonResponse = isNumberedReply || !!body.ButtonText;
+
+  messages.push({
+    messageId: messageSid,
+    from: from,
+    timestamp: Math.floor(Date.now() / 1000).toString(),
+    type: isButtonResponse ? 'button' : 'text',
+    contactName: body.ProfileName || null,
+    contactWaId: from,
+    value: messageBody,
+    text: messageBody,
+    // buttonPayload: the actual button text (for matching against expected responses)
+    buttonPayload: isButtonResponse ? messageBody : undefined,
+    buttonText: messageBody,
+    provider: 'twilio',
+    raw: body
+  });
+
+  return messages;
+}
+
+/**
+ * Handle Twilio WhatsApp webhook
+ * @param {object} body - Request body from Twilio
+ * @returns {object} - Processing result
+ */
+async function handleTwilioWebhook(body) {
+  try {
+    const messages = parseTwilioWebhook(body);
+    if (messages.length === 0) {
+      console.log('📭 No WhatsApp messages in Twilio webhook payload');
+      return { success: true, processed: 0 };
+    }
+
+    console.log(`📬 Processing ${messages.length} Twilio WhatsApp messages`);
+    const results = [];
+    for (const message of messages) {
+      const result = await processIncomingMessage(message);
+      results.push(result);
+    }
+
+    return { success: true, processed: messages.length, results };
+  } catch (error) {
+    console.error('❌ Error handling Twilio webhook:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   verifySignature,
   verifyWebhookChallenge,
@@ -417,5 +492,8 @@ module.exports = {
   handleWebhook,
   processTimeouts,
   findLeadByPhone,
-  getVerifyToken
+  getVerifyToken,
+  // Twilio WhatsApp
+  parseTwilioWebhook,
+  handleTwilioWebhook
 };

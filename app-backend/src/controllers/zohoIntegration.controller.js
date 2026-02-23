@@ -146,12 +146,13 @@ async function saveZohoConfig(request, reply) {
  */
 async function testZohoConnection(request, reply) {
     try {
-        const userId = request.user.id;
+        const userId = request.user.id || request.user._id;
         
         // Allow testing with provided credentials or saved credentials
         let { clientId, clientSecret, refreshToken, dataCenter } = request.body || {};
         
         let org = await Organization.findByUser(userId);
+        console.log('[testZohoConnection] userId:', userId, '- Found org:', org ? { id: org._id, name: org.name, isZohoConfigured: org.isZohoConfigured() } : 'null');
         
         // If credentials provided, use them; otherwise use saved ones
         if (!clientId && org?.zohoCrm) {
@@ -159,6 +160,21 @@ async function testZohoConnection(request, reply) {
             clientSecret = org.zohoCrm.clientSecret;
             refreshToken = org.zohoCrm.refreshToken;
             dataCenter = getDataCenterCode(org.zohoCrm.apiDomain);
+        }
+
+        // Also try env vars as final fallback
+        if (!clientId || !clientSecret || !refreshToken) {
+            const envClientId = process.env.ZOHO_CLIENT_ID;
+            const envClientSecret = process.env.ZOHO_CLIENT_SECRET;
+            const envRefreshToken = process.env.ZOHO_REFRESH_TOKEN;
+            if (envClientId && envClientSecret && envRefreshToken && 
+                envClientId !== 'your_zoho_client_id') {
+                console.log('[testZohoConnection] Using env fallback credentials');
+                clientId = clientId || envClientId;
+                clientSecret = clientSecret || envClientSecret;
+                refreshToken = refreshToken || envRefreshToken;
+                dataCenter = dataCenter || 'in';
+            }
         }
 
         if (!clientId || !clientSecret || !refreshToken) {
@@ -202,19 +218,47 @@ async function testZohoConnection(request, reply) {
 
         const accessToken = tokenResponse.data.access_token;
         const expiresIn = tokenResponse.data.expires_in || 3600;
+        const grantedScopes = tokenResponse.data.scope || '';
 
-        // Test API access by fetching organization info
-        const orgResponse = await axios.get(
-            `${dcInfo.apiDomain}/crm/v2/org`,
-            {
-                headers: {
-                    'Authorization': `Zoho-oauthtoken ${accessToken}`
-                },
-                timeout: 10000
+        // Test API access — try /org first, fall back to /Leads if scope is limited
+        let zohoOrg = {};
+        let leadsCount = null;
+        let scopeWarning = null;
+
+        try {
+            const orgResponse = await axios.get(
+                `${dcInfo.apiDomain}/crm/v2/org`,
+                {
+                    headers: {
+                        'Authorization': `Zoho-oauthtoken ${accessToken}`
+                    },
+                    timeout: 10000
+                }
+            );
+            zohoOrg = orgResponse.data.org?.[0] || {};
+        } catch (orgError) {
+            // If org endpoint fails (scope mismatch), try Leads as fallback
+            const isScope = orgError.response?.data?.code === 'OAUTH_SCOPE_MISMATCH';
+            if (isScope) {
+                console.log('Zoho /org scope mismatch — falling back to /Leads test');
+                scopeWarning = 'Limited scopes: org info unavailable. Lead sync will still work.';
+                try {
+                    const leadsResponse = await axios.get(
+                        `${dcInfo.apiDomain}/crm/v2/Leads`,
+                        {
+                            headers: { 'Authorization': `Zoho-oauthtoken ${accessToken}` },
+                            params: { per_page: 1 },
+                            timeout: 10000
+                        }
+                    );
+                    leadsCount = leadsResponse.data?.info?.count || (leadsResponse.data?.data?.length || 0);
+                } catch (leadsError) {
+                    throw new Error(`Zoho API access failed for both /org and /Leads: ${leadsError.response?.data?.message || leadsError.message}`);
+                }
+            } else {
+                throw orgError;
             }
-        );
-
-        const zohoOrg = orgResponse.data.org?.[0] || {};
+        }
 
         // Update organization with successful connection
         if (org) {
@@ -226,16 +270,26 @@ async function testZohoConnection(request, reply) {
             await org.save();
         }
 
+        const responseData = {
+            organizationName: zohoOrg.company_name || null,
+            country: zohoOrg.country || null,
+            currency: zohoOrg.currency_symbol || null,
+            timeZone: zohoOrg.time_zone || null,
+            licenseType: zohoOrg.license_details?.edition || null,
+            grantedScopes: grantedScopes
+        };
+
+        if (leadsCount !== null) {
+            responseData.leadsAvailable = leadsCount;
+        }
+
         return reply.send({
             success: true,
-            message: 'Successfully connected to Zoho CRM!',
-            data: {
-                organizationName: zohoOrg.company_name,
-                country: zohoOrg.country,
-                currency: zohoOrg.currency_symbol,
-                timeZone: zohoOrg.time_zone,
-                licenseType: zohoOrg.license_details?.edition
-            }
+            message: scopeWarning 
+                ? `Connected to Zoho CRM! (${scopeWarning})` 
+                : 'Successfully connected to Zoho CRM!',
+            warning: scopeWarning || undefined,
+            data: responseData
         });
     } catch (error) {
         console.error('Zoho connection test failed:', error);

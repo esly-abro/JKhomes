@@ -37,7 +37,7 @@ async function start() {
             
             // Start workflow engine for automation processing
             logger.info('⚙️  Starting Workflow Engine...');
-            workflowEngine.start(10000); // Process jobs every 10 seconds
+            await workflowEngine.start(10000); // Process jobs every 10 seconds
         } else {
             logger.warn('⚠️  MONGODB_URI not set - using in-memory storage');
             logger.warn('   Set MONGODB_URI in .env for persistent storage');

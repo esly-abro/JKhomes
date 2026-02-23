@@ -30,14 +30,19 @@ function encrypt(text) {
  */
 function decrypt(text) {
     if (!text || !text.includes(':')) return text;
-    const parts = text.split(':');
-    const iv = Buffer.from(parts[0], 'hex');
-    const encryptedText = parts[1];
-    const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    try {
+        const parts = text.split(':');
+        const iv = Buffer.from(parts[0], 'hex');
+        const encryptedText = parts[1];
+        const key = crypto.scryptSync(ENCRYPTION_KEY, 'salt', 32);
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (error) {
+        console.warn('⚠️ Decryption failed for a field, returning masked placeholder');
+        return '';
+    }
 }
 
 // Zoho CRM Configuration Schema
@@ -161,6 +166,30 @@ const twilioSchema = new mongoose.Schema({
 
 // WhatsApp Business API Configuration Schema
 const whatsappSchema = new mongoose.Schema({
+    // Provider selection: 'meta' (direct Meta Cloud API) or 'twilio' (Twilio WhatsApp API)
+    provider: {
+        type: String,
+        enum: ['meta', 'twilio'],
+        default: 'meta'
+    },
+    // ===== Twilio-specific fields =====
+    // ENCRYPTED: Twilio Account SID
+    twilioAccountSid: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // ENCRYPTED: Twilio Auth Token
+    twilioAuthToken: {
+        type: String,
+        set: encrypt,
+        get: decrypt
+    },
+    // Twilio WhatsApp-enabled phone number (e.g. "+14155238886")
+    twilioWhatsappNumber: {
+        type: String
+    },
+    // ===== Meta-specific fields =====
     // ENCRYPTED: Meta access token (very sensitive)
     accessToken: {
         type: String,

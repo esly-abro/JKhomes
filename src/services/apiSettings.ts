@@ -45,13 +45,19 @@ export interface TwilioCredentials {
 }
 
 export interface WhatsappCredentials {
-  accessToken: string;
-  phoneNumberId: string;
+  provider: 'meta' | 'twilio';
+  // Meta fields
+  accessToken?: string;
+  phoneNumberId?: string;
   businessAccountId?: string;
   appId?: string;
   appSecret?: string;
   verifyToken?: string;
   webhookUrl?: string;
+  // Twilio fields
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
+  twilioWhatsappNumber?: string;
 }
 
 /**

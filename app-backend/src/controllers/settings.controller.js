@@ -259,7 +259,7 @@ async function getAllSettings(request, reply) {
  */
 async function getWhatsappTemplates(request, reply) {
   try {
-    const userId = request.user.id;
+    const userId = request.user.id || request.user._id;
     
     // The whatsapp service handles all credential resolution (Settings → Organization → env)
     const whatsappService = require('../services/whatsapp.service');
@@ -280,7 +280,7 @@ async function getWhatsappTemplates(request, reply) {
  */
 async function sendWhatsappTemplate(request, reply) {
   try {
-    const userId = request.user.id;
+    const userId = request.user.id || request.user._id;
     const { phoneNumber, templateName, languageCode, components } = request.body;
     
     if (!phoneNumber || !templateName) {
@@ -290,15 +290,17 @@ async function sendWhatsappTemplate(request, reply) {
       });
     }
 
-    // The whatsapp.service.js getCredentials() now checks Settings → Organization → env vars
-    const whatsappService = require('../services/whatsapp.service');
-    const result = await whatsappService.sendTemplateMessage(
-      phoneNumber,
-      templateName,
-      languageCode || 'en',
-      components,
-      userId
-    );
+    const provider = await _resolveWhatsappProvider(userId);
+    console.log(`📱 sendWhatsappTemplate resolved provider: ${provider} for user ${userId}`);
+
+    let result;
+    if (provider === 'twilio') {
+      const twilioService = require('../services/whatsapp.twilio.service');
+      result = await twilioService.sendTemplateMessage(phoneNumber, templateName, languageCode || 'en', components, userId);
+    } else {
+      const whatsappService = require('../services/whatsapp.service');
+      result = await whatsappService.sendTemplateMessage(phoneNumber, templateName, languageCode || 'en', components, userId);
+    }
 
     return reply.send({
       success: true,
@@ -313,11 +315,75 @@ async function sendWhatsappTemplate(request, reply) {
   }
 }
 
+/**
+ * Resolve WhatsApp provider directly from Organization model
+ * Handles Mixed-type ownerId (can be String or ObjectId)
+ */
+async function _resolveWhatsappProvider(userId) {
+  const Organization = require('../models/organization.model');
+  const mongoose = require('mongoose');
+
+  // Try with both String and ObjectId to handle Mixed type ownerId
+  const candidates = [userId];
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    candidates.push(new mongoose.Types.ObjectId(userId));
+  }
+
+  for (const oid of candidates) {
+    const org = await Organization.findOne({ ownerId: oid, 'whatsapp.isConnected': true });
+    if (org?.whatsapp?.provider) {
+      return org.whatsapp.provider;
+    }
+  }
+  return 'meta'; // default
+}
+
+/**
+ * Send a free-form WhatsApp text message (works with Twilio sandbox without templates)
+ */
+async function sendWhatsappText(request, reply) {
+  try {
+    const userId = request.user.id || request.user._id;
+    const { phoneNumber, message } = request.body;
+
+    if (!phoneNumber || !message) {
+      return reply.code(400).send({
+        success: false,
+        error: 'Phone number and message are required'
+      });
+    }
+
+    const provider = await _resolveWhatsappProvider(userId);
+    console.log(`📱 sendWhatsappText resolved provider: ${provider} for user ${userId}`);
+
+    let result;
+    if (provider === 'twilio') {
+      const twilioService = require('../services/whatsapp.twilio.service');
+      result = await twilioService.sendTextMessage(phoneNumber, message, userId);
+    } else {
+      const whatsappService = require('../services/whatsapp.service');
+      result = await whatsappService.sendTextMessage(phoneNumber, message, userId);
+    }
+
+    return reply.send({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('Error sending WhatsApp text:', error);
+    return reply.code(500).send({
+      success: false,
+      error: error.message || 'Failed to send WhatsApp message'
+    });
+  }
+}
+
 module.exports = {
   getWhatsappSettings,
   updateWhatsappSettings,
   testWhatsappConnection,
   getAllSettings,
   getWhatsappTemplates,
-  sendWhatsappTemplate
+  sendWhatsappTemplate,
+  sendWhatsappText
 };

@@ -68,7 +68,21 @@ export default function NodeConfigPanel({ node, onClose, onUpdateNode, onAddCond
     setIsLoadingTemplates(true);
     setTemplateError(null);
     try {
-      const data = await whatsappService.getTemplates();
+      // Try org-specific approved templates first (from Template Builder)
+      let data: WhatsAppTemplate[] = [];
+      try {
+        data = await whatsappService.getApprovedTemplates();
+      } catch {
+        // Fallback to legacy Twilio direct fetch
+        data = await whatsappService.getTemplates();
+      }
+      // If no approved org templates, also try legacy fetch
+      if (data.length === 0) {
+        try {
+          const legacyData = await whatsappService.getTemplates();
+          if (legacyData.length > 0) data = legacyData;
+        } catch { /* ignore fallback errors */ }
+      }
       setTemplates(data);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } }; message?: string };

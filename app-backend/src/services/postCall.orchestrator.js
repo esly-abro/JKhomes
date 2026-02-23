@@ -11,7 +11,18 @@
 const Lead = require('../models/Lead');
 const zohoClient = require('../clients/zoho.client');
 const dataLayer = require('../leads/lead.dataLayer');
-const { LEAD_STATUSES: LEAD_STATUS } = require('../constants');
+
+// Generic status keys — these match the `key` field in TenantConfig.leadStatuses
+// Each tenant's config maps these keys to their own display labels
+const LEAD_STATUS = {
+    NEW: 'New',
+    CALL_ATTENDED: 'Call Attended',
+    NO_RESPONSE: 'No Response',
+    NOT_INTERESTED: 'Not Interested',
+    APPOINTMENT_BOOKED: 'Appointment Booked',
+    APPOINTMENT_SCHEDULED: 'Appointment Scheduled',
+    INTERESTED: 'Interested'
+};
 
 // Action types that can be executed
 const ACTION_TYPES = {

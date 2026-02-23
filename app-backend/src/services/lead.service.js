@@ -7,7 +7,7 @@
 const leadRepository = require('../repositories/leadRepository');
 const { NotFoundError, ValidationError, ConflictError } = require('../errors/AppError');
 const logger = require('../utils/logger');
-const { LEAD_STATUSES, LEAD_STATUS_TRANSITIONS } = require('../constants');
+const TenantConfig = require('../models/tenantConfig.model');
 
 class LeadService {
     /**
@@ -142,10 +142,24 @@ class LeadService {
             }
         }
 
-        // Set defaults
+        // Set defaults — use tenant's first active status or 'New'
+        let defaultStatus = 'New';
+        try {
+            const orgId = leadData.organizationId || createdBy?.organizationId;
+            if (orgId) {
+                const config = await TenantConfig.getOrCreate(orgId);
+                const firstActive = (config.leadStatuses || [])
+                    .filter(s => s.isActive && !s.isClosed)
+                    .sort((a, b) => a.order - b.order)[0];
+                if (firstActive) defaultStatus = firstActive.key;
+            }
+        } catch (err) {
+            logger.warn('Could not load tenant config for default status, using "New"');
+        }
+
         const lead = {
             ...leadData,
-            status: leadData.status || LEAD_STATUSES.NEW,
+            status: leadData.status || defaultStatus,
             source: leadData.source || 'manual',
             createdBy: createdBy?._id || createdBy
         };
@@ -211,12 +225,25 @@ class LeadService {
     async updateLeadStatus(id, newStatus, updatedBy = null) {
         const lead = await this.getLeadById(id);
         
-        // Validate status transition
-        const allowedTransitions = LEAD_STATUS_TRANSITIONS[lead.status] || [];
-        if (!allowedTransitions.includes(newStatus) && lead.status !== newStatus) {
-            throw new ValidationError(
-                `Cannot transition from ${lead.status} to ${newStatus}. Allowed: ${allowedTransitions.join(', ')}`
-            );
+        // Validate status against tenant's configured statuses (not hardcoded)
+        try {
+            const orgId = lead.organizationId || updatedBy?.organizationId;
+            if (orgId) {
+                const config = await TenantConfig.getOrCreate(orgId);
+                const validKeys = (config.leadStatuses || [])
+                    .filter(s => s.isActive)
+                    .map(s => s.key);
+                if (validKeys.length > 0 && !validKeys.includes(newStatus)) {
+                    throw new ValidationError(
+                        `Invalid status "${newStatus}". Valid statuses: ${validKeys.join(', ')}`
+                    );
+                }
+            }
+        } catch (err) {
+            // If it's our own ValidationError, re-throw it
+            if (err instanceof ValidationError) throw err;
+            // Otherwise log and allow the update (graceful degradation)
+            logger.warn('Could not validate status against tenant config', { error: err.message });
         }
 
         const previousStatus = lead.status;

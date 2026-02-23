@@ -130,57 +130,71 @@ async function enqueueNodeExecution(opts) {
         delay = 0,
     } = opts;
 
-    const queue = getExecuteQueue();
-    const jobId = `exec-${runId}-${nodeId}-${Date.now()}`;
     const nodeLabel = nodeData?.label || nodeData?.type || nodeId;
 
-    const jobOpts = { jobId };
+    try {
+        const queue = getExecuteQueue();
+        const jobId = `exec-${runId}-${nodeId}-${Date.now()}`;
 
-    // BullMQ delayed job — the clean replacement for scheduledFor + MongoDB poll
-    if (delay > 0) {
-        jobOpts.delay = delay;
-        logger.info(`⏱️  Scheduling node "${nodeLabel}" with ${delay}ms delay (job ${jobId})`);
-    } else {
-        logger.info(`📋 Enqueuing node "${nodeLabel}" for immediate execution (job ${jobId})`);
+        const jobOpts = { jobId };
+
+        // BullMQ delayed job — the clean replacement for scheduledFor + MongoDB poll
+        if (delay > 0) {
+            jobOpts.delay = delay;
+            logger.info(`⏱️  Scheduling node "${nodeLabel}" with ${delay}ms delay (job ${jobId})`);
+        } else {
+            logger.info(`📋 Enqueuing node "${nodeLabel}" for immediate execution (job ${jobId})`);
+        }
+
+        const job = await queue.add(
+            nodeData?.type || 'unknown',  // job name = node type
+            {
+                runId: String(runId),
+                automationId: String(automationId),
+                leadId: String(leadId),
+                nodeId,
+                nodeData,
+                edgeId,
+                organizationId: organizationId ? String(organizationId) : undefined,
+                enqueuedAt: new Date().toISOString(),
+            },
+            jobOpts
+        );
+
+        return job;
+    } catch (err) {
+        // BullMQ unavailable (Redis version too old, connection failed, etc.)
+        // Log but don't throw — the engine's direct execution fallback will handle these nodes
+        logger.warn(`⚠️ BullMQ enqueue failed for node "${nodeLabel}" [run ${runId}]: ${err.message}`);
+        logger.info(`📝 Node "${nodeLabel}" will be executed by direct fallback mode`);
+        return { id: `fallback-${runId}-${nodeId}-${Date.now()}`, fallback: true };
     }
-
-    const job = await queue.add(
-        nodeData?.type || 'unknown',  // job name = node type
-        {
-            runId: String(runId),
-            automationId: String(automationId),
-            leadId: String(leadId),
-            nodeId,
-            nodeData,
-            edgeId,
-            organizationId: organizationId ? String(organizationId) : undefined,
-            enqueuedAt: new Date().toISOString(),
-        },
-        jobOpts
-    );
-
-    return job;
 }
 
 /**
  * Enqueue a timeout check for a waiting run.
  */
 async function enqueueTimeoutCheck(runId, type, delayMs) {
-    const queue = getTimeoutQueue();
-    const jobId = `timeout-${type}-${runId}-${Date.now()}`;
+    try {
+        const queue = getTimeoutQueue();
+        const jobId = `timeout-${type}-${runId}-${Date.now()}`;
 
-    const job = await queue.add(
-        `timeout-${type}`,
-        {
-            runId: String(runId),
-            type,
-            enqueuedAt: new Date().toISOString(),
-        },
-        { jobId, delay: delayMs }
-    );
+        const job = await queue.add(
+            `timeout-${type}`,
+            {
+                runId: String(runId),
+                type,
+                enqueuedAt: new Date().toISOString(),
+            },
+            { jobId, delay: delayMs }
+        );
 
-    logger.info(`⏰ Enqueued ${type} timeout check for run ${runId} in ${delayMs}ms`);
-    return job;
+        logger.info(`⏰ Enqueued ${type} timeout check for run ${runId} in ${delayMs}ms`);
+        return job;
+    } catch (err) {
+        logger.warn(`⚠️ BullMQ timeout enqueue failed for run ${runId}: ${err.message}`);
+        return { id: `fallback-timeout-${runId}-${Date.now()}`, fallback: true };
+    }
 }
 
 // ─── Dead Letter Queue ──────────────────────────────────────────

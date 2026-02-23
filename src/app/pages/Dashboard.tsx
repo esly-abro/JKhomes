@@ -120,6 +120,13 @@ export default function Dashboard() {
     const now = new Date();
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
 
+    // Use the tenant's first pipeline status as the "new" key
+    const firstStatusKey = leadStatuses.length > 0 ? leadStatuses[0].key : 'New';
+    // Hot statuses = active, non-closed statuses that aren't the first stage
+    // Also exclude statuses that are clearly "cold" (not interested, no response) by checking isClosed
+    const nonEngagedKeys = [firstStatusKey];
+    const hotStatusKeys = leadStatusKeys.filter(k => !closedStatusKeys.includes(k) && !nonEngagedKeys.includes(k));
+
     return leads
       .map(lead => {
         const leadData = lead as any;
@@ -131,8 +138,8 @@ export default function Dashboard() {
         let reason = '';
         let priority = 'medium';
 
-        // New lead with status "New" 
-        if (lead.status === 'New') {
+        // Lead is in the first pipeline stage (e.g. "New")
+        if (lead.status === firstStatusKey) {
           reason = 'New lead - needs first contact';
           priority = 'high';
         }
@@ -146,8 +153,8 @@ export default function Dashboard() {
           reason = 'No activity in 3+ days';
           priority = 'medium';
         }
-        // Interested but no site visit scheduled
-        else if (lead.status === 'Interested' || lead.status === 'Call Attended') {
+        // Hot lead — in an engaged status, schedule follow-up
+        else if (hotStatusKeys.includes(lead.status)) {
           reason = 'Hot lead - schedule follow-up';
           priority = 'high';
         }

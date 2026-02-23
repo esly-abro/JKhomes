@@ -47,7 +47,7 @@ const recovery = require('./workflow.recovery');
 
 // BullMQ integration
 const { enqueueTriggerEvent, enqueueNodeExecution, closeQueues } = require('./workflow.queue');
-const { startWorkers, stopWorkers, getWorkerStatus } = require('./workflow.worker');
+const { startWorkers, stopWorkers, getWorkerStatus, processTriggerJob, processExecuteJob } = require('./workflow.worker');
 const { closeRedis, isRedisHealthy } = require('../config/redis');
 
 const logger = require('../utils/logger');
@@ -56,6 +56,7 @@ class WorkflowEngine {
     constructor() {
         this.isRunning = false;
         this.useQueue = true; // Always true in v2
+        this.bullmqAvailable = true; // Will be set to false if Redis version is too old
     }
 
     // =========================================================================
@@ -65,9 +66,10 @@ class WorkflowEngine {
     /**
      * Start the workflow engine.
      * Initializes BullMQ workers that listen on Redis queues.
+     * Falls back to direct/inline execution if Redis version < 5.0.
      * @param {number} _interval - Ignored (kept for API compat with v1)
      */
-    start(_interval) {
+    async start(_interval) {
         if (this.isRunning) {
             logger.warn('⚠️ Workflow engine already running');
             return;
@@ -75,14 +77,49 @@ class WorkflowEngine {
 
         logger.info('🚀 Starting workflow engine (BullMQ v2)...');
 
+        // Check Redis version — BullMQ requires >= 5.0.0
+        let redisVersionOk = true;
         try {
-            startWorkers();
-            this.isRunning = true;
-            logger.info('✅ Workflow engine started (BullMQ mode)');
+            const IORedis = require('ioredis');
+            const { getRedisConfig } = require('../config/redis');
+            const testConn = new IORedis({ ...getRedisConfig(), lazyConnect: true });
+            testConn.on('error', () => {});
+            await testConn.connect();
+            const info = await testConn.info('server');
+            const versionMatch = info.match(/redis_version:(\S+)/);
+            if (versionMatch) {
+                const ver = versionMatch[1];
+                const major = parseInt(ver.split('.')[0], 10);
+                if (major < 5) {
+                    logger.warn(`⚠️ Redis version ${ver} detected — BullMQ requires >= 5.0.0`);
+                    redisVersionOk = false;
+                } else {
+                    logger.info(`✅ Redis version ${ver} — BullMQ compatible`);
+                }
+            }
+            await testConn.quit().catch(() => {});
         } catch (err) {
-            logger.error(`Failed to start workflow engine: ${err.message}`);
-            throw err;
+            logger.warn(`⚠️ Redis version check failed: ${err.message}`);
+            redisVersionOk = false;
         }
+
+        if (redisVersionOk) {
+            try {
+                startWorkers();
+                this.bullmqAvailable = true;
+                logger.info('✅ Workflow engine started (BullMQ mode)');
+            } catch (err) {
+                logger.warn(`⚠️ BullMQ workers failed to start: ${err.message}`);
+                this.bullmqAvailable = false;
+            }
+        } else {
+            this.bullmqAvailable = false;
+            logger.info('🔄 Workflow engine running in DIRECT execution mode (no BullMQ)');
+            logger.info('   Automations will execute inline when triggered.');
+            logger.info('   To enable BullMQ mode, upgrade Redis to >= 5.0.0');
+        }
+
+        this.isRunning = true;
     }
 
     /**
@@ -119,18 +156,24 @@ class WorkflowEngine {
             return { success: false, error: 'Invalid lead' };
         }
 
-        try {
-            const job = await enqueueTriggerEvent(
-                'lead.created',
-                lead._id,
-                lead.organizationId,
-                { leadName: lead.name }
-            );
-            return { success: true, jobId: job.id, event: 'lead.created' };
-        } catch (err) {
-            logger.error(`Failed to enqueue triggerNewLead: ${err.message}`);
-            return { success: false, error: err.message };
+        // Try BullMQ first, fallback to direct execution
+        if (this.bullmqAvailable) {
+            try {
+                const job = await enqueueTriggerEvent(
+                    'lead.created',
+                    lead._id,
+                    lead.organizationId,
+                    { leadName: lead.name }
+                );
+                return { success: true, jobId: job.id, event: 'lead.created' };
+            } catch (err) {
+                logger.warn(`BullMQ enqueue failed, falling back to direct execution: ${err.message}`);
+                this.bullmqAvailable = false;
+            }
         }
+
+        // Direct/inline execution fallback
+        return this._directTrigger('lead.created', lead, { leadName: lead.name });
     }
 
     /**
@@ -139,18 +182,22 @@ class WorkflowEngine {
     async triggerLeadUpdated(lead, changes) {
         if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
 
-        try {
-            const job = await enqueueTriggerEvent(
-                'lead.updated',
-                lead._id,
-                lead.organizationId,
-                { changes, leadName: lead.name }
-            );
-            return { success: true, jobId: job.id, event: 'lead.updated' };
-        } catch (err) {
-            logger.error(`Failed to enqueue triggerLeadUpdated: ${err.message}`);
-            return { success: false, error: err.message };
+        if (this.bullmqAvailable) {
+            try {
+                const job = await enqueueTriggerEvent(
+                    'lead.updated',
+                    lead._id,
+                    lead.organizationId,
+                    { changes, leadName: lead.name }
+                );
+                return { success: true, jobId: job.id, event: 'lead.updated' };
+            } catch (err) {
+                logger.warn(`BullMQ enqueue failed, falling back to direct execution: ${err.message}`);
+                this.bullmqAvailable = false;
+            }
         }
+
+        return this._directTrigger('lead.updated', lead, { changes, leadName: lead.name });
     }
 
     /**
@@ -159,18 +206,22 @@ class WorkflowEngine {
     async triggerSiteVisitScheduled(lead, siteVisit) {
         if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
 
-        try {
-            const job = await enqueueTriggerEvent(
-                'appointment.scheduled',
-                lead._id,
-                lead.organizationId,
-                { siteVisit, leadName: lead.name }
-            );
-            return { success: true, jobId: job.id, event: 'appointment.scheduled' };
-        } catch (err) {
-            logger.error(`Failed to enqueue triggerSiteVisitScheduled: ${err.message}`);
-            return { success: false, error: err.message };
+        if (this.bullmqAvailable) {
+            try {
+                const job = await enqueueTriggerEvent(
+                    'appointment.scheduled',
+                    lead._id,
+                    lead.organizationId,
+                    { siteVisit, leadName: lead.name }
+                );
+                return { success: true, jobId: job.id, event: 'appointment.scheduled' };
+            } catch (err) {
+                logger.warn(`BullMQ enqueue failed, falling back to direct execution: ${err.message}`);
+                this.bullmqAvailable = false;
+            }
         }
+
+        return this._directTrigger('appointment.scheduled', lead, { siteVisit, leadName: lead.name });
     }
 
     async triggerAppointmentScheduled(lead, appointment) {
@@ -180,21 +231,27 @@ class WorkflowEngine {
     async triggerStatusChange(lead, oldStatus, newStatus) {
         if (!lead || !lead._id) return { success: false, error: 'Invalid lead' };
 
-        try {
-            const job = await enqueueTriggerEvent(
-                'lead.updated',
-                lead._id,
-                lead.organizationId,
-                {
-                    changes: { status: { old: oldStatus, new: newStatus } },
-                    leadName: lead.name,
-                }
-            );
-            return { success: true, jobId: job.id, event: 'lead.updated' };
-        } catch (err) {
-            logger.error(`Failed to enqueue triggerStatusChange: ${err.message}`);
-            return { success: false, error: err.message };
+        const extra = {
+            changes: { status: { old: oldStatus, new: newStatus } },
+            leadName: lead.name,
+        };
+
+        if (this.bullmqAvailable) {
+            try {
+                const job = await enqueueTriggerEvent(
+                    'lead.updated',
+                    lead._id,
+                    lead.organizationId,
+                    extra
+                );
+                return { success: true, jobId: job.id, event: 'lead.updated' };
+            } catch (err) {
+                logger.warn(`BullMQ enqueue failed, falling back to direct execution: ${err.message}`);
+                this.bullmqAvailable = false;
+            }
         }
+
+        return this._directTrigger('lead.updated', lead, extra);
     }
 
     // =========================================================================
@@ -209,22 +266,136 @@ class WorkflowEngine {
             const lead = await Lead.findById(leadId);
             if (!lead) throw new Error('Lead not found');
 
-            // For manual triggers, we enqueue directly to ensure it runs
-            const job = await enqueueTriggerEvent(
-                automation.triggerType || 'manual',
-                lead._id,
-                lead.organizationId,
-                {
-                    context: { ...context, manualTrigger: true, triggeredAt: new Date() },
-                    leadName: lead.name,
-                    forceAutomationId: String(automation._id), // Force this specific automation
-                }
-            );
+            const extra = {
+                context: { ...context, manualTrigger: true, triggeredAt: new Date() },
+                leadName: lead.name,
+                forceAutomationId: String(automation._id),
+            };
 
-            return { success: true, jobId: job.id };
+            if (this.bullmqAvailable) {
+                try {
+                    const job = await enqueueTriggerEvent(
+                        automation.triggerType || 'manual',
+                        lead._id,
+                        lead.organizationId,
+                        extra
+                    );
+                    return { success: true, jobId: job.id };
+                } catch (err) {
+                    logger.warn(`BullMQ enqueue failed, falling back to direct execution: ${err.message}`);
+                    this.bullmqAvailable = false;
+                }
+            }
+
+            return this._directTrigger(automation.triggerType || 'manual', lead, extra);
         } catch (err) {
             logger.error(`Manual trigger error: ${err.message}`);
             return { success: false, error: err.message };
+        }
+    }
+
+    // =========================================================================
+    // Direct Execution Fallback — When BullMQ is unavailable (Redis < 5.0)
+    // =========================================================================
+
+    /**
+     * Execute a trigger event directly (inline, no BullMQ).
+     * Calls the same processTriggerJob logic that BullMQ workers would use.
+     */
+    async _directTrigger(event, lead, extra = {}) {
+        try {
+            logger.info(`🔄 Direct trigger: ${event} for lead ${lead.name} (${lead._id})`);
+
+            // Build a mock job.data object matching what processTriggerJob expects
+            const jobData = {
+                event,
+                leadId: String(lead._id),
+                organizationId: String(lead.organizationId),
+                ...extra,
+                enqueuedAt: new Date().toISOString(),
+            };
+
+            // Call processTriggerJob directly with a mock job object
+            const result = await processTriggerJob({ data: jobData, id: `direct-${Date.now()}` });
+            
+            logger.info(`✅ Direct trigger completed: ${event}`, result);
+
+            // If automations matched, execute their first nodes inline too
+            if (result && result.results) {
+                for (const r of result.results) {
+                    if (r.runId && r.nodesEnqueued > 0) {
+                        // The processTriggerJob already called enqueueNodeExecution,
+                        // but since BullMQ is unavailable, those calls would have failed.
+                        // We need to execute the first nodes directly.
+                        await this._executeRunNodesDirectly(r.runId, r.automationId);
+                    }
+                }
+            }
+
+            return { success: true, mode: 'direct', event, result };
+        } catch (err) {
+            logger.error(`❌ Direct trigger failed: ${err.message}`);
+            return { success: false, error: err.message };
+        }
+    }
+
+    /**
+     * Execute pending nodes for a run directly (inline, no BullMQ).
+     * Used when BullMQ cannot enqueue jobs.
+     */
+    async _executeRunNodesDirectly(runId, automationId) {
+        try {
+            const run = await AutomationRun.findById(runId);
+            const automation = await Automation.findById(automationId || run?.automation);
+            if (!run || !automation) return;
+
+            const lead = await Lead.findById(run.lead);
+            if (!lead) return;
+
+            // Find pending nodes from the run's execution path
+            const pendingNodes = (run.executionPath || []).filter(p => p.status === 'pending');
+
+            for (const pending of pendingNodes) {
+                const nodeObj = automation.nodes.find(n => n.id === pending.nodeId);
+                if (!nodeObj) continue;
+
+                const nodeData = nodeObj.data || {};
+
+                logger.info(`⚙️ Direct executing node: "${pending.nodeLabel}" (${nodeData.type}) [run ${runId}]`);
+
+                // Build mock job for processExecuteJob
+                const mockJob = {
+                    data: {
+                        runId: String(run._id),
+                        automationId: String(automation._id),
+                        leadId: String(lead._id),
+                        nodeId: pending.nodeId,
+                        nodeData,
+                        organizationId: String(run.organizationId),
+                    },
+                    id: `direct-exec-${Date.now()}`,
+                    attemptsMade: 0,
+                    opts: { attempts: 3 },
+                };
+
+                try {
+                    const result = await processExecuteJob(mockJob);
+                    logger.info(`✅ Direct node execution result:`, result);
+
+                    // If the node scheduled next nodes (via scheduleNextNodes which calls enqueueNodeExecution),
+                    // those would also fail with BullMQ unavailable. So we recursively execute them.
+                    if (result && (result.success || result.condition || result.delayed || result.skipped)) {
+                        // Reload run to get updated execution path
+                        await this._executeRunNodesDirectly(runId, automationId);
+                        return; // Recursive call handles remaining nodes
+                    }
+                } catch (execErr) {
+                    logger.error(`❌ Direct node execution failed for "${pending.nodeLabel}": ${execErr.message}`);
+                    // Don't stop the workflow — mark node as failed and continue
+                }
+            }
+        } catch (err) {
+            logger.error(`❌ _executeRunNodesDirectly error: ${err.message}`);
         }
     }
 
@@ -281,11 +452,22 @@ class WorkflowEngine {
     }
 
     async resumeFromResponse(run, parsedMessage) {
-        return resume.resumeFromResponse(run, parsedMessage, this._makeScheduleNodeFn());
+        const result = await resume.resumeFromResponse(run, parsedMessage, this._makeScheduleNodeFn());
+        // In direct mode, after scheduling next nodes we need to execute them inline
+        if (!this.bullmqAvailable && result?.success && result?.nextNodesScheduled > 0) {
+            logger.info(`🔄 Direct mode: executing resumed nodes for run ${run._id}`);
+            await this._executeRunNodesDirectly(String(run._id), String(run.automation?._id || run.automation));
+        }
+        return result;
     }
 
     async resumeFromTimeout(run) {
-        return resume.resumeFromTimeout(run, this._makeScheduleNodeFn());
+        const result = await resume.resumeFromTimeout(run, this._makeScheduleNodeFn());
+        if (!this.bullmqAvailable && result?.success && result?.nextNodesScheduled > 0) {
+            logger.info(`🔄 Direct mode: executing timed-out nodes for run ${run._id}`);
+            await this._executeRunNodesDirectly(String(run._id), String(run.automation?._id || run.automation));
+        }
+        return result;
     }
 
     async resumeFromCallResult(run, callResult) {

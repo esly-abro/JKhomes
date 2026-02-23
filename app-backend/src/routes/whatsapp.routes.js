@@ -25,6 +25,14 @@ async function whatsappRoutes(fastify, options) {
   }, settingsController.sendWhatsappTemplate);
 
   /**
+   * POST /api/whatsapp/send-text
+   * Send a free-form WhatsApp text message (works with Twilio sandbox)
+   */
+  fastify.post('/send-text', {
+    preHandler: requireRole(['owner', 'admin', 'manager', 'agent'])
+  }, settingsController.sendWhatsappText);
+
+  /**
    * GET /api/whatsapp/config
    * Get WhatsApp configuration status for current user
    */

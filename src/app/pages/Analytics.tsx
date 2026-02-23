@@ -323,12 +323,8 @@ export default function Analytics() {
                         <td className="p-3 text-gray-600">{lead.phone}</td>
                         <td className="p-3 text-gray-600">{lead.source}</td>
                         <td className="p-3">
-                          <span className={`px-2 py-1 rounded-full text-xs ${lead.status === 'New' ? 'bg-blue-100 text-blue-700' :
-                              lead.status === 'Interested' ? 'bg-green-100 text-green-700' :
-                                lead.status === 'Not Interested' ? 'bg-red-100 text-red-700' :
-                                  'bg-gray-100 text-gray-700'
-                            }`}>
-                            {lead.status}
+                          <span className="px-2 py-1 rounded-full text-xs" style={{ backgroundColor: `${getStatusColor(lead.status)}20`, color: getStatusColor(lead.status) }}>
+                            {getStatusLabel(lead.status)}
                           </span>
                         </td>
                         <td className="p-3 text-gray-600">{new Date(lead.createdAt).toLocaleDateString()}</td>

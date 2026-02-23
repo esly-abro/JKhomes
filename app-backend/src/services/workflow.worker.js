@@ -1047,4 +1047,7 @@ module.exports = {
     // Expose for resume/webhook handlers that need to schedule nodes via BullMQ
     scheduleNextNodes,
     updateExecutionPathStatus,
+    // Expose for direct/inline execution fallback when BullMQ is unavailable
+    processTriggerJob,
+    processExecuteJob,
 };

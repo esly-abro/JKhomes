@@ -128,6 +128,9 @@ async function buildApp() {
         decorateReply: false
     });
 
+    // Form body parser for Twilio webhooks (application/x-www-form-urlencoded)
+    await app.register(require('@fastify/formbody'));
+
     // Global error handler
     app.setErrorHandler((error, request, reply) => {
         // Log error with structured logging
@@ -1042,7 +1045,6 @@ async function buildApp() {
                     try {
                         const Lead = require('./models/Lead');
                         const mongoose = require('mongoose');
-                        const { LEAD_STATUSES } = require('./constants');
                         
                         // Build query - try leadId first, fall back to phone number
                         let lead = null;
@@ -1080,16 +1082,16 @@ async function buildApp() {
                                 // Determine status from evaluation criteria OR by analyzing summary text
                                 const evaluation = summary.evaluation || {};
                                 const hasEvaluation = Object.keys(evaluation).length > 0;
-                                let newStatus = (LEAD_STATUSES && LEAD_STATUSES.CALL_ATTENDED) || 'Call Attended';
+                                let newStatus = 'Call Attended';
                                 
                                 if (hasEvaluation) {
                                     // Use evaluation criteria if available
                                     if (evaluation.site_visit_requested === 'success' || evaluation.book_site_visit === true || evaluation.book_appointment === true) {
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.APPOINTMENT_BOOKED) || 'Appointment Booked';
+                                        newStatus = 'Appointment Booked';
                                     } else if (evaluation.user_interested === 'success' || evaluation.interested === true || evaluation.interested === 'true') {
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                        newStatus = 'Interested';
                                     } else if (evaluation.not_interested === 'success' || evaluation.not_interested === true || evaluation.not_interested === 'true') {
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                        newStatus = 'Not Interested';
                                     }
                                 } else if (summary.summary) {
                                     // No evaluation criteria — analyze the summary text for intent signals
@@ -1167,10 +1169,10 @@ async function buildApp() {
                                     });
                                     
                                     if (isAppointment) {
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.APPOINTMENT_BOOKED) || 'Appointment Booked';
+                                        newStatus = 'Appointment Booked';
                                     } else if (isNotInterested && !isInterested) {
                                         // Clearly not interested
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                        newStatus = 'Not Interested';
                                     } else if (isNotInterested && isInterested) {
                                         // Mixed signals — "initially responded positively but then stated not interested"
                                         // The final sentiment wins — check if "not interested" appears after interested signals
@@ -1181,12 +1183,12 @@ async function buildApp() {
                                             summaryLower.lastIndexOf('responded positively')
                                         );
                                         if (lastNotInterested > lastInterested) {
-                                            newStatus = (LEAD_STATUSES && LEAD_STATUSES.NOT_INTERESTED) || 'Not Interested';
+                                            newStatus = 'Not Interested';
                                         } else {
-                                            newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                            newStatus = 'Interested';
                                         }
                                     } else if (isInterested) {
-                                        newStatus = (LEAD_STATUSES && LEAD_STATUSES.INTERESTED) || 'Interested';
+                                        newStatus = 'Interested';
                                     }
                                     // else: no clear signals, stays as "Call Attended"
                                 }
@@ -1279,6 +1281,13 @@ async function buildApp() {
         whatsappProtectedApp.addHook('onRequest', requireAuth);
         const whatsappRoutes = require('./routes/whatsapp.routes');
         await whatsappProtectedApp.register(whatsappRoutes, { prefix: '/api/whatsapp' });
+    });
+
+    // WhatsApp Template CRUD routes (requires auth) - Per-org template management
+    app.register(async function (whatsappTemplateProtectedApp) {
+        whatsappTemplateProtectedApp.addHook('onRequest', requireAuth);
+        const whatsappTemplateRoutes = require('./routes/whatsappTemplate.routes');
+        await whatsappTemplateProtectedApp.register(whatsappTemplateRoutes, { prefix: '/api/whatsapp-templates' });
     });
 
     // Zoho CRM Integration routes (requires auth)
@@ -1436,10 +1445,17 @@ async function buildApp() {
                 'POST /api/twilio/voice',
                 'POST /api/twilio/status',
                 'POST /ai-call-webhook',
-                'POST /elevenlabs/status'
+                'POST /elevenlabs/status',
+                'GET  /webhook/whatsapp (Meta verification)',
+                'POST /webhook/whatsapp (Meta messages)',
+                'POST /webhook/whatsapp/twilio (Twilio WhatsApp messages)'
             ]
         });
     });
+
+    // WhatsApp webhook routes (PUBLIC - called by Meta or Twilio)
+    const whatsappWebhookRoutes = require('./routes/whatsapp.webhook.routes');
+    app.register(whatsappWebhookRoutes, { prefix: '/webhook/whatsapp' });
 
     // ── Production: Serve built frontend from dist/ ──
     const fs = require('fs');
