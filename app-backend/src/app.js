@@ -374,6 +374,12 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, metricsController.getKPIMetrics);
 
+        // Analytics Export (CSV/JSON download)
+        const analyticsExportController = require('./controllers/analyticsExport.controller');
+        protectedApp.get('/api/analytics/export', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, analyticsExportController.exportAnalytics);
+
         // Twilio routes (protected)
         // Voice call rate limited (10 calls per hour per user)
         protectedApp.post('/api/twilio/call', { 
@@ -1543,6 +1549,59 @@ async function buildApp() {
         broadcastProtectedApp.addHook('onRequest', requireAuth);
         const broadcastRoutes = require('./routes/broadcast.routes');
         await broadcastProtectedApp.register(broadcastRoutes, { prefix: '/api/broadcasts' });
+    });
+
+    // ==========================================================================
+    // PHASE 1: New feature routes (Messages, Calendar, Profile, etc.)
+    // ==========================================================================
+
+    // Messages routes (requires auth) – Lead conversation messaging
+    app.register(async function (messagesProtectedApp) {
+        messagesProtectedApp.addHook('onRequest', requireAuth);
+        const messagesRoutes = require('./routes/messages.routes');
+        await messagesProtectedApp.register(messagesRoutes, { prefix: '/api/messages' });
+    });
+
+    // Calendar routes (requires auth) – Event CRUD
+    app.register(async function (calendarProtectedApp) {
+        calendarProtectedApp.addHook('onRequest', requireAuth);
+        const calendarRoutes = require('./routes/calendar.routes');
+        await calendarProtectedApp.register(calendarRoutes, { prefix: '/api/calendar' });
+    });
+
+    // Invite routes (requires auth) – Team member invitations
+    app.register(async function (inviteProtectedApp) {
+        inviteProtectedApp.addHook('onRequest', requireAuth);
+        const inviteRoutes = require('./routes/invite.routes');
+        await inviteProtectedApp.register(inviteRoutes, { prefix: '/api/invites' });
+    });
+
+    // Assignment Rules routes (requires auth) – Lead assignment rule management
+    app.register(async function (assignmentRulesProtectedApp) {
+        assignmentRulesProtectedApp.addHook('onRequest', requireAuth);
+        const assignmentRulesRoutes = require('./routes/assignmentRules.routes');
+        await assignmentRulesProtectedApp.register(assignmentRulesRoutes, { prefix: '/api/assignment-rules' });
+    });
+
+    // Billing routes (requires auth) – Plan info + payment stubs
+    app.register(async function (billingProtectedApp) {
+        billingProtectedApp.addHook('onRequest', requireAuth);
+        const billingRoutes = require('./routes/billing.routes');
+        await billingProtectedApp.register(billingRoutes, { prefix: '/api/billing' });
+    });
+
+    // Onboarding routes (requires auth) – Wizard state persistence
+    app.register(async function (onboardingProtectedApp) {
+        onboardingProtectedApp.addHook('onRequest', requireAuth);
+        const onboardingRoutes = require('./routes/onboarding.routes');
+        await onboardingProtectedApp.register(onboardingRoutes, { prefix: '/api/onboarding' });
+    });
+
+    // Profile routes (requires auth) – Profile, password, preferences
+    app.register(async function (profileProtectedApp) {
+        profileProtectedApp.addHook('onRequest', requireAuth);
+        const profileRoutes = require('./routes/profile.routes');
+        await profileProtectedApp.register(profileRoutes, { prefix: '/api/profile' });
     });
 
     // Twilio voice webhook (no auth - called by Twilio)

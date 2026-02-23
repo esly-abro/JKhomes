@@ -80,6 +80,15 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Organization',
         index: true
+    },
+    // Onboarding wizard state
+    onboarding: {
+        completed: { type: Boolean, default: false },
+        currentStep: { type: String, default: 'welcome' },
+        stepsCompleted: [{ type: String }],
+        data: { type: mongoose.Schema.Types.Mixed, default: {} },
+        startedAt: { type: Date },
+        completedAt: { type: Date }
     }
 }, {
     timestamps: true // Adds createdAt and updatedAt
