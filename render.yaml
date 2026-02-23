@@ -27,19 +27,3 @@ services:
       - key: PORT
         value: 10000 
       # Add other env vars here or in the Render Dashboard
-
-  # --------------------------------------------------------------------------------
-  # ZOHO LEAD BACKEND (Node.js / Express)
-  # --------------------------------------------------------------------------------
-  - type: web
-    name: zoho-lead-backend
-    env: node
-    root: zoho-lead-backend
-    buildCommand: npm install
-    startCommand: npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 10000
-      # Add other env vars here or in the Render Dashboard

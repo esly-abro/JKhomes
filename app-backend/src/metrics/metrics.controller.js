@@ -5,6 +5,7 @@
 
 const metricsService = require('./metrics.service');
 const analyticsService = require('./analytics.service');
+const agentAnalyticsService = require('./agentAnalytics.service');
 
 /**
  * GET /api/metrics/overview
@@ -98,6 +99,23 @@ async function getAllAnalytics(request, reply) {
     });
 }
 
+/**
+ * GET /api/analytics/my-performance
+ * Agent-scoped performance dashboard — accessible by ALL authenticated users
+ */
+async function getMyPerformance(request, reply) {
+    const { range = '30days' } = request.query;
+    const userId = request.user?.id || request.user?._id;
+    const organizationId = request.user?.organizationId;
+
+    if (!userId) {
+        return reply.code(401).send({ error: 'Unauthorized' });
+    }
+
+    const performance = await agentAnalyticsService.getAgentPerformance(userId, organizationId, range);
+    return reply.code(200).send(performance);
+}
+
 module.exports = {
     getOverview,
     getMonthlyTrends,
@@ -105,5 +123,6 @@ module.exports = {
     getSourcePerformance,
     getTeamPerformance,
     getKPIMetrics,
-    getAllAnalytics
+    getAllAnalytics,
+    getMyPerformance
 };

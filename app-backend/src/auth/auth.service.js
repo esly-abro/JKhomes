@@ -79,6 +79,16 @@ async function login(email, password, ipAddress, userAgent) {
         // Don't fail login if this fails
     }
 
+    // Note: Online status + attendance check-in is now handled by SSE connection
+    // (see sse.manager.js addClient). Login just sets initial lastHeartbeat for safety.
+    try {
+        const User = require('../models/User');
+        const userId = user._id || user.id;
+        await User.findByIdAndUpdate(userId, { lastHeartbeat: new Date() });
+    } catch (err) {
+        console.error('Failed to update lastHeartbeat on login:', err);
+    }
+
     return {
         ...tokens,
         user: usersModel.getSafeUser({ ...user, isActive: true })

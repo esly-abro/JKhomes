@@ -49,6 +49,16 @@ const userSchema = new mongoose.Schema({
     lastLogin: {
         type: Date
     },
+    // Online presence tracking
+    isOnline: {
+        type: Boolean,
+        default: false,
+        index: true
+    },
+    lastHeartbeat: {
+        type: Date,
+        default: null
+    },
     // User approval workflow
     approvalStatus: {
         type: String,

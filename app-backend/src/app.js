@@ -24,21 +24,15 @@ const syncController = require('./sync/sync.controller');
 const requireAuth = require('./middleware/requireAuth');
 const { requireRole } = require('./middleware/roles');
 
-// NEW: Production Middleware
-const { 
-    errorHandler, 
-    asyncHandler 
-} = require('./middleware/errorHandler');
+// Production Middleware
 const { 
     apiLimiter, 
     authLimiter, 
     voiceCallLimiter, 
-    zohoSyncLimiter,
-    whatsappLimiter
+    zohoSyncLimiter
 } = require('./middleware/rateLimiter');
 const { 
-    setupFastifySecurity, 
-    addRequestId 
+    setupFastifySecurity
 } = require('./middleware/security');
 
 // NEW: Structured Logging
@@ -189,23 +183,28 @@ async function buildApp() {
     // ======================================
     registerFastifyHealthRoutes(app);
 
-    // Root endpoint
-    app.get('/', async (request, reply) => {
-        return {
-            service: 'SaaS Lead Management - Application Backend',
-            version: '1.0.0',
-            documentation: 'See README.md',
-            endpoints: {
-                'POST /auth/login': 'User login',
-                'POST /auth/refresh': 'Refresh access token',
-                'POST /auth/logout': 'User logout',
-                'GET /api/leads': 'List leads',
-                'GET /api/leads/:id': 'Get lead details',
-                'POST /api/leads': 'Create lead',
-                'GET /api/metrics/overview': 'Dashboard metrics'
-            }
-        };
-    });
+    // Root endpoint (only when NOT serving frontend dist — avoids
+    // duplicate GET / conflict with @fastify/static SPA serving below)
+    const fs = require('fs');
+    const distPath = path.join(__dirname, '../../dist');
+    if (!fs.existsSync(distPath)) {
+        app.get('/', async (request, reply) => {
+            return {
+                service: 'SaaS Lead Management - Application Backend',
+                version: '1.0.0',
+                documentation: 'See README.md',
+                endpoints: {
+                    'POST /auth/login': 'User login',
+                    'POST /auth/refresh': 'Refresh access token',
+                    'POST /auth/logout': 'User logout',
+                    'GET /api/leads': 'List leads',
+                    'GET /api/leads/:id': 'Get lead details',
+                    'POST /api/leads': 'Create lead',
+                    'GET /api/metrics/overview': 'Dashboard metrics'
+                }
+            };
+        });
+    }
 
     // Auth routes (no auth required)
     // Rate limited to prevent brute force attacks
@@ -346,6 +345,9 @@ async function buildApp() {
         protectedApp.get('/api/metrics/overview', {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, metricsController.getOverview);
+
+        // Agent self-performance route (ALL authenticated users)
+        protectedApp.get('/api/analytics/my-performance', metricsController.getMyPerformance);
 
         // Analytics routes (manager and above only)
         protectedApp.get('/api/analytics', {
@@ -496,6 +498,19 @@ async function buildApp() {
         protectedApp.get('/api/agents/:id/activity', {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, usersController.getAgentActivity);
+
+        // ── Attendance & Presence routes ──
+        // Presence is tracked via SSE connections (sse.manager.js), NOT HTTP polling
+        const attendanceController = require('./controllers/attendance.controller');
+        protectedApp.post('/api/attendance/check-in', attendanceController.checkIn);
+        protectedApp.post('/api/attendance/check-out', attendanceController.checkOut);
+        protectedApp.get('/api/attendance/status', attendanceController.getMyStatus);
+        protectedApp.get('/api/attendance/agents-status', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, attendanceController.getAgentsStatus);
+        protectedApp.get('/api/attendance/log', {
+            preHandler: requireRole(['owner', 'admin', 'manager'])
+        }, attendanceController.getAttendanceLog);
 
         // Properties routes
         const propertiesController = require('./properties/properties.controller');
@@ -738,6 +753,81 @@ async function buildApp() {
             preHandler: requireRole(['owner', 'admin', 'manager'])
         }, assignmentController.getAgentWorkload);
 
+        // ======================================
+        // Notification routes (in-app bell)
+        // ======================================
+        const notificationService = require('./services/notification.service');
+        const sseManager = require('./services/sse.manager');
+
+        // Get notifications (paginated)
+        protectedApp.get('/api/notifications', async (request, reply) => {
+            const { page = 1, limit = 30, unreadOnly } = request.query;
+            const result = await notificationService.getForUser(request.user._id, {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                unreadOnly: unreadOnly === 'true'
+            });
+            return reply.send({ success: true, ...result });
+        });
+
+        // Get unread count
+        protectedApp.get('/api/notifications/unread-count', async (request, reply) => {
+            const count = await notificationService.getUnreadCount(request.user._id);
+            return reply.send({ success: true, count });
+        });
+
+        // Mark single notification as read
+        protectedApp.patch('/api/notifications/:id/read', async (request, reply) => {
+            const result = await notificationService.markRead(request.params.id, request.user._id);
+            if (!result) return reply.code(404).send({ success: false, error: 'Notification not found' });
+            return reply.send({ success: true });
+        });
+
+        // Mark all notifications as read
+        protectedApp.patch('/api/notifications/read-all', async (request, reply) => {
+            const result = await notificationService.markAllRead(request.user._id);
+            return reply.send({ success: true, ...result });
+        });
+
+        // SSE stream for real-time notifications + presence tracking
+        // When SSE connects → user marked online + attendance check-in
+        // When SSE disconnects (all tabs) → 30s grace → marked offline + attendance check-out
+        protectedApp.get('/api/notifications/stream', async (request, reply) => {
+            const userId = request.user._id.toString();
+            const organizationId = request.user.organizationId?.toString() || null;
+
+            reply.raw.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no'  // Disable nginx buffering
+            });
+
+            // Send initial heartbeat
+            reply.raw.write('event: connected\ndata: {"status":"ok"}\n\n');
+
+            // Register this client — also marks online + attendance check-in
+            sseManager.addClient(userId, reply, organizationId);
+
+            // Send heartbeat every 30s to keep connection alive
+            const heartbeat = setInterval(() => {
+                try {
+                    reply.raw.write(':heartbeat\n\n');
+                } catch (_) {
+                    clearInterval(heartbeat);
+                }
+            }, 30000);
+
+            // Clean up on disconnect — starts grace period before marking offline
+            request.raw.on('close', () => {
+                clearInterval(heartbeat);
+                sseManager.removeClient(userId, reply, organizationId);
+            });
+
+            // Don't let Fastify auto-close the response
+            await reply;
+        });
+
         // Organization Profile routes (owner can update)
         protectedApp.get('/api/organization/me', async (request, reply) => {
             const Organization = require('./models/organization.model');
@@ -837,6 +927,143 @@ async function buildApp() {
                 return reply.send({ success: true, organization: org });
             } catch (error) {
                 return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // ============================================
+        // Email (SMTP) Settings routes (owner/admin only)
+        // ============================================
+
+        // GET - Fetch current SMTP settings (password masked)
+        protectedApp.get('/api/organization/email-settings', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const org = await Organization.findById(request.user.organizationId);
+                if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+
+                const smtp = org.smtp || {};
+                return reply.send({
+                    success: true,
+                    emailSettings: {
+                        host: smtp.host || '',
+                        port: smtp.port || 587,
+                        secure: smtp.secure || false,
+                        user: smtp.user || '',
+                        pass: smtp.pass ? '••••••••' : '',
+                        fromName: smtp.fromName || '',
+                        isConfigured: smtp.isConfigured || false
+                    }
+                });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // PUT - Save SMTP settings
+        protectedApp.put('/api/organization/email-settings', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const { host, port, secure, user, pass, fromName } = request.body || {};
+
+                if (!host || !user || !pass) {
+                    return reply.status(400).send({ success: false, error: 'SMTP host, email, and password are required' });
+                }
+
+                const updateFields = {
+                    'smtp.host': host,
+                    'smtp.port': port || 587,
+                    'smtp.secure': secure || false,
+                    'smtp.user': user,
+                    'smtp.fromName': fromName || '',
+                    'smtp.isConfigured': true
+                };
+
+                // Only update password if it's not the masked placeholder
+                if (pass !== '••••••••') {
+                    updateFields['smtp.pass'] = pass;
+                }
+
+                const org = await Organization.findByIdAndUpdate(
+                    request.user.organizationId,
+                    { $set: updateFields },
+                    { new: true }
+                );
+
+                if (!org) return reply.status(404).send({ success: false, error: 'Organization not found' });
+
+                return reply.send({
+                    success: true,
+                    message: 'Email settings saved successfully',
+                    emailSettings: {
+                        host: org.smtp.host,
+                        port: org.smtp.port,
+                        secure: org.smtp.secure,
+                        user: org.smtp.user,
+                        pass: '••••••••',
+                        fromName: org.smtp.fromName,
+                        isConfigured: org.smtp.isConfigured
+                    }
+                });
+            } catch (error) {
+                return reply.status(500).send({ success: false, error: error.message });
+            }
+        });
+
+        // POST - Test SMTP connection by sending a test email
+        protectedApp.post('/api/organization/email-settings/test', {
+            preHandler: [requireRole(['owner', 'admin'])]
+        }, async (request, reply) => {
+            try {
+                const Organization = require('./models/organization.model');
+                const nodemailer = require('nodemailer');
+                const { host, port, secure, user, pass, fromName } = request.body || {};
+
+                if (!host || !user || !pass) {
+                    return reply.status(400).send({ success: false, error: 'SMTP host, email, and password are required' });
+                }
+
+                // If password is masked, get from DB
+                let actualPass = pass;
+                if (pass === '••••••••') {
+                    const org = await Organization.findById(request.user.organizationId);
+                    if (!org?.smtp?.pass) {
+                        return reply.status(400).send({ success: false, error: 'No saved password found. Please enter the password.' });
+                    }
+                    actualPass = org.smtp.pass;
+                }
+
+                const transporter = nodemailer.createTransport({
+                    host: host,
+                    port: port || 587,
+                    secure: secure || false,
+                    auth: { user, pass: actualPass }
+                });
+
+                // Send test email to the configured email itself
+                await transporter.sendMail({
+                    from: `"${fromName || 'Test'}" <${user}>`,
+                    to: user,
+                    subject: '✅ Pulsar CRM - SMTP Test Successful',
+                    html: `
+                        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 30px; background: #f0fdf4; border-radius: 8px; border: 1px solid #86efac;">
+                            <h2 style="color: #166534; margin-bottom: 10px;">✅ SMTP Configuration Successful!</h2>
+                            <p style="color: #333;">Your email settings are working correctly. Agent credential emails will be sent from this address.</p>
+                            <p style="color: #6b7280; font-size: 12px; margin-top: 20px;">Sent at: ${new Date().toLocaleString()}</p>
+                        </div>
+                    `
+                });
+
+                return reply.send({ success: true, message: 'Test email sent successfully! Check your inbox.' });
+            } catch (error) {
+                console.error('SMTP test failed:', error);
+                return reply.status(400).send({
+                    success: false,
+                    error: `SMTP test failed: ${error.message}`
+                });
             }
         });
 
@@ -1320,6 +1547,7 @@ async function buildApp() {
 
     // Twilio voice webhook (no auth - called by Twilio)
     app.post('/twilio/voice', async (request, reply) => {
+        const twilioService = require('./twilio/twilio.service');
         const toNumber = request.body.To || request.body.to;
         let twiml;
 
@@ -1327,7 +1555,7 @@ async function buildApp() {
         if (toNumber && toNumber.startsWith('+')) {
             twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="+19567583964">
+  <Dial callerId="${twilioService.TWILIO_PHONE_NUMBER}">
     <Number>${toNumber}</Number>
   </Dial>
 </Response>`;
@@ -1458,8 +1686,6 @@ async function buildApp() {
     app.register(whatsappWebhookRoutes, { prefix: '/webhook/whatsapp' });
 
     // ── Production: Serve built frontend from dist/ ──
-    const fs = require('fs');
-    const distPath = path.join(__dirname, '../../dist');
     if (fs.existsSync(distPath)) {
         await app.register(require('@fastify/static'), {
             root: distPath,

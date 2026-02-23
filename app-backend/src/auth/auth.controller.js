@@ -5,7 +5,7 @@
 
 const authService = require('./auth.service');
 const usersModel = require('../users/users.model');
-const { notifyOwnerOfNewAgent } = require('../services/email.service');
+const { notifyOwnerOfNewAgent, sendAgentCredentials } = require('../services/email.service');
 
 /**
  * POST /auth/register-organization
@@ -207,15 +207,27 @@ async function register(request, reply) {
                 const owners = await User.find({ 
                     role: 'owner', 
                     isActive: true,
-                    approvalStatus: 'approved'
+                    approvalStatus: 'approved',
+                    organizationId: organizationId
                 });
 
+                const notificationService = require('../services/notification.service');
                 for (const owner of owners) {
                     try {
                         await notifyOwnerOfNewAgent(owner.email, {
                             email: newUser.email,
                             name: newUser.name,
                             phone: newUser.phone
+                        }, organizationId);
+                        // In-app bell notification for owner
+                        await notificationService.create({
+                            userId: owner._id,
+                            organizationId,
+                            type: 'agent_registered',
+                            title: 'New agent registered',
+                            message: `${newUser.name || newUser.email} has registered and is pending approval`,
+                            avatarFallback: (newUser.name || newUser.email).charAt(0).toUpperCase(),
+                            data: { agentId: newUser._id, agentEmail: newUser.email }
                         });
                     } catch (emailError) {
                         console.error(`Failed to notify owner ${owner.email}:`, emailError);
@@ -223,6 +235,26 @@ async function register(request, reply) {
                 }
             } catch (err) {
                 console.error('Error notifying owners:', err);
+            }
+        }
+
+        // If created by owner, send credentials email to the new agent
+        if (autoApprove && isDbMode) {
+            try {
+                // Get owner name from JWT
+                let ownerName = 'Your manager';
+                const authHeader3 = request.headers.authorization;
+                if (authHeader3 && authHeader3.startsWith('Bearer ')) {
+                    try {
+                        const { verifyToken: vt3 } = require('./jwt');
+                        const decoded3 = vt3(authHeader3.substring(7));
+                        ownerName = decoded3?.name || 'Your manager';
+                    } catch (_e) { /* ignore */ }
+                }
+                await sendAgentCredentials(email.toLowerCase(), name, password, ownerName, organizationId);
+            } catch (emailError) {
+                console.error(`Failed to send credentials email to ${email}:`, emailError);
+                // Don't fail the creation if email fails
             }
         }
 
@@ -289,16 +321,21 @@ async function refresh(request, reply) {
 async function logout(request, reply) {
     const { refreshToken } = request.body;
     
-    // Record logout in history
+    // Record logout in history + mark offline + attendance check-out
     try {
         const LoginHistory = require('../models/LoginHistory');
+        const User = require('../models/User');
+        const Attendance = require('../models/Attendance');
         if (refreshToken) {
             const sessionId = refreshToken.substring(0, 32);
-            // Find the session by session ID (we need userId from token)
             const { verifyToken } = require('./jwt');
             const decoded = verifyToken(refreshToken);
             if (decoded && decoded.userId) {
                 await LoginHistory.recordLogout(decoded.userId, sessionId);
+                // Mark user offline (SSE disconnect will also handle this,
+                // but explicit logout should be immediate, not wait for grace period)
+                await User.findByIdAndUpdate(decoded.userId, { isOnline: false, lastHeartbeat: null });
+                await Attendance.checkOut(decoded.userId, 'manual');
             }
         }
     } catch (err) {

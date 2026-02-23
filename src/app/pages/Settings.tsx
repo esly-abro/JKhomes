@@ -1,13 +1,15 @@
-import { useState, useRef, ChangeEvent, useEffect } from 'react';
+import { AlertCircle, CheckCircle2, ExternalLink, Eye, EyeOff, GripVertical, Key, Loader2, Mail, MessageSquare, Plus, RefreshCw, Save, Send, Settings2, Trash2, UserCheck, X } from 'lucide-react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { getUsers } from '../../services/leads';
+import { AppointmentType, CategoryItem, updateAppointmentTypes, updateCategories, updateIndustry, updateLocationLabel } from '../../services/tenantConfig';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Switch } from '../components/ui/switch';
-import { Plus, Trash2, MessageSquare, RefreshCw, CheckCircle2, AlertCircle, Loader2, UserCheck, X, ExternalLink, Eye, EyeOff, Save, Unlink, Settings2, GripVertical, Key } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { updateCategories, updateAppointmentTypes, updateIndustry, updateLocationLabel, updateLeadStatuses, getStatusUsage, CategoryItem, AppointmentType, LeadStatus } from '../../services/tenantConfig';
 import { getUsers } from '../../services/leads';
@@ -264,6 +266,22 @@ export default function Settings() {
   const [orgLoading, setOrgLoading] = useState(true);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Email SMTP settings state
+  const [emailSettings, setEmailSettings] = useState({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    user: '',
+    pass: '',
+    fromName: ''
+  });
+  const [emailConfigured, setEmailConfigured] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailMessage, setEmailMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
+
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   // Lead Assignment Settings
@@ -275,6 +293,104 @@ export default function Settings() {
     workloadBalancingEnabled: true,
     highValueThreshold: 5000000 // ₹50L default
   });
+
+  // Load email settings on mount
+  useEffect(() => {
+    const loadEmailSettings = async () => {
+      try {
+        setEmailLoading(true);
+        const token = localStorage.getItem('accessToken');
+        const res = await fetch('/api/organization/email-settings', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.emailSettings) {
+            setEmailSettings({
+              host: data.emailSettings.host || 'smtp.gmail.com',
+              port: data.emailSettings.port || 587,
+              secure: data.emailSettings.secure || false,
+              user: data.emailSettings.user || '',
+              pass: data.emailSettings.pass || '',
+              fromName: data.emailSettings.fromName || ''
+            });
+            setEmailConfigured(data.emailSettings.isConfigured || false);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load email settings:', err);
+      } finally {
+        setEmailLoading(false);
+      }
+    };
+    loadEmailSettings();
+  }, []);
+
+  const handleSaveEmailSettings = async () => {
+    if (!emailSettings.host || !emailSettings.user || !emailSettings.pass) {
+      setEmailMessage({ type: 'error', text: 'SMTP host, email, and password are required.' });
+      return;
+    }
+    try {
+      setEmailSaving(true);
+      setEmailMessage(null);
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/organization/email-settings', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailSettings)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setEmailConfigured(true);
+        setEmailMessage({ type: 'success', text: 'Email settings saved successfully!' });
+        if (data.emailSettings) {
+          setEmailSettings(prev => ({ ...prev, pass: data.emailSettings.pass }));
+        }
+      } else {
+        setEmailMessage({ type: 'error', text: data.error || 'Failed to save email settings.' });
+      }
+    } catch (err) {
+      setEmailMessage({ type: 'error', text: 'Failed to save email settings.' });
+    } finally {
+      setEmailSaving(false);
+      setTimeout(() => setEmailMessage(null), 5000);
+    }
+  };
+
+  const handleTestEmailSettings = async () => {
+    if (!emailSettings.host || !emailSettings.user || !emailSettings.pass) {
+      setEmailMessage({ type: 'error', text: 'Please fill in all SMTP fields before testing.' });
+      return;
+    }
+    try {
+      setEmailTesting(true);
+      setEmailMessage(null);
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/organization/email-settings/test', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailSettings)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setEmailMessage({ type: 'success', text: 'Test email sent! Check your inbox.' });
+      } else {
+        setEmailMessage({ type: 'error', text: data.error || 'Test failed. Check your SMTP settings.' });
+      }
+    } catch (err) {
+      setEmailMessage({ type: 'error', text: 'Test failed. Check your SMTP settings.' });
+    } finally {
+      setEmailTesting(false);
+      setTimeout(() => setEmailMessage(null), 8000);
+    }
+  };
 
   useEffect(() => {
     fetchTeamMembers();
@@ -1068,6 +1184,7 @@ export default function Settings() {
           <TabsTrigger value="automation">Automation</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="email">Email</TabsTrigger>
           <TabsTrigger value="billing">Billing</TabsTrigger>
         </TabsList>
 
@@ -2292,6 +2409,154 @@ export default function Settings() {
                 </p>
               </div>
 
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="email">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mail className="h-5 w-5" />
+                Email Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Status banner */}
+              {emailConfigured ? (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <div>
+                    <span className="font-medium text-green-800">SMTP Configured</span>
+                    <span className="text-green-700 ml-2">— Agent credentials will be sent from: <strong>{emailSettings.user}</strong></span>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-600" />
+                  <span className="text-amber-800">SMTP not configured. Agent credential emails won't be sent until you set this up.</span>
+                </div>
+              )}
+
+              {emailMessage && (
+                <div className={`p-3 rounded-lg flex items-center gap-2 ${
+                  emailMessage.type === 'success' ? 'bg-green-50 border border-green-200 text-green-800' : 'bg-red-50 border border-red-200 text-red-800'
+                }`}>
+                  {emailMessage.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                  {emailMessage.text}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-900">SMTP Server Settings</h3>
+                <p className="text-sm text-gray-600">
+                  Configure your email server so agent credentials are sent from your business email.
+                  For Gmail, use <code className="bg-gray-100 px-1 rounded">smtp.gmail.com</code> and an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="text-blue-600 underline">App Password</a>.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="smtp-host">SMTP Host</Label>
+                    <Input
+                      id="smtp-host"
+                      placeholder="smtp.gmail.com"
+                      value={emailSettings.host}
+                      onChange={(e) => setEmailSettings({ ...emailSettings, host: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="smtp-port">Port</Label>
+                    <Input
+                      id="smtp-port"
+                      type="number"
+                      placeholder="587"
+                      value={emailSettings.port}
+                      onChange={(e) => setEmailSettings({ ...emailSettings, port: parseInt(e.target.value) || 587 })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="smtp-user">Email Address</Label>
+                    <Input
+                      id="smtp-user"
+                      type="email"
+                      placeholder="you@company.com"
+                      value={emailSettings.user}
+                      onChange={(e) => setEmailSettings({ ...emailSettings, user: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="smtp-pass">Password / App Password</Label>
+                    <div className="relative">
+                      <Input
+                        id="smtp-pass"
+                        type={showSmtpPassword ? 'text' : 'password'}
+                        placeholder="••••••••"
+                        value={emailSettings.pass}
+                        onChange={(e) => setEmailSettings({ ...emailSettings, pass: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                      >
+                        {showSmtpPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="smtp-from-name">Sender Display Name</Label>
+                    <Input
+                      id="smtp-from-name"
+                      placeholder="JK Homes"
+                      value={emailSettings.fromName}
+                      onChange={(e) => setEmailSettings({ ...emailSettings, fromName: e.target.value })}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">The name shown in the 'From' field (e.g. "JK Homes")</p>
+                  </div>
+                  <div className="flex items-end">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={emailSettings.secure}
+                        onCheckedChange={(checked) => setEmailSettings({ ...emailSettings, secure: checked, port: checked ? 465 : 587 })}
+                      />
+                      <Label>Use SSL/TLS (port 465)</Label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <Button
+                  onClick={handleTestEmailSettings}
+                  variant="outline"
+                  disabled={emailTesting}
+                >
+                  {emailTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                  {emailTesting ? 'Sending Test...' : 'Send Test Email'}
+                </Button>
+                <Button
+                  onClick={handleSaveEmailSettings}
+                  disabled={emailSaving}
+                >
+                  {emailSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                  {emailSaving ? 'Saving...' : 'Save Settings'}
+                </Button>
+              </div>
+
+              <div className="p-4 bg-gray-50 border rounded-lg mt-4">
+                <h4 className="font-medium text-sm text-gray-700 mb-2">How it works</h4>
+                <ul className="text-sm text-gray-600 space-y-1 list-disc pl-4">
+                  <li>When you create a new agent, their login credentials (email & password) are automatically sent from the email configured above.</li>
+                  <li>If SMTP is not configured, credential emails won't be sent (agents will need to be told their credentials manually).</li>
+                  <li>Use the "Send Test Email" button to verify your settings before saving.</li>
+                </ul>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

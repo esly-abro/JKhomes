@@ -7,6 +7,8 @@
 const Task = require('./Task.model');
 const Lead = require('../models/Lead');
 const Activity = require('../models/Activity');
+const emailService = require('../services/email.service');
+const User = require('../models/User');
 
 /**
  * Task type configurations with defaults
@@ -340,7 +342,72 @@ async function assignTask(taskId, assigneeId, assignedBy, organizationId = null)
   await task.save();
 
   console.log(`📋 Task ${taskId} assigned to ${assigneeId}`);
+
+  // Send email notification to the assigned agent (non-blocking)
+  _sendTaskAssignmentEmail(task, assigneeId, assignedBy).catch(err => {
+    console.error('Failed to send task assignment email:', err.message);
+  });
+
+  // Send in-app bell notification (non-blocking)
+  _sendTaskBellNotification(task, assigneeId, assignedBy).catch(err => {
+    console.error('Failed to send task bell notification:', err.message);
+  });
+
   return task;
+}
+
+/**
+ * Internal: send task bell notification
+ */
+async function _sendTaskBellNotification(task, assigneeId, assignedById) {
+  try {
+    const notificationService = require('../services/notification.service');
+    let assignerName = 'Your manager';
+    if (assignedById) {
+      const assigner = await User.findById(assignedById).select('name email');
+      assignerName = assigner?.name || assigner?.email || 'Your manager';
+    }
+
+    await notificationService.create({
+      userId: assigneeId,
+      organizationId: task.organizationId,
+      type: 'task_assigned',
+      title: `New task: ${task.title}`,
+      message: `${assignerName} assigned you a ${task.type || 'task'}${task.priority ? ' (' + task.priority + ')' : ''}`,
+      avatarFallback: assignerName.charAt(0).toUpperCase(),
+      data: { taskId: task._id, taskType: task.type }
+    });
+  } catch (err) {
+    console.error('Task bell notification error:', err.message);
+  }
+}
+
+/**
+ * Internal: send task assignment email
+ */
+async function _sendTaskAssignmentEmail(task, assigneeId, assignedById) {
+  try {
+    const agent = await User.findById(assigneeId).select('name email');
+    if (!agent?.email) return;
+
+    const lead = task.lead ? await Lead.findById(task.lead).select('name phone email status').lean() : null;
+    let assignerName = 'Your manager';
+    if (assignedById) {
+      const assigner = await User.findById(assignedById).select('name email');
+      assignerName = assigner?.name || assigner?.email || 'Your manager';
+    }
+
+    await emailService.sendTaskAssignmentEmail(
+      agent.email,
+      agent.name || agent.email,
+      { title: task.title, type: task.type, priority: task.priority, dueDate: task.dueDate, description: task.description },
+      lead,
+      assignerName,
+      task.organizationId
+    );
+  } catch (err) {
+    console.error('Task assignment email error:', err.message);
+  }
 }
 
 /**

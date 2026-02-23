@@ -347,6 +347,37 @@ async function getLead(user, leadId) {
  */
 async function getLeadById(leadId) {
     try {
+        // Try MongoDB first (handles local leads and all DB-stored leads)
+        if (useDatabase()) {
+            const query = { $or: [{ zohoId: leadId }, { zohoLeadId: leadId }] };
+            if (mongoose.Types.ObjectId.isValid(leadId)) {
+                query.$or.push({ _id: leadId });
+            }
+            const mongoLead = await Lead.findOne(query);
+            if (mongoLead) {
+                return {
+                    id: mongoLead.zohoId || mongoLead._id.toString(),
+                    _id: mongoLead._id.toString(),
+                    zohoId: mongoLead.zohoId,
+                    name: mongoLead.name,
+                    email: mongoLead.email,
+                    phone: mongoLead.phone,
+                    status: mongoLead.status,
+                    source: mongoLead.source,
+                    company: mongoLead.company,
+                    propertyId: mongoLead.propertyId,
+                    value: mongoLead.value || mongoLead.budget,
+                    location: mongoLead.location,
+                    notes: mongoLead.notes,
+                    organizationId: mongoLead.organizationId,
+                    assignedTo: mongoLead.assignedTo,
+                    createdAt: mongoLead.createdAt,
+                    updatedAt: mongoLead.updatedAt,
+                };
+            }
+        }
+
+        // Fallback to Zoho
         const zohoResponse = await zohoClient.getLead(leadId);
         if (!zohoResponse || !zohoResponse.data || zohoResponse.data.length === 0) {
             throw new NotFoundError('Lead not found');
@@ -363,6 +394,26 @@ async function getLeadById(leadId) {
  */
 async function getLeadsByOwner(ownerId) {
     try {
+        // Check MongoDB first for locally-assigned leads
+        if (useDatabase()) {
+            const mongoLeads = await Lead.find({ assignedTo: ownerId }).lean();
+            if (mongoLeads.length > 0) {
+                return mongoLeads.map(l => ({
+                    id: l.zohoId || l._id.toString(),
+                    _id: l._id.toString(),
+                    name: l.name,
+                    phone: l.phone,
+                    status: l.status,
+                    source: l.source,
+                    propertyId: l.propertyId,
+                    category: l.category,
+                    propertyType: l.propertyType,
+                    owner: ownerId,
+                }));
+            }
+        }
+
+        // Fallback to Zoho
         const zohoResponse = await zohoClient.getLeads(1, 200);
         const allLeads = (zohoResponse.data || []).map(mapZohoLeadToFrontend);
 
@@ -579,6 +630,37 @@ async function updateLead(user, leadId, updateData) {
                         }
                     })
                     .catch(err => console.error('Task auto-complete failed:', err.message));
+
+                // Send email notification for high-priority status changes
+                const HIGH_PRIORITY_STATUSES = ['Appointment Booked', 'Appointment Scheduled', 'Interested'];
+                if (HIGH_PRIORITY_STATUSES.includes(updateData.status) && mongoLead.assignedTo) {
+                    const emailService = require('../services/email.service');
+                    const User = require('../models/User');
+                    const notificationService = require('../services/notification.service');
+                    User.findById(mongoLead.assignedTo).select('name email')
+                        .then(agent => {
+                            if (agent?.email) {
+                                emailService.sendHighPriorityStatusEmail(
+                                    agent.email,
+                                    agent.name || agent.email,
+                                    { name: mongoLead.name, phone: mongoLead.phone, email: mongoLead.email },
+                                    updateData.status,
+                                    mongoLead.organizationId
+                                ).catch(err => console.error('High-priority email failed:', err.message));
+                            }
+                            // In-app bell notification
+                            notificationService.create({
+                                userId: mongoLead.assignedTo,
+                                organizationId: mongoLead.organizationId,
+                                type: 'lead_status_high',
+                                title: `Lead status: ${updateData.status}`,
+                                message: `${mongoLead.name || 'A lead'} moved to ${updateData.status}`,
+                                avatarFallback: (mongoLead.name || 'L').charAt(0).toUpperCase(),
+                                data: { leadId: mongoLead._id, status: updateData.status }
+                            }).catch(err => console.error('Status bell notification failed:', err.message));
+                        })
+                        .catch(err => console.error('Failed to fetch agent for status email:', err.message));
+                }
             }
         } catch (dbError) {
             console.error('MongoDB update failed:', dbError.message);

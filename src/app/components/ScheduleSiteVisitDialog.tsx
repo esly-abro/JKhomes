@@ -1,22 +1,22 @@
-import { useState, useEffect } from 'react';
+import { AlertCircle, Calendar as CalendarIcon, CheckCircle2, Clock, Home, Loader2, Phone, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { checkConflict, getAvailableSlots, type AvailableSlotsResponse } from '../../services/availability';
+import { getUsers } from '../../services/leads';
+import { getProperties, Property } from '../../services/properties';
+import type { Lead } from '../context/DataContext';
+import { useData } from '../context/DataContext';
+import { useTenantConfig } from '../context/TenantConfigContext';
+import { useOrganization } from '../hooks/useOrganization';
+import { Button } from './ui/button';
 import {
     Dialog,
     DialogContent,
     DialogHeader,
     DialogTitle,
 } from './ui/dialog';
-import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
-import { User, Phone, MapPin, Calendar as CalendarIcon, Clock, CheckCircle2, FileText, Home, AlertCircle, Loader2 } from 'lucide-react';
-import { useTenantConfig } from '../context/TenantConfigContext';
-import { useOrganization } from '../hooks/useOrganization';
-import type { Lead } from '../context/DataContext';
-import { useData } from '../context/DataContext';
-import { getUsers } from '../../services/leads';
-import { getProperties, Property } from '../../services/properties';
-import { getAvailableSlots, checkConflict, type TimeSlot, type AvailableSlotsResponse } from '../../services/availability';
+import { Textarea } from './ui/textarea';
 
 interface ScheduleSiteVisitDialogProps {
     open: boolean;
@@ -58,6 +58,10 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                 if (lead.propertyId) {
                     setSelectedProperty(lead.propertyId);
                 }
+            }
+            // Pre-select agent if lead already has one assigned
+            if ((lead as any).assignedTo) {
+                setAgent((lead as any).assignedTo);
             }
         }
     }, [open, lead.propertyId, hasCatalog]);
@@ -487,7 +491,17 @@ export default function ScheduleSiteVisitDialog({ open, onOpenChange, lead, onCo
                                         <button
                                             key={day}
                                             type="button"
-                                            onClick={() => isAvailable && setSelectedDate(day)}
+                                            onClick={() => {
+                                                if (isAvailable) {
+                                                    setSelectedDate(day);
+                                                    // Auto-fill visit date from calendar click
+                                                    const now = new Date();
+                                                    const year = now.getFullYear();
+                                                    const month = now.getMonth();
+                                                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                                                    setVisitDate(dateStr);
+                                                }
+                                            }}
                                             disabled={!isAvailable}
                                             className={`
                                                 aspect-square w-full flex items-center justify-center

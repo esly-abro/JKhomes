@@ -22,6 +22,7 @@ import Automation from './pages/Automation';
 import AutomationMonitor from './pages/AutomationMonitor';
 import Broadcasts from './pages/Broadcasts';
 import AIAgents from './pages/AIAgents';
+import MyPerformance from './pages/MyPerformance';
 import MainLayout from './components/MainLayout';
 import ModuleGuard from './components/ModuleGuard';
 import { getStoredUser, User } from '../services/auth';
@@ -90,6 +91,7 @@ function AppRoutes({ user, setUser, hasCompletedOnboarding, setHasCompletedOnboa
           </ModuleGuard>
         } />
 
+        <Route path="my-performance" element={<MyPerformance />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="agents" element={<Agents />} />
         <Route path="settings" element={<Settings />} />

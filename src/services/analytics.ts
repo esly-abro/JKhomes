@@ -49,6 +49,71 @@ export interface AnalyticsData {
     kpiMetrics: KPIMetrics;
 }
 
+// --- Agent Performance Types ---
+
+export interface AgentKPIs {
+    totalLeads: number;
+    totalLeadsChange: string;
+    dealsWon: number;
+    dealsWonChange: string;
+    conversionRate: string;
+    revenue: number;
+    avgResponseTime: string;
+}
+
+export interface ActivityBreakdownItem {
+    type: string;
+    label: string;
+    count: number;
+}
+
+export interface PipelineItem {
+    status: string;
+    count: number;
+}
+
+export interface TaskStats {
+    total: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    overdue: number;
+    recentCompleted: number;
+    completionRate: string;
+}
+
+export interface CallStats {
+    totalCalls: number;
+    outbound: number;
+    inbound: number;
+    totalDuration: string;
+    avgDuration: string;
+}
+
+export interface DailyActivityItem {
+    date: string;
+    count: number;
+}
+
+export interface RecentActivityItem {
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    outcome: string;
+    createdAt: string;
+}
+
+export interface AgentPerformanceData {
+    kpis: AgentKPIs;
+    activityBreakdown: ActivityBreakdownItem[];
+    leadPipeline: PipelineItem[];
+    taskStats: TaskStats;
+    callStats: CallStats;
+    dailyActivity: DailyActivityItem[];
+    recentActivity: RecentActivityItem[];
+}
+
 /**
  * Get all analytics data (combined endpoint)
  */
@@ -98,6 +163,16 @@ export async function getTeamPerformance(): Promise<TeamMember[]> {
  */
 export async function getKPIMetrics(dateRange: string = '30days'): Promise<KPIMetrics> {
     const { data } = await api.get<KPIMetrics>('/api/analytics/kpi-metrics', {
+        params: { range: dateRange }
+    });
+    return data;
+}
+
+/**
+ * Get agent's own performance metrics (accessible by all roles)
+ */
+export async function getMyPerformance(dateRange: string = '30days'): Promise<AgentPerformanceData> {
+    const { data } = await api.get<AgentPerformanceData>('/api/analytics/my-performance', {
         params: { range: dateRange }
     });
     return data;

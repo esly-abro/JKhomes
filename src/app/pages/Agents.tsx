@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Shield, User, Clock, Phone, Mail, CheckCircle, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, UserPlus, Trash2, Activity, CheckSquare } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Shield, User, Clock, Phone, Mail, CheckCircle, XCircle, Loader2, RefreshCw, ChevronDown, ChevronUp, Users, UserPlus, Trash2, Activity, CheckSquare, Wifi, WifiOff, CalendarDays } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -16,6 +16,7 @@ import { Textarea } from '../components/ui/textarea';
 import AgentActivityDialog from '../components/AgentActivityDialog';
 import { createTaskForAgent } from '../../services/leads';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { getAgentsStatus, getAttendanceLog, formatDuration, type AgentPresence, type AgentStatusSummary, type AttendanceRecord } from '../../services/attendance';
 
 interface Agent {
   _id: string;
@@ -27,6 +28,8 @@ interface Agent {
   approvalStatus: string;
   lastLogin?: string;
   createdAt: string;
+  isOnline?: boolean;
+  lastHeartbeat?: string;
 }
 
 interface Lead {
@@ -82,6 +85,41 @@ export default function Agents() {
     phone: '',
     password: ''
   });
+
+  // Presence & Attendance State
+  const [activeTab, setActiveTab] = useState<'agents' | 'attendance'>('agents');
+  const [presenceData, setPresenceData] = useState<AgentPresence[]>([]);
+  const [presenceSummary, setPresenceSummary] = useState<AgentStatusSummary | null>(null);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceDateRange, setAttendanceDateRange] = useState({
+    start: (() => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })(),
+    end: new Date().toISOString().split('T')[0]
+  });
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  // Fetch live presence data
+  const fetchPresence = useCallback(async () => {
+    try {
+      const result = await getAgentsStatus();
+      setPresenceData(result.data || []);
+      setPresenceSummary(result.summary || null);
+    } catch (err) {
+      console.error('Error fetching presence:', err);
+    }
+  }, []);
+
+  // Fetch attendance log
+  const fetchAttendance = useCallback(async () => {
+    setLoadingAttendance(true);
+    try {
+      const result = await getAttendanceLog(attendanceDateRange.start, attendanceDateRange.end);
+      setAttendanceRecords(result.data || []);
+    } catch (err) {
+      console.error('Error fetching attendance:', err);
+    } finally {
+      setLoadingAttendance(false);
+    }
+  }, [attendanceDateRange]);
 
   const handleAddAgent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,10 +239,23 @@ export default function Agents() {
 
   useEffect(() => {
     fetchAgents();
-    // Auto-refresh every 30 seconds to keep active status current
-    const interval = setInterval(fetchAgents, 30000);
-    return () => clearInterval(interval);
+    fetchPresence();
+
+    // Auto-refresh agents & presence every 30 seconds
+    const agentInterval = setInterval(fetchAgents, 30000);
+    const presenceInterval = setInterval(fetchPresence, 30000);
+    return () => {
+      clearInterval(agentInterval);
+      clearInterval(presenceInterval);
+    };
   }, []);
+
+  // Fetch attendance when tab switches or date range changes
+  useEffect(() => {
+    if (activeTab === 'attendance') {
+      fetchAttendance();
+    }
+  }, [activeTab, fetchAttendance]);
 
   const fetchAgentLeads = async (agentId: string) => {
     setLoadingLeads(agentId);
@@ -313,12 +364,9 @@ export default function Agents() {
     );
   };
 
-  // Agent is "Active" only if isActive flag is true AND they logged in within the last 30 minutes
-  const isCurrentlyActive = (agent: Agent): boolean => {
-    if (!agent.isActive) return false;
-    if (!agent.lastLogin) return false;
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-    return new Date(agent.lastLogin) > thirtyMinutesAgo;
+  // Find presence info for a given agent
+  const getAgentPresence = (agentId: string) => {
+    return presenceData.find(p => p._id === agentId);
   };
 
   const getStatusBadge = (agent: Agent) => {
@@ -338,11 +386,26 @@ export default function Agents() {
         </span>
       );
     }
-    if (isCurrentlyActive(agent)) {
+    // Check presence data for real-time online status
+    const presence = getAgentPresence(agent._id);
+    const isOnline = presence?.isOnline ?? agent.isOnline ?? false;
+    if (isOnline) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <CheckCircle className="h-3 w-3" />
-          Active
+          <Wifi className="h-3 w-3" />
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+          </span>
+          Online
+        </span>
+      );
+    }
+    if (agent.isActive) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+          <WifiOff className="h-3 w-3" />
+          Offline
         </span>
       );
     }
@@ -512,26 +575,171 @@ export default function Agents() {
           <div className="text-2xl font-bold text-gray-900">{agents.length}</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Active</div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+            <Wifi className="h-3.5 w-3.5 text-green-500" />
+            Online Now
+          </div>
           <div className="text-2xl font-bold text-green-600">
-            {agents.filter(a => a.isActive && a.approvalStatus === 'approved').length}
+            {presenceSummary?.online ?? 0}
           </div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Pending Approval</div>
-          <div className="text-2xl font-bold text-yellow-600">
-            {agents.filter(a => a.approvalStatus === 'pending').length}
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+            <WifiOff className="h-3.5 w-3.5 text-gray-400" />
+            Offline
           </div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-sm text-gray-500 mb-1">Inactive</div>
           <div className="text-2xl font-bold text-gray-600">
-            {agents.filter(a => !a.isActive || a.approvalStatus === 'rejected').length}
+            {presenceSummary?.offline ?? 0}
+          </div>
+        </div>
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+            <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
+            Checked In Today
+          </div>
+          <div className="text-2xl font-bold text-blue-600">
+            {presenceSummary?.checkedInToday ?? 0}
           </div>
         </div>
       </div>
 
+      {/* Tab Navigation */}
+      <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+        <button
+          onClick={() => setActiveTab('agents')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'agents'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Agents
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('attendance')}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'attendance'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4" />
+            Attendance
+          </div>
+        </button>
+      </div>
+
+      {/* Attendance Tab */}
+      {activeTab === 'attendance' && (
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="text-lg font-semibold text-gray-900">Attendance Log</h2>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="startDate" className="text-sm text-gray-500 whitespace-nowrap">From</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={attendanceDateRange.start}
+                  onChange={(e) => setAttendanceDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-40"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="endDate" className="text-sm text-gray-500 whitespace-nowrap">To</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={attendanceDateRange.end}
+                  onChange={(e) => setAttendanceDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-40"
+                />
+              </div>
+              <Button onClick={fetchAttendance} variant="outline" size="sm" disabled={loadingAttendance}>
+                {loadingAttendance ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {loadingAttendance ? (
+            <div className="p-12 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-2" />
+              <p className="text-gray-500">Loading attendance records...</p>
+            </div>
+          ) : attendanceRecords.length === 0 ? (
+            <div className="p-12 text-center">
+              <CalendarDays className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No attendance records</h3>
+              <p className="text-gray-500">No check-in records found for the selected date range</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agent</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check In</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Check Out</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Hours</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sessions</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {attendanceRecords.map((record) => (
+                    <tr key={record._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {new Date(record.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            <User className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">
+                            {record.userId?.name || 'Unknown'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {record.checkIn ? new Date(record.checkIn).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {record.checkOut ? new Date(record.checkOut).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
+                        {record.totalMinutes ? formatDuration(record.totalMinutes) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {record.sessions?.length || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          record.status === 'checked-in'
+                            ? 'bg-green-100 text-green-800'
+                            : record.status === 'auto-logout'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {record.status === 'checked-in' ? 'Active' : record.status === 'auto-logout' ? 'Auto Logged Out' : 'Checked Out'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Agents Table */}
+      {activeTab === 'agents' && (
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">All Agents</h2>
@@ -720,6 +928,7 @@ export default function Agents() {
           </div>
         )}
       </div>
+      )}
 
       {/* Create Task Modal */}
       <Dialog open={showTaskModal} onOpenChange={setShowTaskModal}>

@@ -104,7 +104,8 @@ async function getAvailableSlots(propertyId, date) {
     const now = new Date();
 
     // Get existing bookings for this property and date
-    const existingVisits = await SiteVisit.getByPropertyAndDate(propertyId, date);
+    const organizationId = property.organizationId;
+    const existingVisits = await SiteVisit.getByPropertyAndDate(organizationId, propertyId, date);
     const bookedSlots = existingVisits.map(v => v.timeSlot?.startTime);
 
     // Check max visits per day
