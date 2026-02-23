@@ -10,6 +10,8 @@ import {
   ArrowUpDown, Bot, Clock
 } from 'lucide-react';
 import api from '../../services/api';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 interface ActivityItem {
   _id: string;
@@ -38,6 +40,7 @@ interface TaskItem {
 
 export default function Activities() {
   const { appointmentFieldLabel } = useTenantConfig();
+  const { addToast } = useToast();
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +54,7 @@ export default function Activities() {
       const list = Array.isArray(data) ? data : (data.data || data.activities || []);
       setActivities(list);
     } catch (err) {
-      console.error('Failed to fetch activities:', err);
+      addToast(parseApiError(err).message, 'error');
       setActivities([]);
     } finally {
       setLoading(false);
@@ -64,7 +67,7 @@ export default function Activities() {
       const list = Array.isArray(data) ? data : (data.data || data.tasks || []);
       setTasks(list);
     } catch (err) {
-      console.error('Failed to fetch tasks:', err);
+      addToast(parseApiError(err).message, 'error');
       setTasks([]);
     } finally {
       setTaskLoading(false);

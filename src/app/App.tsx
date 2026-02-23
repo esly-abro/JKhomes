@@ -1,8 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { DataProvider, useData } from './context/DataContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { TenantConfigProvider } from './context/TenantConfigContext';
+import { ToastProvider, useToast } from './context/ToastContext';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Onboarding from './pages/Onboarding';
@@ -35,7 +36,22 @@ function AppRoutes({ user, setUser, hasCompletedOnboarding, setHasCompletedOnboa
   setHasCompletedOnboarding: (value: boolean) => void;
 }) {
   const { initializeData } = useData();
+  const { addToast } = useToast();
   const isAuthenticated = !!user;
+
+  // Listen for global API errors (403 / 5xx) and show toasts
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { status, message } = (e as CustomEvent).detail;
+      if (status === 403) {
+        addToast(message || 'You do not have permission to perform this action.', 'error');
+      } else if (status >= 500) {
+        addToast(message || 'Something went wrong. Please try again later.', 'error');
+      }
+    };
+    window.addEventListener('api-error', handler);
+    return () => window.removeEventListener('api-error', handler);
+  }, [addToast]);
 
   const handleLogin = useCallback(async (loggedInUser: User) => {
     setUser(loggedInUser);
@@ -121,14 +137,16 @@ export default function App() {
     <DataProvider>
       <TenantConfigProvider>
         <NotificationProvider>
-          <BrowserRouter>
-            <AppRoutes 
-              user={user} 
-              setUser={setUser} 
-              hasCompletedOnboarding={hasCompletedOnboarding}
-              setHasCompletedOnboarding={setHasCompletedOnboarding}
-            />
-          </BrowserRouter>
+          <ToastProvider>
+            <BrowserRouter>
+              <AppRoutes 
+                user={user} 
+                setUser={setUser} 
+                hasCompletedOnboarding={hasCompletedOnboarding}
+                setHasCompletedOnboarding={setHasCompletedOnboarding}
+              />
+            </BrowserRouter>
+          </ToastProvider>
         </NotificationProvider>
       </TenantConfigProvider>
     </DataProvider>

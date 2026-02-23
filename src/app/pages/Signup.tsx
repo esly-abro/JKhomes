@@ -5,6 +5,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Building2, Check, AlertCircle, CheckCircle, Building, Package, Heart, GraduationCap, Shield, DollarSign, Car, Grid3x3, ArrowRight, ArrowLeft } from 'lucide-react';
 import { register } from '../../services/auth';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 interface SignupProps {
   onSignup?: (user: any) => void;
@@ -65,6 +67,7 @@ const industries = [
 
 export default function Signup({ onSignup }: SignupProps) {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -129,7 +132,6 @@ export default function Signup({ onSignup }: SignupProps) {
       );
       
       setSuccess(true);
-      console.log('Registration successful:', response);
       
       // Redirect to login after 3 seconds
       setTimeout(() => {
@@ -137,7 +139,7 @@ export default function Signup({ onSignup }: SignupProps) {
       }, 3000);
       
     } catch (err: any) {
-      console.error('Registration error:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.response?.data?.message || 'Registration failed. Please try again.');
       setLoading(false);
     }

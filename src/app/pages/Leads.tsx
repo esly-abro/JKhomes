@@ -27,6 +27,8 @@ import { getUsers } from '../../services/leads';
 import { getProperties } from '../../services/properties';
 import { getStoredUser } from '../../services/auth';
 import * as XLSX from 'xlsx';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 // --- Sub-Components for Different Views ---
 
@@ -282,6 +284,7 @@ export default function Leads() {
   const { addNotification } = useNotifications();
   const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, leadStatuses, leadStatusKeys } = useTenantConfig();
   const { catalogModuleLabel } = useOrganization();
+  const { addToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
   const [view, setView] = useState<'list' | 'kanban' | 'table'>('table');
@@ -344,7 +347,7 @@ export default function Leads() {
       const data = await getUsers();
       setUsers(data);
     } catch (error) {
-      console.error('Failed to fetch users:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -353,7 +356,7 @@ export default function Leads() {
       const data = await getProperties();
       setProperties(data);
     } catch (error) {
-      console.error('Failed to fetch properties:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -377,12 +380,12 @@ export default function Leads() {
 
   const handleBulkAssign = async () => {
     if (selectedLeads.size === 0) {
-      alert('Please select at least one lead to assign');
+      addToast('Please select at least one lead to assign', 'warning');
       return;
     }
 
     if (!autoAssign && !selectedAgent) {
-      alert('Please select an agent or enable auto-assign');
+      addToast('Please select an agent or enable auto-assign', 'warning');
       return;
     }
 
@@ -394,7 +397,7 @@ export default function Leads() {
       const successCount = result.results.filter(r => r.success).length;
       const failCount = result.results.filter(r => !r.success).length;
 
-      alert(`Successfully assigned ${successCount} lead(s)${failCount > 0 ? `, ${failCount} failed` : ''}`);
+      addToast(`Successfully assigned ${successCount} lead(s)${failCount > 0 ? `, ${failCount} failed` : ''}`, 'success');
 
       setSelectedLeads(new Set());
       setShowAssignDialog(false);
@@ -402,8 +405,7 @@ export default function Leads() {
       setAutoAssign(false);
       await refreshLeads();
     } catch (error: any) {
-      console.error('Failed to assign leads:', error);
-      alert(error.response?.data?.error || 'Failed to assign leads');
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setAssigning(false);
     }
@@ -450,8 +452,7 @@ export default function Leads() {
       setDeleteTarget(null);
       await refreshLeads();
     } catch (error: any) {
-      console.error('Failed to delete lead(s):', error);
-      alert(error.response?.data?.error || 'Failed to delete lead(s)');
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setDeleting(false);
     }
@@ -460,7 +461,7 @@ export default function Leads() {
   // Handle bulk delete button click
   const handleBulkDelete = () => {
     if (selectedLeads.size === 0) {
-      alert('Please select at least one lead to delete');
+      addToast('Please select at least one lead to delete', 'warning');
       return;
     }
     setDeleteTarget(null); // null means bulk delete
@@ -528,10 +529,9 @@ export default function Leads() {
 
       XLSX.writeFile(wb, filename);
 
-      alert(`Successfully exported ${leads.length} leads!`);
+      addToast(`Successfully exported ${leads.length} leads!`, 'success');
     } catch (err) {
-      console.error('Failed to export leads:', err);
-      alert('Failed to export leads. Please try again.');
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setExporting(false);
     }
@@ -557,10 +557,9 @@ export default function Leads() {
       setFormData({ name: '', email: '', phone: '', company: '', source: 'Website', propertyId: '' });
       setShowAddDialog(false);
       await refreshLeads();
-      alert('Lead created successfully! It will appear in Zoho CRM.');
+      addToast('Lead created successfully! It will appear in Zoho CRM.', 'success');
     } catch (err: any) {
-      console.error('Failed to create lead:', err);
-      alert(err.response?.data?.error || 'Failed to create lead. Please try again.');
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setCreating(false);
     }

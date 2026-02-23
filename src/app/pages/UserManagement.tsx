@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Users, Check, X, Shield, AlertCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 interface PendingUser {
   _id: string;
@@ -18,6 +20,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const { addToast } = useToast();
 
   useEffect(() => {
     fetchPendingUsers();
@@ -39,7 +42,7 @@ export default function UserManagement() {
       const data = await response.json();
       setPendingUsers(data.data);
     } catch (err: any) {
-      console.error('Error fetching pending users:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message);
     } finally {
       setLoading(false);
@@ -67,9 +70,9 @@ export default function UserManagement() {
 
       // Remove from pending list
       setPendingUsers(prev => prev.filter(user => user._id !== userId));
-      alert('User approved successfully!');
+      addToast('User approved successfully!', 'success');
     } catch (err: any) {
-      console.error('Error approving user:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message);
     } finally {
       setProcessing(null);
@@ -99,9 +102,9 @@ export default function UserManagement() {
 
       // Remove from pending list
       setPendingUsers(prev => prev.filter(user => user._id !== userId));
-      alert('User rejected');
+      addToast('User rejected', 'success');
     } catch (err: any) {
-      console.error('Error rejecting user:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message);
     } finally {
       setProcessing(null);

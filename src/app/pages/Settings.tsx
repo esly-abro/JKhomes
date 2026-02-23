@@ -11,6 +11,8 @@ import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 import { sendInvite, listInvites, revokeInvite } from '../../services/invites';
 import { updateProfile as updateProfileAPI, changePassword } from '../../services/profile';
 import { getBillingInfo, getPlans, getInvoices, type BillingInfo, type Plan, type Invoice as BillingInvoice } from '../../services/billing';
@@ -72,6 +74,7 @@ interface Invoice {
 
 export default function Settings() {
   const { categoryFieldLabel, appointmentFieldLabel, locationFieldLabel, categories, appointmentTypes, leadStatuses, tenantConfig, refreshConfig } = useTenantConfig();
+  const { addToast } = useToast();
   const [loadingTeam, setLoadingTeam] = useState(true);
 
   // Customization tab state
@@ -247,7 +250,7 @@ export default function Settings() {
         setStatusUsage(usage);
         setStatusUsageLoaded(true);
       } catch (err) {
-        console.error('Failed to load status usage', err);
+        addToast(parseApiError(err).message, 'error');
       }
     }
   };
@@ -320,7 +323,7 @@ export default function Settings() {
           }
         }
       } catch (err) {
-        console.error('Failed to load email settings:', err);
+        addToast(parseApiError(err).message, 'error');
       } finally {
         setEmailLoading(false);
       }
@@ -429,7 +432,7 @@ export default function Settings() {
         }
       }
     } catch (error) {
-      console.error('Failed to load profile data:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setOrgLoading(false);
     }
@@ -445,7 +448,7 @@ export default function Settings() {
       const users = await getUsers();
       setTeamMembers(users);
     } catch (error) {
-      console.error('Failed to fetch team members:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoadingTeam(false);
     }
@@ -474,7 +477,7 @@ export default function Settings() {
         status: 'Active'
       })));
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to send invite');
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setInviting(false);
     }
@@ -487,7 +490,7 @@ export default function Settings() {
       await api.delete(`/api/users/${id}`);
       setTeamMembers(teamMembers.filter(m => m.id !== id));
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to remove member');
+      addToast(parseApiError(err).message, 'error');
     }
   };
 
@@ -499,7 +502,7 @@ export default function Settings() {
         m.id === id ? { ...m, role: newRole } : m
       ));
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to update role');
+      addToast(parseApiError(err).message, 'error');
     }
   };
 
@@ -594,7 +597,7 @@ export default function Settings() {
       await deleteAssignmentRule(String(id));
       setAutomationRules(prev => prev.filter(rule => rule.id !== id));
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to delete rule');
+      addToast(parseApiError(err).message, 'error');
     }
   };
 
@@ -624,7 +627,7 @@ export default function Settings() {
       setNewRuleName('');
       setShowCreateRuleForm(false);
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to create rule');
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setCreatingRule(false);
     }
@@ -691,13 +694,13 @@ export default function Settings() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('zoho_connected') === 'true') {
-      alert('🎉 Zoho CRM connected successfully via OAuth!');
+      addToast('Zoho CRM connected successfully via OAuth!', 'success');
       // Clear the URL parameter
       window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
       checkZohoOAuthStatus();
       loadZohoConfig();
     } else if (params.get('zoho_error')) {
-      alert('❌ Failed to connect Zoho: ' + params.get('zoho_error'));
+      addToast('Failed to connect Zoho: ' + params.get('zoho_error'), 'error');
       window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
     }
   }, []);
@@ -709,7 +712,7 @@ export default function Settings() {
       const response = await api.default.get('/auth/zoho/status');
       setZohoOAuthStatus(response.data);
     } catch (error) {
-      console.error('Error checking Zoho OAuth status:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setCheckingOAuthStatus(false);
     }
@@ -725,7 +728,7 @@ export default function Settings() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         userId = payload.userId;
       } catch {
-        console.error('Failed to decode JWT token');
+        // silent — JWT decode failure is non-critical
       }
     }
     
@@ -741,9 +744,9 @@ export default function Settings() {
       const api = await import('../../services/api');
       await api.default.delete('/auth/zoho/disconnect');
       setZohoOAuthStatus(null);
-      alert('Zoho CRM disconnected successfully');
+      addToast('Zoho CRM disconnected successfully', 'success');
     } catch (error: any) {
-      alert('Failed to disconnect: ' + (error.response?.data?.error || error.message));
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -764,7 +767,7 @@ export default function Settings() {
         }
       }
     } catch (error) {
-      console.error('Error loading Zoho config:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoadingZohoConfig(false);
     }
@@ -772,7 +775,7 @@ export default function Settings() {
 
   const handleSaveZohoConfig = async () => {
     if (!zohoConfig.clientId || !zohoConfig.clientSecret || !zohoConfig.refreshToken) {
-      alert('Please fill in all required fields: Client ID, Client Secret, and Refresh Token');
+      addToast('Please fill in all required fields: Client ID, Client Secret, and Refresh Token', 'warning');
       return;
     }
 
@@ -787,12 +790,12 @@ export default function Settings() {
       });
       
       if (response.data.success) {
-        alert('Zoho credentials saved! Click "Test Connection" to verify.');
+        addToast('Zoho credentials saved! Click "Test Connection" to verify.', 'success');
       } else {
         throw new Error(response.data.error);
       }
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to save Zoho configuration');
+      addToast(error.response?.data?.error || 'Failed to save Zoho configuration', 'error');
     } finally {
       setSavingZohoConfig(false);
     }
@@ -843,9 +846,9 @@ export default function Settings() {
       });
       setZohoTestResult(null);
       setShowZohoModal(false);
-      alert('Zoho CRM disconnected successfully');
+      addToast('Zoho CRM disconnected successfully', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to disconnect');
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -863,7 +866,7 @@ export default function Settings() {
         }));
       }
     } catch (error) {
-      console.error('Error loading ElevenLabs config:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoadingElevenLabsConfig(false);
     }
@@ -871,7 +874,7 @@ export default function Settings() {
 
   const handleSaveElevenLabsConfig = async () => {
     if (!elevenLabsConfig.apiKey || !elevenLabsConfig.agentId) {
-      alert('Please fill in API Key and Agent ID');
+      addToast('Please fill in API Key and Agent ID', 'warning');
       return;
     }
 
@@ -885,13 +888,13 @@ export default function Settings() {
       });
       
       if (response.data.success) {
-        alert('ElevenLabs configuration saved! Click "Test Connection" to verify.');
+        addToast('ElevenLabs configuration saved! Click "Test Connection" to verify.', 'success');
         loadElevenLabsConfig();
       } else {
         throw new Error(response.data.error);
       }
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to save ElevenLabs configuration');
+      addToast(error.response?.data?.error || 'Failed to save ElevenLabs configuration', 'error');
     } finally {
       setSavingElevenLabsConfig(false);
     }
@@ -940,9 +943,9 @@ export default function Settings() {
       });
       setElevenLabsTestResult(null);
       setShowElevenLabsModal(false);
-      alert('ElevenLabs disconnected successfully');
+      addToast('ElevenLabs disconnected successfully', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to disconnect');
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -1060,11 +1063,11 @@ export default function Settings() {
 
   const handleChangePlan = () => {
     const usage = billingInfo?.usage;
-    alert(`Subscription usage: ${usage?.leads ?? 'N/A'} leads.\n\nTo change your plan, please contact support or visit the billing portal.`);
+    addToast(`Subscription usage: ${usage?.leads ?? 'N/A'} leads. To change your plan, please contact support.`, 'info');
   };
 
   const handleUpdatePaymentMethod = () => {
-    alert('Redirecting to secure payment provider... (Payment integration coming soon)');
+    addToast('Payment integration coming soon', 'info');
   };
 
   const handleDownloadInvoice = (invoice: Invoice) => {
@@ -1088,11 +1091,11 @@ export default function Settings() {
 
   const handleSaveWhatsappSettings = async () => {
     if (whatsappSettings.provider === 'meta' && !whatsappSettings.accessToken) {
-      alert('Please enter your Meta Access Token');
+      addToast('Please enter your Meta Access Token', 'warning');
       return;
     }
     if (whatsappSettings.provider === 'twilio' && (!whatsappSettings.twilioAccountSid || !whatsappSettings.twilioAuthToken)) {
-      alert('Please enter your Twilio Account SID and Auth Token');
+      addToast('Please enter your Twilio Account SID and Auth Token', 'warning');
       return;
     }
     setSavingWhatsappSettings(true);
@@ -1123,19 +1126,18 @@ export default function Settings() {
             businessAccountId: disc.businessAccountId || prev.businessAccountId
           }));
         }
-        alert(whatsappSettings.provider === 'twilio'
+        addToast(whatsappSettings.provider === 'twilio'
           ? 'Twilio WhatsApp connected successfully!'
           : disc?.phoneDisplay
             ? `WhatsApp connected! Phone: ${disc.phoneDisplay}${disc.businessName ? ` (${disc.businessName})` : ''}`
             : 'WhatsApp configuration saved! Click "Test Connection" to verify.'
-        );
+        , 'success');
         handleLoadWhatsappSettings();
       } else {
         throw new Error(response.data.error || 'Failed to save settings');
       }
     } catch (error: any) {
-      console.error('Error saving WhatsApp settings:', error);
-      alert(error.response?.data?.error || 'Failed to save WhatsApp settings. Please try again.');
+      addToast(error.response?.data?.error || 'Failed to save WhatsApp settings', 'error');
     } finally {
       setSavingWhatsappSettings(false);
     }
@@ -1158,7 +1160,7 @@ export default function Settings() {
         handleLoadWhatsappSettings();
       }
     } catch (error: any) {
-      console.error('Error testing WhatsApp connection:', error);
+      addToast(parseApiError(error).message, 'error');
       setWhatsappTestResult({ 
         success: false, 
         message: error.response?.data?.error || 'Connection test failed' 
@@ -1191,7 +1193,7 @@ export default function Settings() {
         }));
       }
     } catch (error) {
-      console.error('Error loading WhatsApp settings:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoadingWhatsappSettings(false);
     }
@@ -1223,9 +1225,9 @@ export default function Settings() {
         lastError: null
       });
       setWhatsappTestResult(null);
-      alert('WhatsApp disconnected successfully');
+      addToast('WhatsApp disconnected successfully', 'success');
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to disconnect');
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -1274,15 +1276,14 @@ export default function Settings() {
             ...prev,
             avatar: data.organization.logoDataUrl
           }));
-          alert('Logo updated successfully!');
+          addToast('Logo updated successfully!', 'success');
         }
       } else {
         const error = await response.json();
-        alert('Failed to upload logo: ' + (error.error || 'Unknown error'));
+        addToast('Failed to upload logo: ' + (error.error || 'Unknown error'), 'error');
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      alert('Failed to upload logo');
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setUploadingLogo(false);
     }
@@ -1299,7 +1300,7 @@ export default function Settings() {
         language: profile.language,
       });
     } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to save profile');
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setSavingProfile(false);
     }

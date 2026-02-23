@@ -10,12 +10,15 @@ import { getProperties, createProperty, updateProperty, deleteProperty, uploadPr
 import { getAgents, Agent } from '../../services/agents';
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { useOrganization } from '../hooks/useOrganization';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 import AvailabilitySettingsDialog from '../components/AvailabilitySettingsDialog';
 
 export default function Properties() {
   const { categories, categoryFieldLabel, locationFieldLabel, isModuleEnabled } = useTenantConfig();
   const { catalogModuleLabel, industry } = useOrganization();
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const isRealEstate = industry === 'real_estate';
   const isAutomotive = industry === 'automotive';
   const showPriceRange = isRealEstate || isAutomotive;
@@ -92,7 +95,7 @@ export default function Properties() {
       const data = await getProperties();
       setProperties(data);
     } catch (error) {
-      console.error('Failed to fetch properties:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -103,45 +106,38 @@ export default function Properties() {
       const data = await getAgents();
       setAgents(data);
     } catch (error) {
-      console.error('Failed to fetch agents:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
   const handleCreateOrUpdate = async () => {
     try {
-      // Debug: Log current form state
-      console.log('=== FORM DATA DEBUG ===');
-      console.log('Full formData:', JSON.stringify(formData, null, 2));
-      console.log('Location value:', formData.location);
-      console.log('Location type:', typeof formData.location);
-      console.log('Location length:', formData.location?.length);
+
 
       // Validate required fields
       if (!formData.name || !formData.name.trim()) {
-        alert(`❌ ${catalogModuleLabel} name is required`);
+        addToast(`${catalogModuleLabel} name is required`, 'warning');
         return;
       }
       if (!formData.location || !formData.location.trim()) {
-        alert(`❌ ${locationFieldLabel} is required\n\nCurrent value: "` + (formData.location || 'empty') + '"');
+        addToast(`${locationFieldLabel} is required`, 'warning');
         return;
       }
       if (showPriceRange) {
         if (!formData.price?.min || !formData.price?.max) {
-          alert(`❌ Min and Max ${fieldLabels.priceLabel.toLowerCase()} are required`);
+          addToast(`Min and Max ${fieldLabels.priceLabel.toLowerCase()} are required`, 'warning');
           return;
         }
       } else {
         if (!formData.price?.min) {
-          alert(`❌ ${fieldLabels.priceLabel} is required`);
+          addToast(`${fieldLabels.priceLabel} is required`, 'warning');
           return;
         }
       }
       if (showSize && !formData.size?.value) {
-        alert(`❌ ${fieldLabels.sizeLabel} is required`);
+        addToast(`${fieldLabels.sizeLabel} is required`, 'warning');
         return;
       }
-
-      console.log('✅ Validation passed, submitting...');
 
       // Prepare data for API - convert assignedAgent object to just ID
       const apiData: any = {
@@ -158,13 +154,11 @@ export default function Properties() {
       await fetchProperties();
       setShowDialog(false);
       resetForm();
-      alert(`✅ ${catalogModuleLabel} saved successfully!`);
+      addToast(`${catalogModuleLabel} saved successfully!`, 'success');
     } catch (error: any) {
-      console.error('❌ Failed to save property:', error);
-      console.error('Error response:', error.response);
       const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || `Failed to save ${catalogModuleLabel.toLowerCase()}`;
       const errorDetails = error.response?.data?.details ? '\n\nDetails: ' + JSON.stringify(error.response.data.details, null, 2) : '';
-      alert('❌ ' + errorMsg + errorDetails);
+      addToast(errorMsg + errorDetails, 'error');
     }
   };
 
@@ -175,7 +169,7 @@ export default function Properties() {
       await deleteProperty(id);
       await fetchProperties();
     } catch (error) {
-      console.error('Failed to delete property:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -232,8 +226,7 @@ export default function Properties() {
           }]
         }));
       } catch (error) {
-        console.error('Failed to upload image:', error);
-        alert(`Failed to upload ${file.name}`);
+        addToast(`Failed to upload ${file.name}`, 'error');
       }
     }
 
@@ -545,10 +538,9 @@ export default function Properties() {
                   value={formData.location}
                   onChange={(e) => {
                     const newLocation = e.target.value;
-                    console.log('Location input changed:', newLocation);
                     setFormData({ ...formData, location: newLocation });
                   }}
-                  onBlur={() => console.log('Location onBlur, current value:', formData.location)}
+                  onBlur={() => {}}
                   placeholder={locationFieldLabel === 'Location' ? 'Whitefield, Bangalore' : `Enter ${locationFieldLabel.toLowerCase()}`}
                   required
                 />

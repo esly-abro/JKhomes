@@ -54,8 +54,16 @@ api.interceptors.response.use(
     response => response,
     async error => {
         const originalRequest = error.config;
+        const status = error.response?.status;
 
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        // Global error broadcasting for 403 / 5xx
+        if (status === 403 || (status && status >= 500)) {
+            window.dispatchEvent(new CustomEvent('api-error', {
+                detail: { status, message: error.response?.data?.message }
+            }));
+        }
+
+        if (status === 401 && !originalRequest._retry) {
             if (isRefreshing) {
                 // If already refreshing, queue this request
                 return new Promise((resolve, reject) => {

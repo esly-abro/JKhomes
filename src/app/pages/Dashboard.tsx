@@ -7,10 +7,13 @@ import { Users, TrendingUp, DollarSign, Target, ArrowUpRight, ArrowDownRight, Ph
 import { Link, useNavigate } from 'react-router-dom';
 import { getUsers } from '../../services/leads';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, FunnelChart, Funnel, LabelList, Legend } from 'recharts';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 export default function Dashboard() {
   const { leads, activities, siteVisits } = useData();
   const { appointmentFieldLabel, leadStatuses, leadStatusKeys, closedStatusKeys, getStatusLabel, getStatusColor } = useTenantConfig();
+  const { addToast } = useToast();
 
   // Calculate real month-over-month changes
   const monthlyStats = useMemo(() => {
@@ -183,7 +186,7 @@ export default function Dashboard() {
         const agentUsers = data.filter((u: any) => u.role === 'agent' || u.role === 'bpo');
         setAgents(agentUsers);
       } catch (error) {
-        console.error('Failed to fetch agents:', error);
+        addToast(parseApiError(error).message, 'error');
       }
     }
     fetchAgents();

@@ -17,6 +17,8 @@ import AgentActivityDialog from '../components/AgentActivityDialog';
 import { createTaskForAgent } from '../../services/leads';
 import { useTenantConfig } from '../context/TenantConfigContext';
 import { getAgentsStatus, getAttendanceLog, formatDuration, type AgentPresence, type AgentStatusSummary, type AttendanceRecord } from '../../services/attendance';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 interface Agent {
   _id: string;
@@ -46,6 +48,7 @@ interface Lead {
 
 export default function Agents() {
   const { getStatusColor, getStatusLabel } = useTenantConfig();
+  const { addToast } = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -104,7 +107,7 @@ export default function Agents() {
       setPresenceData(result.data || []);
       setPresenceSummary(result.summary || null);
     } catch (err) {
-      console.error('Error fetching presence:', err);
+      addToast(parseApiError(err).message, 'error');
     }
   }, []);
 
@@ -115,7 +118,7 @@ export default function Agents() {
       const result = await getAttendanceLog(attendanceDateRange.start, attendanceDateRange.end);
       setAttendanceRecords(result.data || []);
     } catch (err) {
-      console.error('Error fetching attendance:', err);
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setLoadingAttendance(false);
     }
@@ -164,7 +167,7 @@ export default function Agents() {
       }, 1500);
 
     } catch (err: any) {
-      console.error('Error adding agent:', err);
+      addToast(parseApiError(err).message, 'error');
       setAddError(err.message || 'Failed to add agent');
     } finally {
       setAddingAgent(false);
@@ -200,7 +203,7 @@ export default function Agents() {
       // Refresh agents list
       await fetchAgents();
     } catch (err: any) {
-      console.error('Error deleting agent:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message || 'Failed to delete agent');
     } finally {
       setDeletingAgent(null);
@@ -230,7 +233,7 @@ export default function Agents() {
       const agentUsers = Array.isArray(users) ? users.filter((user: Agent) => user.role === 'agent') : [];
       setAgents(agentUsers);
     } catch (err: any) {
-      console.error('Error fetching agents:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message);
     } finally {
       setLoading(false);
@@ -280,7 +283,7 @@ export default function Agents() {
         : [];
       setAgentLeads(prev => ({ ...prev, [agentId]: agentAssignedLeads }));
     } catch (err: any) {
-      console.error('Error fetching agent leads:', err);
+      addToast(parseApiError(err).message, 'error');
       setAgentLeads(prev => ({ ...prev, [agentId]: [] }));
     } finally {
       setLoadingLeads(null);

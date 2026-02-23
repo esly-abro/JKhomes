@@ -27,6 +27,8 @@ import {
   TASK_PRIORITY_CONFIG
 } from '../../services/tasks';
 import { getUsers } from '../../services/agents';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 // Icons
 import {
@@ -77,6 +79,7 @@ export default function Tasks() {
   const navigate = useNavigate();
   const user = getStoredUser();
   const { showNotification } = useNotifications();
+  const { addToast } = useToast();
   
   const [tasks, setTasks] = useState<Task[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
@@ -134,7 +137,7 @@ export default function Tasks() {
       }
       
     } catch (error) {
-      console.error('Error fetching tasks:', error);
+      addToast(parseApiError(error).message, 'error');
       showNotification('Failed to load tasks', 'error');
     } finally {
       setLoading(false);
@@ -148,7 +151,7 @@ export default function Tasks() {
       const agentList = await getUsers();
       setAgents(agentList.filter((a) => ['agent', 'manager', 'admin'].includes(a.role)));
     } catch (error) {
-      console.error('Error fetching agents:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   }, [isAdminOrManager]);
 

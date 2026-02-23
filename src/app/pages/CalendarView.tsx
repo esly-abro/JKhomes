@@ -6,7 +6,9 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { ChevronLeft, ChevronRight, Plus, MapPin, Phone, Mail, Calendar, X, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { useToast } from '../context/ToastContext';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { parseApiError } from '../lib/parseApiError';
 import { createCalendarEvent, type CreateEventPayload } from '../../services/calendar';
 
 interface CalendarEvent {
@@ -25,6 +27,7 @@ export default function CalendarView() {
   const [view, setView] = useState<'day' | 'week' | 'month'>('month');
   const { siteVisits = [], activities = [], leads = [] } = useData();
   const { appointmentFieldLabel } = useTenantConfig();
+  const { addToast } = useToast();
   const navigate = useNavigate();
 
   // Add Event Dialog state
@@ -56,12 +59,11 @@ export default function CalendarView() {
         leadId: eventForm.leadId || undefined,
         location: eventForm.location || undefined,
       });
-      setShowAddEvent(false);
-      setEventForm({ title: '', type: 'meeting', startDate: new Date().toISOString().slice(0, 16), endDate: '', description: '', leadId: '', location: '' });
+      addToast('Event created!', 'success');
       // Refresh data context
       window.location.reload();
     } catch (err) {
-      console.error('Failed to create event:', err);
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setAddingEvent(false);
     }

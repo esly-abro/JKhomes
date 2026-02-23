@@ -32,8 +32,11 @@ import broadcastService, {
   CTAButton,
   BroadcastStats 
 } from '../../services/broadcasts';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 export default function Broadcasts() {
+  const { addToast } = useToast();
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -69,7 +72,7 @@ export default function Broadcasts() {
       const result = await broadcastService.getBroadcasts();
       setBroadcasts(result.data);
     } catch (error) {
-      console.error('Error loading broadcasts:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setLoading(false);
     }
@@ -80,7 +83,7 @@ export default function Broadcasts() {
       const count = await broadcastService.getTargetLeadsCount();
       setLeadsCount(count);
     } catch (error) {
-      console.error('Error loading leads count:', error);
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -131,8 +134,7 @@ export default function Broadcasts() {
       const url = await broadcastService.uploadBroadcastImage(file);
       setFormData(prev => ({ ...prev, imageUrl: url }));
     } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Failed to upload image');
+      addToast(parseApiError(error).message, 'error');
       setImagePreview('');
     } finally {
       setUploading(false);
@@ -146,7 +148,7 @@ export default function Broadcasts() {
 
   const addButton = (type: 'call' | 'url') => {
     if (formData.buttons && formData.buttons.length >= 2) {
-      alert('Maximum 2 CTA buttons allowed');
+      addToast('Maximum 2 CTA buttons allowed', 'warning');
       return;
     }
     
@@ -178,18 +180,18 @@ export default function Broadcasts() {
 
   const handleSave = async (sendNow = false) => {
     if (!formData.name || !formData.message) {
-      alert('Name and message are required');
+      addToast('Name and message are required', 'warning');
       return;
     }
 
     // Validate buttons
     for (const btn of formData.buttons || []) {
       if (btn.type === 'call' && !btn.phoneNumber) {
-        alert('Phone number required for Call button');
+        addToast('Phone number required for Call button', 'warning');
         return;
       }
       if (btn.type === 'url' && !btn.url) {
-        alert('URL required for Website button');
+        addToast('URL required for Website button', 'warning');
         return;
       }
     }
@@ -211,8 +213,7 @@ export default function Broadcasts() {
         handleSend(broadcast._id);
       }
     } catch (error) {
-      console.error('Error saving broadcast:', error);
-      alert('Failed to save broadcast');
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setSaving(false);
     }
@@ -224,11 +225,10 @@ export default function Broadcasts() {
     try {
       setSendingId(id);
       const result = await broadcastService.sendBroadcast(id);
-      alert(`Sending to ${result.totalLeads} leads...`);
+      addToast('Sending to ' + result.totalLeads + ' leads...', 'success');
       loadBroadcasts();
     } catch (error: any) {
-      console.error('Error sending broadcast:', error);
-      alert(error.response?.data?.error || 'Failed to send broadcast');
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setSendingId(null);
     }
@@ -241,8 +241,7 @@ export default function Broadcasts() {
       await broadcastService.deleteBroadcast(id);
       loadBroadcasts();
     } catch (error) {
-      console.error('Error deleting broadcast:', error);
-      alert('Failed to delete broadcast');
+      addToast(parseApiError(error).message, 'error');
     }
   };
 
@@ -251,8 +250,7 @@ export default function Broadcasts() {
       await broadcastService.duplicateBroadcast(id);
       loadBroadcasts();
     } catch (error) {
-      console.error('Error duplicating broadcast:', error);
-      alert('Failed to duplicate broadcast');
+      addToast(parseApiError(error).message, 'error');
     }
   };
 

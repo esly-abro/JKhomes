@@ -28,6 +28,8 @@ import {
   getRunExecutionLogs,
 } from '../../services/automations';
 import type { Automation, AutomationRun, ExecutionLogEntry } from '../../services/automations';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 // ─── Status Helpers ─────────────────────────────────────────────
 
@@ -339,6 +341,7 @@ function RunRow({ run: initialRun, onCancel }: { run: AutomationRun; onCancel: (
 export default function AutomationMonitor() {
   const { automationId } = useParams<{ automationId: string }>();
   const navigate = useNavigate();
+  const { addToast } = useToast();
 
   const [automation, setAutomation] = useState<Automation | null>(null);
   const [runs, setRuns] = useState<AutomationRun[]>([]);
@@ -364,7 +367,7 @@ export default function AutomationMonitor() {
       setTotalPages(runsData.pagination.pages);
       setTotal(runsData.pagination.total);
     } catch (err) {
-      console.error('Failed to fetch automation data:', err);
+      addToast(parseApiError(err).message, 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -388,7 +391,7 @@ export default function AutomationMonitor() {
       await cancelAutomationRun(runId);
       fetchData(false);
     } catch (err) {
-      console.error('Failed to cancel run:', err);
+      addToast(parseApiError(err).message, 'error');
     }
   };
 

@@ -7,10 +7,13 @@ import { Download, TrendingUp, Users, DollarSign, Target, Loader2, AlertCircle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { getAllAnalytics, type AnalyticsData } from '../../services/analytics';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 export default function Analytics() {
   const { leads } = useData();
   const { appointmentFieldLabel, leadStatuses, getStatusLabel, getStatusColor } = useTenantConfig();
+  const { addToast } = useToast();
   const [dateRange, setDateRange] = useState('30days');
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +31,7 @@ export default function Analytics() {
       const data = await getAllAnalytics(dateRange);
       setAnalyticsData(data);
     } catch (err: any) {
-      console.error('Failed to fetch analytics:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message || 'Failed to load analytics data');
     } finally {
       setLoading(false);

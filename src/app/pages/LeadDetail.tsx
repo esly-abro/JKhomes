@@ -17,6 +17,8 @@ import { useAIVoiceCall } from '../hooks/useAIVoiceCall';
 import { updateLeadStatus } from '../../services/leads';
 import { WhatsAppTemplate, getTemplates, sendTemplateMessage } from '../../services/whatsapp';
 import { makeHumanCall, getCallStatus } from '../../services/twilio';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 // Activity type for the lead
 interface LeadActivity {
@@ -31,6 +33,7 @@ export default function LeadDetail() {
   const { id } = useParams();
   const { categoryFieldLabel, appointmentFieldLabel, leadStatuses, getStatusColor, getStatusLabel, closedStatusKeys } = useTenantConfig();
   const { leads, activities, updateLead, addActivity } = useData();
+  const { addToast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [callStatus, setCallStatus] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string>('');
@@ -116,7 +119,7 @@ export default function LeadDetail() {
         }
       }
     } catch (error) {
-      console.error('Error fetching AI summary:', error);
+      addToast(parseApiError(error).message, 'error');
     } finally {
       setAiSummaryLoading(false);
     }
@@ -270,7 +273,7 @@ export default function LeadDetail() {
           setTimeout(() => setHumanCallStatus(null), 5000);
         }
       } catch (error: any) {
-        console.error('Human call error:', error);
+        addToast(parseApiError(error).message, 'error');
         setHumanCallStatus(`❌ Error: ${error.message}`);
         addLeadActivity('call', `Human Call Error: ${error.message}`, 'bg-red-500');
         setTimeout(() => setHumanCallStatus(null), 5000);
@@ -297,7 +300,7 @@ export default function LeadDetail() {
       const templates = await getTemplates();
       setWhatsappTemplates(templates);
     } catch (error: any) {
-      console.error('Failed to load WhatsApp templates:', error);
+      addToast(parseApiError(error).message, 'error');
       setTemplateError(error.response?.data?.error || 'Failed to load templates. Please configure WhatsApp in Settings.');
     } finally {
       setIsLoadingTemplates(false);
@@ -319,7 +322,7 @@ export default function LeadDetail() {
         setTimeout(() => setUpdateMessage(null), 3000);
       }
     } catch (error: any) {
-      console.error('Failed to send WhatsApp template:', error);
+      addToast(parseApiError(error).message, 'error');
       setUpdateMessage(`Failed to send WhatsApp: ${error.response?.data?.error || error.message}`);
       setTimeout(() => setUpdateMessage(null), 5000);
     } finally {
@@ -357,7 +360,7 @@ export default function LeadDetail() {
             }
           }
         })
-        .catch(err => console.error('Error fetching initial AI summary:', err));
+        .catch(err => { /* silent */ });
     }
   }, [id, lead?.phone]);
 
@@ -697,7 +700,7 @@ export default function LeadDetail() {
                     setUpdateMessage(null);
                   }, 3000);
                 } catch (error: any) {
-                  console.error('Failed to update status:', error);
+                  addToast(parseApiError(error).message, 'error');
                   setUpdateMessage(`❌ Failed to update status: ${error.message || 'Unknown error'}`);
                   setTimeout(() => {
                     setIsUpdating(false);
@@ -803,7 +806,7 @@ export default function LeadDetail() {
               onClick={async () => {
                 const value = parseInt(dealValue || '0', 10);
                 if (value <= 0) {
-                  alert('Please enter a valid deal value');
+                  addToast('Please enter a valid deal value', 'warning');
                   return;
                 }
 
@@ -826,7 +829,7 @@ export default function LeadDetail() {
                     setIsUpdating(false); // Reset updating state
                   }, 3000);
                 } catch (error) {
-                  console.error('Failed to close deal:', error);
+                  addToast(parseApiError(error).message, 'error');
                   setIsUpdating(false);
                 }
               }}

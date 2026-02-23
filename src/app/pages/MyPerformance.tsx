@@ -15,6 +15,8 @@ import {
   type AgentPerformanceData
 } from '../../services/analytics';
 import { useTenantConfig } from '../context/TenantConfigContext';
+import { useToast } from '../context/ToastContext';
+import { parseApiError } from '../lib/parseApiError';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f97316', '#84cc16'];
 
@@ -40,6 +42,7 @@ export default function MyPerformance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { getStatusLabel, getStatusColor } = useTenantConfig();
+  const { addToast } = useToast();
 
   useEffect(() => {
     fetchData();
@@ -52,7 +55,7 @@ export default function MyPerformance() {
       const result = await getMyPerformance(dateRange);
       setData(result);
     } catch (err: any) {
-      console.error('Failed to fetch performance data:', err);
+      addToast(parseApiError(err).message, 'error');
       setError(err.message || 'Failed to load performance data');
     } finally {
       setLoading(false);
